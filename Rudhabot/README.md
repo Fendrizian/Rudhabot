@@ -1,22 +1,72 @@
-# Rudhabot
+# Rudhabot v2
 
-A Discord economy / gambling bot (discord.py 2.x).
+A Discord economy and games bot (discord.py 2.x) built around **its own intelligence layer**:
+
+- **The Oracle** is an in-house neural model, trained by Rudhabot on self-play of its own card game. It powers the AI
+  opponent, coaching hints, a live win-chance bar, post-match turning points, Deck Doctor and card similarity. See `docs/ML.md`.
+- **Asgrelia: Cloudfall** is a full trading card game built from the TCG Codex: 112 cards, 8 Protocols and 4 Skies, with
+  rated duels in threads and a ladder. See `docs/TCG.md`.
+- **`/ask`** is an assistant grounded in Rudhabot's own docs. It uses OpenAI when configured and local retrieval
+  otherwise. See `docs/OPENAI.md`.
+- Everything from v1 is still here: economy, shop and café, loans, crypto, gambling games, the lottery and birthdays.
 
 ## Run
 
 ```bash
-export DISCORD_TOKEN='your-bot-token'      # the token is no longer stored in the code
+pip install -r requirements.txt
+```
+
+```bash
+export DISCORD_TOKEN='your-bot-token'      # never stored in the code; see .env.example for every option
+```
+
+```bash
+export OPENAI_API_KEY='sk-...'             # optional: enables AI-written /ask answers and match recaps
+```
+
+```bash
 python main.py
 ```
 
-Data files (`data.json`, `crypto.json`, `specials.json`, `birthdays.json`, plus the new `birthday_registry.json` and
-`lottery.json`) are created in the working directory, exactly where the old bot kept them. Existing files keep working.
+Data files are created in the working directory, exactly where the old bot kept them:
+- existing: `data.json`, `crypto.json`, `specials.json`, `birthdays.json`, `birthday_registry.json`, `lottery.json`;
+- new: `tcg.json` (Cloudfall profiles) and `tcg_matches.json` (live matches, restored after a restart).
+
+Existing files are read unchanged. No migration is needed, and nothing in the old files is rewritten.
+
+The Oracle model ships in `models/` (`oracle-v1`, 173 KB). The bot works without it (`ORACLE_ENABLED=0`): it falls back to a
+deterministic heuristic AI.
 
 ## Test
 
 ```bash
-python -m unittest discover -s tests -t .      # 115 tests, standard library only
+python -m unittest discover -s tests -t .      # offline: no Discord connection, no OpenAI calls
 ```
+
+Rebuild or evaluate the model:
+
+```bash
+python -m rudhabot.ml.train --version oracle-v2     # ~7 minutes on 4 cores
+```
+
+```bash
+python -m rudhabot.ml.evaluate
+```
+
+## What's new in v2
+
+| Area | Commands |
+|---|---|
+| Cloudfall | `/tcg starter`, `/tcg collection`, `/tcg pack`, `/tcg deck build/view/use/analyze`, `/tcg card`, `/tcg rules`, `/tcg practice`, `/tcg challenge`, `/tcg match`, `/tcg forfeit`, `/tcg ladder`, `/tcg forget-me` |
+| Assistant | `/ask <question> [private]` |
+| Model ops (admin) | `/oracle status`, `/oracle reload [version]` |
+
+Designed for Discord:
+- Each duel gets its own **thread**, so channels stay readable.
+- Spectators see a live board with a **spectator-safe win bar**: the estimate is computed with both hands hidden.
+- Players act through **ephemeral menus of legal moves**. Duplicate or stale clicks are rejected, matches survive bot
+  restarts, and idle players are auto-moved and then forfeited.
+- Rated wins pay a small, capped reward in ra. Practice is unrated, so the AI can't be farmed.
 
 ## Architecture
 
@@ -24,15 +74,23 @@ Each layer only depends on the ones above it.
 
 | Layer | What lives there |
 |---|---|
-| `settings`, `errors`, `clock` | Immutable config dataclasses, shared exceptions, an injectable clock |
-| `domain/` | Pure rules, no Discord and no files: `SlotMachine`, `Lottery`/`PrizeTable`, `MysteryBox`, `Loan`, `BirthdayDate`, blackjack, `ItemCatalog`, `Cooldown`, amount parsing |
-| `persistence/` | `JsonStore` (atomic writes, corrupt files are backed up) and repositories: `UserRepository`, `SpecialStockRepository`, `PriceBook`, `LotteryLedger`, `BirthdayRegistry`, `CelebrationLog` |
-| `services/` | `LoanService`, `CryptoMarket`, `ShopService`/`CafeMenu`, `LotteryService`, `BirthdayService`, `GamblingSessions`, `AdminPolicy` |
-| `ui/`, `views/` | Embeds, `Messenger`, `LoanNotifier`, `Announcer`, buttons/selects/modals (dependencies injected, never global) |
-| `cogs/` | One cog per feature area. Commands are thin: parse input, call a service, render |
-| `container.py`, `app.py` | Composition root: `Services.build()` wires everything; `RudhaBot` loads the cogs |
+| `settings`, `errors`, `clock` | Immutable config dataclasses (`AISettings.from_env()` for the AI layer), shared exceptions, an injectable clock |
+| `domain/`, `tcg/` | Pure rules, with no Discord and no files. v1 games, plus the Cloudfall engine (`tcg/engine.py`, deterministic and replayable) |
+| `ml/` | The Oracle: features, numpy network, policy and search, self-play, training, evaluation, versioned artifact store |
+| `llm/` | Provider interface (`LanguageModel`) and the OpenAI Responses client, local retrieval, rate limits, the assistant |
+| `persistence/` | `JsonStore` (atomic writes; corrupt files are backed up) and repositories, including `TcgRepository` |
+| `services/` | v1 services, plus `OracleService` (threaded, bounded, timed out, with fallback) and `TcgService` (match lifecycle) |
+| `ui/`, `views/` | Embeds and components (`MatchButton` dynamic items survive restarts) |
+| `cogs/` | Thin slash commands, one cog per area |
+| `container.py`, `app.py` | Composition root |
 
-Time and randomness are injected (`Clock`, `rng`), so every rule can be tested deterministically.
+Trust boundary: the ML and the LLM only advise. Every game move goes through `engine.apply`, which re-validates it. Balances,
+rewards, ratings and permissions are decided only by deterministic code.
+
+## Changes to existing behaviour
+
+- `/help` lists the new commands. The help text for `/daily` claimed 200ra; it now matches the actual payout of 50ra (the
+  payout itself is unchanged).
 
 ## Lottery
 

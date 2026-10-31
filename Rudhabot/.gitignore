@@ -1,0 +1,18 @@
+# runtime data (created in the working directory by the bot)
+data.json
+crypto.json
+specials.json
+birthdays.json
+birthday_registry.json
+lottery.json
+tcg.json
+tcg_matches.json
+*.corrupt-*
+*.tmp
+# secrets
+.env
+# python
+__pycache__/
+*.pyc
+# training scratch
+models/.*.gen.npz

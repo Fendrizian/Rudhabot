@@ -18,7 +18,29 @@ class FakeUser:
 
 
 class FakeMessage:
-    async def edit(self, **kw): pass
+    _ids = iter(range(5000, 10**9))
+
+    def __init__(self, channel=None, **content):
+        self.id, self.channel, self.content = next(FakeMessage._ids), channel, content
+        self.edits = []
+
+    async def edit(self, **kw):
+        self.edits.append(kw)
+
+
+class FakeChannel:
+    """A text channel that records what is sent to it."""
+    def __init__(self, id=777):
+        self.id, self.mention = id, f"<#{id}>"
+        self.sent: list[FakeMessage] = []
+
+    async def send(self, content=None, **kw):
+        message = FakeMessage(self, content=content, **kw)
+        self.sent.append(message)
+        return message
+
+    def get_partial_message(self, message_id):
+        return next(m for m in self.sent if m.id == message_id)
 
 
 class FakeResponse:
@@ -61,6 +83,9 @@ class FakeInteraction:
     """Records everything the bot says. `log` holds (kind, kwargs) tuples in order."""
     def __init__(self, bot, user, guild=None):
         self.client, self.user, self.guild = bot, user, guild
+        self.guild_id = getattr(guild, "id", None)
+        self.channel = None
+        self.data = {}
         self.log = []
         self.response, self.followup = FakeResponse(self.log), FakeFollowup(self.log)
         self.command = None
