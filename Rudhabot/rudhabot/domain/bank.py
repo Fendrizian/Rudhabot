@@ -1,4 +1,4 @@
-"""Bank rules: card tiers, savings interest and credit-card statements. Pure functions, no Discord, no files."""
+"""Bank rules: card tiers, interest on the bank balance and credit-card statements. Pure functions, no Discord, no files."""
 from __future__ import annotations
 
 import math
@@ -12,15 +12,15 @@ class Tier:
     key: str
     name: str
     emoji: str
-    daily_interest: float        # savings interest per day (0.0005 = 0.05%)
+    daily_interest: float        # interest on the bank balance per day (0.0005 = 0.05%)
     monthly_limit: int           # max deposited AND max withdrawn (wallet <-> bank) per calendar month, each
     credit_limit: int
     upgrade_fee: int             # paid from the bank balance to reach this tier
-    net_worth_required: int      # wallet + bank + savings needed to upgrade to this tier
+    net_worth_required: int      # wallet + bank needed to upgrade to this tier
 
     @property
     def interest_cap(self) -> int:
-        """Savings above this earn no interest (keeps high tiers from printing money)."""
+        """Bank balance above this earns no interest (keeps high tiers from printing money)."""
         return self.monthly_limit * 5
 
 
@@ -34,7 +34,6 @@ TIER_BY_KEY = {t.key: t for t in TIERS}
 
 LATE_INTEREST = 0.05             # charged once on an unpaid statement after its due date
 STATEMENT_GRACE_DAYS = 10        # a statement issued on the 1st is due on the 11th
-SAVINGS_WITHDRAW_COOLDOWN_H = 24
 
 
 def next_tier(current: str) -> Optional[Tier]:
@@ -43,14 +42,14 @@ def next_tier(current: str) -> Optional[Tier]:
     return TIERS[i + 1] if i + 1 < len(TIERS) else None
 
 
-def accrue(savings: float, carry: float, tier: Tier, days: int) -> tuple[int, float]:
-    """Daily-compounded interest for `days` days on the interest-bearing part of `savings`.
+def accrue(balance: float, carry: float, tier: Tier, days: int) -> tuple[int, float]:
+    """Daily-compounded interest for `days` days on the interest-bearing part of a bank `balance`.
 
     Returns (whole ra to credit, new fractional carry). Fractions are carried so small balances still earn over time.
     """
-    if days <= 0 or savings <= 0:
+    if days <= 0 or balance <= 0:
         return 0, carry
-    base = min(savings, tier.interest_cap)
+    base = min(balance, tier.interest_cap)
     exact = round(base * ((1 + tier.daily_interest) ** days - 1) + carry, 9)    # rounding: 0.5 + 0.5 must be 1
     whole = math.floor(exact)
     return whole, exact - whole

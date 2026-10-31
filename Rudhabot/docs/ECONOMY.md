@@ -8,7 +8,7 @@
 - A torn last line after a crash is skipped.
 - The file rotates at 50 MB, and old files are kept.
 
-**What's tracked:** wallet, bank, savings, credit-card balance, crypto holdings (`crypto:SYM`), shares (`shares:SYM`),
+**What's tracked:** wallet, bank, credit-card balance, crypto holdings (`crypto:SYM`), shares (`shares:SYM`),
 Cloud Shards and Vapor Dust.
 
 **Why nothing can be missed:** money only lives in a few repositories, and each one reports every write at the moment it
@@ -19,7 +19,7 @@ happens:
 - The bank, the exchange and the gacha report their own balances.
 
 **How each entry is labelled (most specific wins):**
-1. An explicit reason from the code, e.g. `savings interest (3 day(s))` or `card purchase: 1 × cake`.
+1. An explicit reason from the code, e.g. `bank interest (1 day(s))` or `card purchase: 1 × cake`.
 2. The interaction that caused it. Every slash command is labelled `/command` by the command tree, and every button or
    select is labelled e.g. `Blackjack (button)` by `ServiceView`. Subclasses get this automatically.
 3. Otherwise the code location, e.g. `services/loans.py:LoanService.auto_collect`. This covers background jobs.
@@ -44,7 +44,7 @@ happens:
 
 ## Bank
 
-| Card | Savings interest | Deposit & withdraw limit | Credit limit | Upgrade |
+| Card | Bank interest | Deposit & withdraw limit | Credit limit | Upgrade |
 |---|---|---|---|---|
 | <:bankcard_red:1417887131510116483> Red | 0.05% / day | 10,000 each / month | 2,000 | everyone starts here |
 | <:bankcard_silver:1417887151156236480> Silver | 0.10% / day | 20,000 | 5,000 | net worth 25,000, fee 2,500 |
@@ -55,11 +55,14 @@ happens:
 - `/deposit` (wallet → bank) and `/withdraw` (bank → wallet) are each limited per calendar month, by your card tier.
 - `/deposit all` moves as much as the limit allows.
 
-**Savings:**
-- `/bank save` moves money from your bank balance into savings, and `/bank unsave` moves it back, once every 24 h.
-- Interest is daily and compounding, and fractions carry over so small balances still earn.
-- Interest is only paid on up to 5× the tier's monthly limit, so savings can't print money.
-- Interest is applied whenever the account is touched, with no background job.
+**Bank interest:**
+- The bank balance earns the card tier's daily interest. There is no separate savings account.
+- Interest is paid once a day by a background job, compounding, on the balance at that moment. Fractions carry over so
+  small balances still earn.
+- Interest is only paid on up to 5× the tier's monthly limit, so the bank can't print money.
+- After downtime, at most a week of missed interest is paid.
+- Money that was in the old savings accounts moves into the bank balance the first time the account is used. The audit
+  log records it as `savings merged into bank`.
 
 **Credit card:**
 - Pay with `pay_with:card` on `/buy` and on `/tcg wish shards`.
@@ -68,9 +71,9 @@ happens:
   paid. No money is ever taken automatically.
 - `/bank card info` shows the card, and `/bank card pay` pays it.
 
-**Net worth:** wallet + bank + savings.
+**Net worth:** wallet + bank.
 
-**Balance:** `/balance [user]` shows wallet, bank, savings, the total and the card tier. For yourself it also shows the
+**Balance:** `/balance [user]` shows wallet, bank (with its daily interest rate), the total and the card tier. For yourself it also shows the
 monthly limits and the credit card.
 
 **Clairvoyance insights:** your own `/balance` (sent to you privately) and `/bank card info` may show one or two quiet
@@ -80,7 +83,6 @@ computed only from your own ledger:
 - your card is mostly used;
 - you're spending about N× your usual weekly amount;
 - you're down on games of chance this week;
-- idle bank money could be earning savings interest.
 
 They are advisory and never change, limit or charge anything.
 

@@ -24,7 +24,7 @@ class Paths:
     tcg: str = "tcg.json"
     tcg_matches: str = "tcg_matches.json"
     ledger: str = "ledger.jsonl"            # the economy audit trail (append-only)
-    bank: str = "bank.json"                 # card tiers, savings, credit cards
+    bank: str = "bank.json"                 # card tiers, interest bookkeeping, credit cards
     stocks: str = "stocks.json"             # the Rudharta Exchange
     gacha: str = "gacha.json"               # the weekly Skyfall Convergence meter
     reviews: str = "reviews.json"           # Clairvoyance review signals

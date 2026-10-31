@@ -35,7 +35,7 @@ class EconomyCog(ServiceCog):
         return self.clock.now(timezone.utc).replace(tzinfo=None)
 
     # ------------------------------------------------------------------ balance
-    @app_commands.command(name="balance", description="Your wallet, bank, savings and card (or another user's balance)")
+    @app_commands.command(name="balance", description="Your wallet, bank (with interest) and card, or another user's balance")
     @app_commands.describe(user="User to check balance for")
     @not_in_game()
     async def balance(self, interaction: discord.Interaction, user: discord.User = None):
@@ -48,12 +48,12 @@ class EconomyCog(ServiceCog):
         bank = self.services.bank
         profile = bank.account(target.id)
         tier = bank.tier_of(profile)
-        wallet, banked, savings = account.get("wallet", 0), account.get("bank", 0), profile["savings"]
+        account = self.users.get(target.id)              # re-read: account() may have folded old savings in
+        wallet, banked = account.get("wallet", 0), account.get("bank", 0)
         embed = discord.Embed(title=f"<:balance:1399370324734246952> {target.name}'s Balance", color=0xAD1457)
         embed.add_field(name="Wallet", value=f"{CURRENCY}{wallet:,}")
-        embed.add_field(name="Bank", value=f"{CURRENCY}{banked:,}")
-        embed.add_field(name="Savings", value=f"{CURRENCY}{savings:,}\n{tier.daily_interest * 100:.2f}% a day")
-        embed.add_field(name="Total Balance", value=f"{CURRENCY}{wallet + banked + savings:,}", inline=False)
+        embed.add_field(name="Bank", value=f"{CURRENCY}{banked:,}\n+{tier.daily_interest * 100:.2f}% a day")
+        embed.add_field(name="Total Balance", value=f"{CURRENCY}{wallet + banked:,}", inline=False)
         embed.add_field(name="Card", value=f"{tier.emoji} **{tier.name}**", inline=own)
         if own:
             usage, credit = profile["usage"], profile["credit"]

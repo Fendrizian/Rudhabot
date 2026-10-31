@@ -1,7 +1,7 @@
 """The economy audit trail: every change to anyone's money is recorded, wherever it comes from.
 
 How completeness is guaranteed
-  Money lives in a few repositories (wallet/bank in `UserRepository`; savings, credit and shares in the bank and stock
+  Money lives in a few repositories (wallet/bank in `UserRepository`; credit and shares in the bank and stock
   services). Each of them reports every balance change to `AuditService.record()` at the moment it is written, so no
   command, button, background job or future feature can move money without leaving an entry.
 

@@ -11,7 +11,7 @@ A Discord economy and games bot (discord.py 2.x) built around **its own intellig
   See `docs/ML.md`.
 - **Asgrelia: Cloudfall** is a full trading card game built from the TCG Codex, with rated duels, a ladder and the
   **Skyfall Wishes** gacha. See `docs/TCG.md`.
-- **The economy** has an audit log of every money change, a bank with card tiers, savings and credit cards, the
+- **The economy** has an audit log of every money change, a bank with card tiers, daily interest and credit cards, the
   **Rudharta Exchange** (NAS and JOOT stocks driven by real shop activity) and **Baccarat** and **Craps**. See
   `docs/ECONOMY.md`.
 - **`/ask`** (or an @mention) routes commands locally, and answers questions with OpenAI when it's configured. See
@@ -79,7 +79,7 @@ python -m rudhabot.ml.evaluate
 |---|---|
 | Cloudfall | `/tcg starter`, `/tcg collection`, `/tcg pack`, `/tcg deck build/view/use/analyze`, `/tcg card`, `/tcg rules`, `/tcg practice`, `/tcg challenge`, `/tcg match`, `/tcg forfeit`, `/tcg ladder`, `/tcg forget-me` |
 | Assistant | `/ask <question> [private]` |
-| Bank | `/deposit`, `/withdraw` (monthly card limits), `/balance` (incl. savings and card tier), `/bank tiers | history | save | unsave | upgrade`, `/bank card info | pay` |
+| Bank | `/deposit`, `/withdraw` (monthly card limits), `/balance` (bank earns daily interest; card tier), `/bank tiers | history | upgrade`, `/bank card info | pay` |
 | Markets | `/portfolio` (crypto + stocks), `/stocks market | quote | buy | sell`, `/crypto`, `/buycoin`, `/sellcoin` |
 | Casino | `/baccarat`, `/craps` |
 | Skyfall Wishes | `/tcg wish banner | pull | shards | daily | craft | convergence` |

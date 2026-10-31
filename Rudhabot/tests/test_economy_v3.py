@@ -1,4 +1,4 @@
-"""Audit trail, bank (tiers, savings, credit), stock exchange, baccarat/craps, finance insights."""
+"""Audit trail, bank (tiers, interest, credit), stock exchange, baccarat/craps, finance insights."""
 import json
 import os
 import random
@@ -113,19 +113,30 @@ class BankServiceTests(World):
         self.clock.set(datetime(2026, 6, 1, 9))
         self.assertEqual(self.bank.transfer(1, 3_000, "deposit"), 3_000)
 
-    def test_savings_interest_and_one_withdrawal_a_day(self):
+    def test_the_bank_balance_earns_daily_interest_once_a_day(self):
         self.users.update(1, bank=20_000)
-        self.bank.savings_deposit(1, 20_000)
-        self.clock.advance(days=10)
+        self.assertEqual(self.bank.apply_daily_interest(), 0)            # first sight: starts earning from today
+        self.clock.advance(days=1)
+        self.assertEqual(self.bank.apply_daily_interest(), 1)
+        self.assertEqual(self.users.get(1)["bank"], 20_010)               # red: 0.05% of 20,000
+        self.assertEqual(self.bank.apply_daily_interest(), 0)            # the same day again: nothing
+        self.clock.advance(days=30)                                       # downtime: at most a week is caught up
+        self.bank.apply_daily_interest()
+        self.assertLess(self.users.get(1)["bank"], 20_010 * 1.0005 ** 8)
+        reasons = [e["reason"] for e in self.ledger() if e["account"] == "bank"]
+        self.assertTrue(any(r.startswith("bank interest") for r in reasons))
+
+    def test_old_savings_are_folded_into_the_bank_balance(self):
+        self.users.update(1, bank=1_000)
+        data = self.bank._store.load()
+        data["1"] = {"tier": "red", "savings": 5_000, "savings_withdrawn_at": None}
+        self.bank._store.save(data)
         profile = self.bank.account(1)
-        self.assertGreater(profile["savings"], 20_000)
-        self.bank.savings_withdraw(1, 100)
-        with self.assertRaises(BankRefused):
-            self.bank.savings_withdraw(1, 100)
-        self.clock.advance(hours=25)
-        self.bank.savings_withdraw(1, 100)
-        reasons = [e["reason"] for e in self.ledger() if e["account"] == "savings"]
-        self.assertTrue(any(r.startswith("savings interest") for r in reasons))
+        self.assertNotIn("savings", profile)
+        self.assertEqual(self.users.get(1)["bank"], 6_000)
+        self.assertIn("savings merged into bank", [e["reason"] for e in self.ledger()])
+        self.bank.account(1)
+        self.assertEqual(self.users.get(1)["bank"], 6_000)                # only once
 
     def test_upgrade_needs_net_worth_and_fee(self):
         self.users.update(1, bank=20_000)
@@ -155,7 +166,7 @@ class InsightTests(unittest.TestCase):
         now = datetime(2026, 5, 20, 12)
         entries = [{"ts": f"2026-05-{d:02d}T10:00:00", "account": "wallet", "delta": -300, "reason": "/buy"}
                    for d in range(1, 15)] + [{"ts": "2026-05-19T10:00:00", "account": "wallet", "delta": -9000, "reason": "/buy"}]
-        profile = {"tier": "red", "savings": 0, "credit": {"balance": 1800, "statement": 1800, "due": "2026-05-22"}}
+        profile = {"tier": "red", "credit": {"balance": 1800, "statement": 1800, "due": "2026-05-22"}}
         tips = finance_insights(entries, profile, bank_balance=5000, now=now)
         self.assertIn("due in 2 day(s)", tips[0])
         self.assertEqual(len(tips), 2)
@@ -296,15 +307,16 @@ class PortfolioCommandTests(CogTestCase):
 class BalanceCommandTests(CogTestCase):
     async def test_own_balance_merges_the_bank_statement(self):
         self.fund(self.alice, 1_500, bank=12_000)
-        self.s.bank.savings_deposit(self.alice.id, 2_000)
+        self.s.bank.charge(self.alice.id, 1_500, "test")                 # 75% of the red card: a Clairvoyance tip
         it = await self.run_command("balance", self.alice)
         embed = it.log[0][1]["embed"]
         fields = {f.name: f.value for f in embed.fields}
         self.assertTrue(embed.title.startswith("<:balance:1399370324734246952>"))          # wallet emoji kept
         self.assertIn("Red", fields["Card"])
         self.assertIn("<:bankcard_red:", fields["Card"])
-        self.assertIn("2,000", fields["Savings"])
-        self.assertIn("13,500", fields["Total Balance"])                                     # 1,500 + 10,000 + 2,000 savings
+        self.assertNotIn("Savings", fields)                                                    # savings is the bank now
+        self.assertIn("0.05% a day", fields["Bank"])
+        self.assertIn("13,500", fields["Total Balance"])                                     # wallet + bank
         self.assertIn("This month", fields)
         self.assertIn("Credit card", fields)
         self.assertFalse(it.log[0][1].get("ephemeral"))                                      # still a public /balance

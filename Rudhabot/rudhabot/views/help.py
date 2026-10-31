@@ -54,8 +54,8 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     ("start", "Getting started", "👋", "Help and the /ask assistant (or just @mention Rudhabot)", ("help", "ask")),
     ("economy", "Economy", "💰", "Earn, send and compare money",
      ("work", "daily", "crime", "send", "rob", "leaderboard")),
-    ("bank", "Bank", "🏦", "Deposits, savings, card tiers, credit cards and loans",
-     ("balance", "deposit", "withdraw", "bank tiers | history", "bank save | unsave", "bank upgrade",
+    ("bank", "Bank", "🏦", "Deposits, interest, card tiers, credit cards and loans",
+     ("balance", "deposit", "withdraw", "bank tiers | history", "bank upgrade",
       "bank card info | pay", "loan", "loaninfo", "pay", "extend")),
     ("shop", "Shop & Café", "🛍️", "Buy, sell and use items", ("shop", "cafe", "buy", "sell", "inventory", "use")),
     ("markets", "Markets", "📈", "The stock exchange and crypto",
@@ -229,14 +229,9 @@ def get_commands_data():
             "description": "Compare the card tiers, and see your recent transactions."
         },
         {
-            "name": "bank save | unsave",
-            "args": "<amount|all>",
-            "description": "Move bank money into savings (daily interest by card tier) and back (once a day)."
-        },
-        {
             "name": "bank upgrade",
             "args": "",
-            "description": "Upgrade your card: Red → Silver → Gold → Platinum for higher limits, interest and credit."
+            "description": "Upgrade your card: Red → Silver → Gold → Platinum for higher limits, bank interest and credit."
         },
         {
             "name": "bank card info | pay",
@@ -316,7 +311,7 @@ def get_commands_data():
         {
             "name": "balance",
             "args": "[user]",
-            "description": "Wallet, bank, savings, total and card tier (anyone's). For yourself also your monthly limits, credit card and private Clairvoyance tips."
+            "description": "Wallet, bank (it earns daily interest), total and card tier (anyone's). For yourself also your monthly limits, credit card and private Clairvoyance tips."
         },
         {
             "name": "work",

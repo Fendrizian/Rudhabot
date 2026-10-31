@@ -170,7 +170,6 @@ Up to two private observations, computed only from the person's own ledger and b
 - the card is 70%+ used;
 - this week's spending is more than 2× their usual (median of the previous 4 weeks);
 - they're down on games of chance this week;
-- idle bank money could be earning savings interest.
 
 These are deterministic personal-baseline statistics, not a trained model. They are shown only to that person, are
 labelled "💡 Clairvoyance", and change nothing.

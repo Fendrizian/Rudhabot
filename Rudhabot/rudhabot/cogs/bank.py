@@ -1,11 +1,12 @@
-"""/bank: card tiers, savings and credit cards (balances themselves are in /balance). Thin: parse input, call BankService, render."""
+"""/bank: card tiers and credit cards (balances, with interest, are in /balance); pays daily bank interest.
+Thin: parse input, call BankService, render."""
 from __future__ import annotations
 
 from typing import Optional
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import not_in_game
@@ -43,6 +44,21 @@ class BankCog(ServiceCog, commands.GroupCog, group_name="bank", group_descriptio
     def bank(self):
         return self.services.bank
 
+    async def cog_load(self) -> None:
+        self.interest.start()
+
+    async def cog_unload(self) -> None:
+        self.interest.cancel()
+
+    @tasks.loop(hours=1)
+    async def interest(self) -> None:
+        """Daily interest on bank balances (each account is credited at most once a day)."""
+        try:
+            self.bank.apply_daily_interest()
+        except Exception:
+            import logging
+            logging.getLogger("rudhabot.bank").exception("daily interest failed")
+
     def _insights(self, user_id, profile: dict, bank_balance: int) -> list[str]:
         from rudhabot.services.insights import insights_for
         return insights_for(self.services, user_id, profile, bank_balance)
@@ -55,7 +71,8 @@ class BankCog(ServiceCog, commands.GroupCog, group_name="bank", group_descriptio
         e = discord.Embed(title="💳 Rudharta Bank card tiers", color=BANK_BLUE)
         for t in TIERS:
             e.add_field(name=f"{t.emoji} {t.name}", inline=False,
-                        value=f"Savings interest **{t.daily_interest * 100:.2f}%/day** · deposit & withdraw limit "
+                        value=f"Bank interest **{t.daily_interest * 100:.2f}%/day** (on up to {t.interest_cap:,}) · "
+                              f"deposit & withdraw limit "
                               f"**{t.monthly_limit:,}/month** each · credit limit {t.credit_limit:,}"
                               + (f" · upgrade: net worth {t.net_worth_required:,}, fee {t.upgrade_fee:,}" if t.upgrade_fee else " · everyone starts here"))
         await respond(interaction, e)
@@ -69,26 +86,6 @@ class BankCog(ServiceCog, commands.GroupCog, group_name="bank", group_descriptio
             return await self._refuse(interaction, error)
         await respond(interaction, _embed(interaction.user, "🎉 Card upgraded", f"Welcome to {tier.emoji} **{tier.name}**!",
                                           0x57F287))
-
-    @app_commands.command(name="save", description="Move money from your bank balance into savings")
-    @app_commands.describe(amount="Amount or 'all'")
-    @not_in_game()
-    async def save(self, interaction: discord.Interaction, amount: str):
-        try:
-            moved = self.bank.savings_deposit(interaction.user.id, _amount(amount))
-        except BankRefused as error:
-            return await self._refuse(interaction, error)
-        await respond(interaction, _embed(interaction.user, "🐷 Savings", f"Moved {CURRENCY}{moved:,} into savings."))
-
-    @app_commands.command(name="unsave", description="Move money from savings back to your bank balance (once a day)")
-    @app_commands.describe(amount="Amount or 'all'")
-    @not_in_game()
-    async def unsave(self, interaction: discord.Interaction, amount: str):
-        try:
-            moved = self.bank.savings_withdraw(interaction.user.id, _amount(amount))
-        except BankRefused as error:
-            return await self._refuse(interaction, error)
-        await respond(interaction, _embed(interaction.user, "🐷 Savings", f"Moved {CURRENCY}{moved:,} back to your bank balance."))
 
     @app_commands.command(name="history", description="Your recent money movements (from the audit log)")
     async def history(self, interaction: discord.Interaction):

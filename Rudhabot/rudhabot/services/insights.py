@@ -42,16 +42,8 @@ def finance_insights(entries: list[dict], profile: dict, bank_balance: int, now:
     usual = median(weekly[1:5])
     if usual > 500 and weekly[0] > 2 * usual:
         candidates.append((70, f"You've spent about {weekly[0] / usual:.1f}× your usual weekly amount this week."))
-    if gambling_week < -max(2000, 0.5 * (bank_balance + profile.get("savings", 0))):
+    if gambling_week < -max(2000, 0.5 * bank_balance):
         candidates.append((60, f"Games of chance are {gambling_week:,.0f} for you this week."))
-    # 3. idle money that could be earning interest
-    room = max(0, tier.interest_cap - profile.get("savings", 0))
-    idle = min(bank_balance, room)
-    if idle >= 1000:
-        weekly_interest = idle * ((1 + tier.daily_interest) ** 7 - 1)
-        if weekly_interest >= 5:
-            candidates.append((40, f"{idle:,} in your bank balance could earn about {weekly_interest:,.0f} a week in "
-                                   f"savings (`/bank save`)."))
     candidates.sort(key=lambda c: -c[0])
     return [text for _, text in candidates[:limit]]
 

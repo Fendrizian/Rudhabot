@@ -1,19 +1,25 @@
-"""The bank: card tiers with monthly limits, savings accounts with interest, and credit cards.
+"""The bank: card tiers with monthly limits, daily interest on the bank balance, and credit cards.
 
-Wallet and bank balances still live in `UserRepository` (so their changes are audited automatically); savings and
-credit-card balances live in `bank.json` and every change to them is reported to the audit trail here.
+Wallet and bank balances live in `UserRepository`, so their changes (interest included) are audited automatically.
+Tier, interest bookkeeping and credit cards live in `bank.json`; credit-card changes are reported to the audit trail here.
+
+Interest is paid by `apply_daily_interest()`, which a background task runs every hour; each account is credited at most
+once per day, on its balance at that moment. (Paying lazily on access would let someone deposit a lot and then
+collect several days' interest on it.) Separate savings accounts no longer exist: any old savings are moved into the
+bank balance the first time the account is touched.
 """
 from __future__ import annotations
 
-import math
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 from rudhabot.clock import Clock
-from rudhabot.domain.bank import (SAVINGS_WITHDRAW_COOLDOWN_H, TIER_BY_KEY, TIERS, Tier, accrue, month_key, next_tier,
-                                  roll_statement)
+from rudhabot.domain.bank import TIER_BY_KEY, TIERS, Tier, accrue, month_key, next_tier, roll_statement
 from rudhabot.persistence.json_store import JsonStore
 from rudhabot.persistence.users import UserRepository
+from rudhabot.services.audit import audit_context
+
+MAX_CATCH_UP_DAYS = 7          # after downtime, pay at most a week of missed interest
 
 
 class BankRefused(Exception):
@@ -21,7 +27,7 @@ class BankRefused(Exception):
 
 
 def blank_profile(today_iso: str) -> dict:
-    return {"tier": "red", "savings": 0, "interest_carry": 0.0, "interest_date": today_iso, "savings_withdrawn_at": None,
+    return {"tier": "red", "interest_carry": 0.0, "interest_date": today_iso,
             "usage": {"month": None, "deposit": 0, "withdraw": 0},
             "credit": {"balance": 0, "statement": 0, "period": None, "due": None, "frozen": False, "late_charged": False}}
 
@@ -55,22 +61,58 @@ class BankService:
             self._audit.record(uid, account, delta, after, reason=reason)
 
     def _refresh(self, uid: str, profile: dict) -> None:
-        """Apply interest due and roll the credit statement (lazy: done whenever the account is touched)."""
+        """Roll the credit statement and the monthly limits, and fold any old savings into the bank balance."""
         today = self._today()
-        last = datetime.fromisoformat(profile["interest_date"]).date() if profile.get("interest_date") else today
-        days = (today - last).days
-        if days > 0:
-            interest, carry = accrue(profile["savings"], profile["interest_carry"], self.tier_of(profile), days)
-            profile["interest_carry"], profile["interest_date"] = carry, today.isoformat()
-            if interest:
-                profile["savings"] += interest
-                self._record(uid, "savings", interest, profile["savings"], reason=f"savings interest ({days} day(s))")
+        legacy = int(profile.pop("savings", 0) or 0)
+        profile.pop("savings_withdrawn_at", None)
+        if legacy > 0:                                  # savings accounts were merged into the bank balance
+            acc = self._users.get(uid)
+            self._record(uid, "savings", -legacy, 0, reason="savings merged into bank")
+            with audit_context("savings merged into bank"):
+                self._users.update(uid, bank=acc["bank"] + legacy)
         late = roll_statement(profile["credit"], today)
         if late:
             self._record(uid, "credit", late, profile["credit"]["balance"], reason="credit card late interest")
         usage = profile["usage"]
         if usage.get("month") != month_key(today):
             profile["usage"] = {"month": month_key(today), "deposit": 0, "withdraw": 0}
+
+    def apply_daily_interest(self) -> int:
+        """Credit each bank balance once a day (catching up at most MAX_CATCH_UP_DAYS). Returns accounts credited."""
+        today = self._today()
+        data = self._store.load()
+        credited = 0
+        for uid, account in self._users.all().items():
+            profile = data.get(uid)
+            if profile is None:
+                if int(account.get("bank", 0) or 0) <= 0:
+                    continue
+                profile = blank_profile(today.isoformat())     # starts earning from today
+                data[uid] = profile
+                continue
+            _, profile = self._load_into(data, uid)
+            self._refresh(uid, profile)
+            last = datetime.fromisoformat(profile["interest_date"]).date() if profile.get("interest_date") else today
+            days = min((today - last).days, MAX_CATCH_UP_DAYS)
+            if days <= 0:
+                continue
+            balance = int(self._users.get(uid)["bank"])
+            interest, carry = accrue(balance, profile.get("interest_carry", 0.0), self.tier_of(profile), days)
+            profile["interest_carry"], profile["interest_date"] = carry, today.isoformat()
+            if interest:
+                with audit_context(f"bank interest ({days} day(s))"):
+                    self._users.update(uid, bank=balance + interest)
+                credited += 1
+            data[uid] = profile
+        self._store.save(data)
+        return credited
+
+    def _load_into(self, data: dict, uid: str) -> tuple[dict, dict]:
+        base = blank_profile(self._today().isoformat())
+        base.update(data[uid])
+        base["credit"] = {**blank_profile("")["credit"], **data[uid].get("credit", {})}
+        data[uid] = base
+        return data, base
 
     def account(self, user_id) -> dict:
         uid = str(user_id)
@@ -84,8 +126,9 @@ class BankService:
         return TIER_BY_KEY.get(profile.get("tier"), TIERS[0])
 
     def net_worth(self, user_id) -> int:
+        self.account(user_id)                          # folds any old savings into the bank first
         acc = self._users.get(user_id)
-        return int(acc["wallet"]) + int(acc["bank"]) + int(self.account(user_id)["savings"])
+        return int(acc["wallet"]) + int(acc["bank"])
 
     # ------------------------------------------------------------------ deposits and withdrawals (monthly limits)
     def remaining(self, profile: dict, kind: str) -> int:
@@ -119,44 +162,6 @@ class BankService:
         return (f"❌ Your {tier.emoji} **{tier.name}** card allows {tier.monthly_limit:,} in {kind}s per month; "
                 f"{self.remaining(profile, kind):,} left this month. Upgrade with `/bank upgrade`.")
 
-    # ------------------------------------------------------------------ savings
-    def savings_deposit(self, user_id, amount: Optional[int]) -> int:
-        """Move money from the bank balance into savings (not limited by the monthly card limit)."""
-        uid = str(user_id)
-        data, profile = self._load(uid)
-        self._refresh(uid, profile)
-        acc = self._users.get(uid)
-        amount = acc["bank"] if amount is None else amount
-        if amount <= 0 or amount > acc["bank"]:
-            raise BankRefused("❌ Move a positive amount that you have in your bank balance.")
-        self._users.update(uid, bank=acc["bank"] - amount)
-        profile["savings"] += amount
-        self._record(uid, "savings", amount, profile["savings"])
-        self._save(data, uid, profile)
-        return amount
-
-    def savings_withdraw(self, user_id, amount: Optional[int]) -> int:
-        uid = str(user_id)
-        data, profile = self._load(uid)
-        self._refresh(uid, profile)
-        now = self._clock.now()
-        last = profile.get("savings_withdrawn_at")
-        if last:
-            ready = datetime.fromisoformat(last) + timedelta(hours=SAVINGS_WITHDRAW_COOLDOWN_H)
-            if now < ready:
-                hours = math.ceil((ready - now).total_seconds() / 3600)
-                raise BankRefused(f"❌ Savings allow one withdrawal per day. Try again in about {hours} h.")
-        amount = profile["savings"] if amount is None else amount
-        if amount <= 0 or amount > profile["savings"]:
-            raise BankRefused("❌ Withdraw a positive amount that you have in savings.")
-        profile["savings"] -= amount
-        profile["savings_withdrawn_at"] = now.isoformat(timespec="seconds")
-        self._record(uid, "savings", -amount, profile["savings"])
-        acc = self._users.get(uid)
-        self._users.update(uid, bank=acc["bank"] + amount)
-        self._save(data, uid, profile)
-        return amount
-
     # ------------------------------------------------------------------ tiers
     def upgrade(self, user_id) -> Tier:
         uid = str(user_id)
@@ -166,10 +171,10 @@ class BankService:
         if target is None:
             raise BankRefused("💳 You already hold the highest card tier.")
         acc = self._users.get(uid)
-        worth = acc["wallet"] + acc["bank"] + profile["savings"]
+        worth = acc["wallet"] + acc["bank"]
         if worth < target.net_worth_required:
             raise BankRefused(f"❌ {target.emoji} **{target.name}** needs a net worth of {target.net_worth_required:,} "
-                              f"(wallet + bank + savings). You have {worth:,}.")
+                              f"(wallet + bank). You have {worth:,}.")
         if acc["bank"] < target.upgrade_fee:
             raise BankRefused(f"❌ The {target.name} upgrade fee is {target.upgrade_fee:,}, paid from your bank balance.")
         self._users.update(uid, bank=acc["bank"] - target.upgrade_fee)
