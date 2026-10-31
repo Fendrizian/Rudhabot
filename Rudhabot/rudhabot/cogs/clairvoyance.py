@@ -16,7 +16,7 @@ class ClairvoyanceCog(ServiceCog, commands.GroupCog, group_name="clairvoyance", 
     async def status(self, interaction: discord.Interaction):
         clairvoyance = self.services.clairvoyance
         st = clairvoyance.status()
-        embed = discord.Embed(title="🔮 Clairvoyance status", color=Colors.CLAIRVOYANCE if st["ready"] else Colors.FAIL)
+        embed = discord.Embed(title="🔮 Clairvoyance status", color=Colors.CLAIRVOYANCE)
         embed.add_field(name="Model", value=f"`{st['model']}`" + ("" if st["ready"] else f"\n⚠️ {st['load_error']}"), inline=False)
         if st.get("params"):
             embed.add_field(name="Size", value=f"{st['params']:,} parameters", inline=True)

@@ -57,7 +57,7 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     ("bank", "Bank", "🏦", "Deposits, interest, card tiers, credit cards and loans",
      ("balance", "deposit", "withdraw", "bank tiers | history", "bank upgrade",
       "bank card info | pay", "loan", "loaninfo", "pay", "extend")),
-    ("shop", "Shop & Café", "🛍️", "Buy, sell and use items", ("shop", "cafe", "buy", "sell", "inventory", "use")),
+    ("shop", "Shop & Café", "🛍️", "Buy, sell and use items", ("shop", "cafe", "buy", "sell", "inventory", "look", "use")),
     ("markets", "Markets", "📈", "The stock exchange and crypto",
      ("portfolio", "stocks market | quote", "stocks buy | sell", "crypto", "buycoin", "sellcoin")),
     ("games", "Gambling games", "🎰", "Bet on coins, dice, cards and more",
@@ -372,6 +372,11 @@ def get_commands_data():
             "name": "inventory",
             "args": "",
             "description": "Show all items you own and their quantity."
+        },
+        {
+            "name": "look",
+            "args": "<item>",
+            "description": "Look at an item by name or alias: its lore (or description), price, resale value, what /use does, how many you own and its aliases."
         },
         {
             "name": "use",

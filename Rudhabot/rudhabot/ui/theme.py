@@ -42,7 +42,7 @@ class Colors:
     NOTIFICATIONS = 0x95A5A6
     GAMBLING = 0x99AAB5
     HELP = 0x607D8B
-    CLAIRVOYANCE = 0x5865F2
+    CLAIRVOYANCE = 0x5865F2     # technical matters only: model status, review signals (and /ask for now)
     # Asgrelia: Cloudfall, darkest to brightest
     TCG_DEEP = 0x0A288A
     TCG_BLUE = 0x1653C4

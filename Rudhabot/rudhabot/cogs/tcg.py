@@ -475,7 +475,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             await interaction.response.defer(ephemeral=True, thinking=True)
             hints = await self.clairvoyance.hints(match.game)
             text = "\n".join(f"**{h.label}** · win {round(h.win * 100)}% ({h.delta * 100:+.0f})" for h in hints) or "No hint."
-            embed = discord.Embed(title="🔮 Clairvoyance's top moves", description=text, color=Colors.CLAIRVOYANCE)
+            embed = discord.Embed(title="🔮 Clairvoyance's top moves", description=text, color=Colors.TCG_SKY)
             embed.set_footer(text=f"{self.clairvoyance.version} · estimates, not guarantees · only you can see this")
             return await interaction.followup.send(embed=embed, ephemeral=True)
         acts = E.legal_actions(match.game)

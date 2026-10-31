@@ -153,7 +153,7 @@ def deck_embed(name: str, cards: list[str], problems: list[str] = ()) -> discord
 
 
 def doctor_embed(name: str, report: dict, swaps: list) -> discord.Embed:
-    embed = discord.Embed(title=f"🔮 Deck Doctor: {name}", color=Colors.CLAIRVOYANCE,
+    embed = discord.Embed(title=f"🔮 Deck Doctor: {name}", color=Colors.TCG_SKY,
                           description="The Clairvoyance piloted your deck against each archetype (seat-swapped). Small samples, so "
                                       "treat these as a rough guide, not a verdict.")
     rows = []

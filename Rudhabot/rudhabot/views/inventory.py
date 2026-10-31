@@ -16,6 +16,16 @@ def inventory_pages(inventory_items) -> int:
     return max(1, math.ceil(len(inventory_items) / PAGE_SIZE))
 
 
+def alias_line(catalog, item) -> str:
+    """Grey subtext listing the short names /use, /sell and /look accept, or "" if the item has none."""
+    aliases = catalog.aliases(item)
+    return f"-# Aliases: {', '.join(aliases)}" if aliases else ""
+
+
+def item_blurb(catalog, item) -> str:
+    return "\n".join(part for part in (catalog.description(item), alias_line(catalog, item)) if part) or "\u200b"
+
+
 def create_inventory_embed(catalog, inventory_items, user, page, total_pages):
     embed = discord.Embed(title=f"{INVICON} {user.name}'s Inventory", color=Colors.INVENTORY)
     if not inventory_items:
@@ -23,7 +33,7 @@ def create_inventory_embed(catalog, inventory_items, user, page, total_pages):
     else:
         for item, qty in inventory_items[page * PAGE_SIZE:(page + 1) * PAGE_SIZE]:
             embed.add_field(name=f"{catalog.emoji(item)} {item.title()} ({qty})",
-                            value=f"{catalog.description(item)}", inline=False)
+                            value=item_blurb(catalog, item), inline=False)
         embed.set_footer(text=f"Page {page + 1}/{total_pages}")
     return embed
 

@@ -82,6 +82,7 @@ python -m rudhabot.ml.evaluate
 | Bank | `/deposit`, `/withdraw` (monthly card limits), `/balance` (bank earns daily interest; card tier), `/bank tiers | history | upgrade`, `/bank card info | pay` |
 | Markets | `/portfolio` (crypto + stocks), `/stocks market | quote | buy | sell`, `/crypto`, `/buycoin`, `/sellcoin` |
 | Casino | `/baccarat`, `/craps` |
+| Items | `/look <item>` (lore, price, aliases); `/inventory` lists each item's aliases for `/use` and `/sell` |
 | Skyfall Wishes | `/tcg wish banner | pull | shards | daily | craft | convergence` |
 | Admin | `/audit`, `/review list | resolve`, `/clairvoyance status | reload` |
 

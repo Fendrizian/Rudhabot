@@ -72,7 +72,7 @@ class EconomyCog(ServiceCog):
             tips = insights_for(self.services, target.id, profile, banked)
             if tips:
                 await interaction.followup.send(embed=discord.Embed(title="💡 Clairvoyance", description="\n".join(tips),
-                                                                    color=Colors.CLAIRVOYANCE), ephemeral=True)
+                                                                    color=Colors.BALANCE), ephemeral=True)
 
     # ------------------------------------------------------------------ earning
     async def _on_cooldown(self, interaction, cooldown: Cooldown, account: dict, now, text: str, **fmt) -> bool:

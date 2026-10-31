@@ -1,6 +1,7 @@
 """Shop, cafe and inventory commands, plus /use (mystery boxes, lottery tickets, cakes, food and drink)."""
 from __future__ import annotations
 
+import calendar
 from typing import Optional
 
 import discord
@@ -10,7 +11,7 @@ from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import not_in_game
 from rudhabot.domain.fortunes import crack
 from rudhabot.services.lottery import TicketRefused
-from rudhabot.services.shop import ShopRefused
+from rudhabot.services.shop import SELL_RATIO, ShopRefused
 from rudhabot.ui import lottery_embeds
 from rudhabot.ui.replies import author_embed, error_embed, respond
 from rudhabot.ui.theme import BOXICON, CAFEICON, CURRENCY, Colors
@@ -21,6 +22,44 @@ from rudhabot.views.shop import ItemRow, shop_page
 
 
 FORTUNES_SHOWN = 10          # fortunes listed when several cookies are eaten at once
+
+
+def _use_effect(catalog, item: str) -> str:
+    if item == "mystery box":
+        return "Opens for money, an item, or nothing."
+    if item.endswith("lottery ticket"):
+        return "Draws instantly. See `/lottery` for the odds."
+    if item == "special birthday cake":
+        return "Sends a birthday cake to someone."
+    if item == "fortune cookie":
+        return "Cracks open to reveal a fortune."
+    if item in catalog.all_cafe_item_names():
+        return "Drink it." if catalog.is_beverage(item) else "Eat it."
+    return "Not usable. Keep it, or `/sell` it."
+
+
+def item_embed(catalog, item: str, inventory: dict) -> discord.Embed:
+    """/look: everything known about one item. Lore replaces the shop description once it is written."""
+    lore = catalog.lore(item)
+    embed = discord.Embed(title=f"{catalog.emoji(item)} {item.title()}".strip(),
+                          description=(lore or catalog.description(item) or "No description yet.")
+                          + (f"\n\n-# {catalog.description(item)}" if lore and catalog.description(item) else ""),
+                          color=Colors.SEARCH_ITEM)
+    embed.add_field(name="Type", value=catalog.kind(item), inline=True)
+    shop_price = catalog.shop_price(item)
+    if shop_price is not None:
+        embed.add_field(name="Price", value=f"{CURRENCY}{shop_price:,}", inline=True)
+        embed.add_field(name="Sells for", value=f"{CURRENCY}{int(shop_price * SELL_RATIO):,}", inline=True)
+    else:
+        embed.add_field(name="Price", value=f"{CURRENCY}{catalog.cafe_price(item):,}", inline=True)
+        months = catalog.special_months(item)
+        if months:
+            embed.add_field(name="On the menu", value=", ".join(calendar.month_name[m] for m in months), inline=True)
+    embed.add_field(name="/use", value=_use_effect(catalog, item), inline=False)
+    embed.add_field(name="You own", value=str(inventory.get(item, 0)), inline=True)
+    if catalog.aliases(item):
+        embed.add_field(name="Aliases", value="-# " + ", ".join(catalog.aliases(item)), inline=False)
+    return embed
 
 class ShopCog(ServiceCog):
     @app_commands.command(name="cafe", description="View the Joot Cafe menu")
@@ -112,6 +151,21 @@ class ShopCog(ServiceCog):
         items = list(self.users.get(interaction.user.id).get("inventory", {}).items())
         embed = create_inventory_embed(self.services.catalog, items, interaction.user, 0, inventory_pages(items))
         await interaction.response.send_message(embed=embed, view=InventoryView(self.services, items, interaction.user, 0))
+
+    @app_commands.command(name="look", description="Look at an item: its lore, price and aliases")
+    @app_commands.describe(item="Name or alias of the item")
+    async def look(self, interaction: discord.Interaction, item: str):
+        catalog = self.services.catalog
+        canonical = catalog.resolve(item)
+        if not canonical:
+            await respond(interaction, error_embed("❌ Item not found.", interaction.user), ephemeral=True)
+            return
+        await respond(interaction, item_embed(catalog, canonical, self.users.get(interaction.user.id).get("inventory", {})))
+
+    @look.autocomplete("item")
+    async def _look_autocomplete(self, interaction: discord.Interaction, current: str):
+        catalog = self.services.catalog
+        return [app_commands.Choice(name=name.title(), value=name) for name in catalog.search(current)]
 
     # ------------------------------------------------------------------- /use
     @app_commands.command(name="use", description="Use an item from your inventory")
