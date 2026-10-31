@@ -171,3 +171,27 @@ class MatchTests(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TimeoutPolicyTests(Base):
+    async def test_practice_has_no_turn_timer_but_abandoned_games_are_cancelled(self):
+        match = self.svc.create_practice(ALICE, "Alice", opponent="storm")
+        while match.decider_is_ai:
+            await self.svc.run_ai(match)
+        self.clock.advance(hours=3)
+        self.assertEqual(await self.svc.sweep_timeouts(), [])
+        self.assertIsNotNone(self.svc.get(match.id))                    # still waiting for you, untouched
+        self.clock.advance(hours=22)
+        await self.svc.sweep_timeouts()
+        self.assertIsNone(self.svc.get(match.id))
+        self.assertIsNone(self.svc.repo.get_match(match.id))
+
+    async def test_pvp_turn_timer_is_ten_minutes_and_configurable(self):
+        self.assertEqual(TcgTerms().turn_timeout_s, 600)
+        terms = TcgTerms.from_env({"TCG_TURN_TIMEOUT_S": "900", "TCG_MAX_TIMEOUTS": "5", "TCG_PRACTICE_IDLE_S": ""})
+        self.assertEqual((terms.turn_timeout_s, terms.max_timeouts, terms.practice_idle_s), (900, 5, 86_400))
+        match = self.svc.create_pvp(ALICE, "Alice", BOB, "Bob")
+        self.clock.advance(seconds=599)
+        self.assertEqual(await self.svc.sweep_timeouts(), [])
+        self.clock.advance(seconds=2)
+        self.assertEqual(len(await self.svc.sweep_timeouts()), 1)

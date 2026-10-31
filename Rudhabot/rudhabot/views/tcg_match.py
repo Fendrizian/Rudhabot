@@ -1,8 +1,8 @@
 """Discord components for Cloudfall matches.
 
-The board's buttons are `DynamicItem`s whose custom ids carry the match id, so they keep working after a restart. The
-move picker is ephemeral and remembers the state version it was built for; picking from an out-of-date menu is refused
-by the service rather than applied twice.
+The board's buttons and the move menu are `DynamicItem`s whose custom ids carry the match id (and, for the menu, the
+state version), so they never time out and keep working after a restart. Picking from an out-of-date menu is refused by
+the service rather than applied twice.
 """
 from __future__ import annotations
 
@@ -41,40 +41,63 @@ def board_view(match_id: str, coach: bool, finished: bool = False) -> ui.View:
     return view
 
 
+class PickSelect(ui.DynamicItem[ui.Select], template=r"tcg:pick:(?P<mid>[0-9a-f]{10}):(?P<ver>\d+):(?P<page>\d+)"):
+    """The move menu. Its id carries the match and state version, so it never expires and survives restarts; the
+    options are rebuilt from the engine on every click, and a menu from an older state version is refused."""
+
+    def __init__(self, match_id: str, version: int, page: int, acts: list):
+        pages = max(1, (len(acts) + PAGE - 1) // PAGE)
+        chunk = acts[page * PAGE:(page + 1) * PAGE] or acts[:PAGE]
+        start = page * PAGE if acts[page * PAGE:(page + 1) * PAGE] else 0
+        placeholder = f"Choose a move ({len(acts)} options" + (f", page {page + 1}/{pages})" if pages > 1 else ")")
+        super().__init__(ui.Select(custom_id=f"tcg:pick:{match_id}:{version}:{page}", placeholder=placeholder,
+                                   options=[discord.SelectOption(label=a.label[:100], value=str(start + i))
+                                            for i, a in enumerate(chunk)] or [discord.SelectOption(label="—", value="0")]))
+        self.match_id, self.version, self.page = match_id, version, page
+
+    @classmethod
+    async def from_custom_id(cls, interaction: discord.Interaction, item: ui.Select, match: re.Match[str], /):
+        self = cls.__new__(cls)
+        ui.DynamicItem.__init__(self, item)
+        self.match_id, self.version, self.page = match["mid"], int(match["ver"]), int(match["page"])
+        return self
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        index = int(interaction.data["values"][0])
+        await interaction.client.get_cog("TcgCog").on_pick(interaction, self.match_id, self.version, index)
+
+
+class PageButton(ui.DynamicItem[ui.Button], template=r"tcg:page:(?P<mid>[0-9a-f]{10}):(?P<ver>\d+):(?P<page>\d+):(?P<dir>[pn])"):
+    def __init__(self, match_id: str, version: int, page: int, forward: bool, disabled: bool = False):
+        super().__init__(ui.Button(label="More ▶" if forward else "◀ More", style=discord.ButtonStyle.secondary,
+                                   disabled=disabled, custom_id=f"tcg:page:{match_id}:{version}:{page}:{'n' if forward else 'p'}"))
+        self.match_id, self.version, self.page = match_id, version, page
+
+    @classmethod
+    async def from_custom_id(cls, interaction: discord.Interaction, item: ui.Button, match: re.Match[str], /):
+        return cls(match["mid"], int(match["ver"]), int(match["page"]), match["dir"] == "n")
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.client.get_cog("TcgCog").on_page(interaction, self.match_id, self.version, self.page)
+
+
 class MovePicker(ui.View):
-    """Ephemeral, per-player menu of legal moves for one state version."""
+    """Ephemeral, per-player menu of legal moves for one state version. Never times out (see PickSelect)."""
 
     def __init__(self, cog, match_id: str, version: int, acts: list, page: int = 0):
-        super().__init__(timeout=180)
+        super().__init__(timeout=None)
         self.cog, self.match_id, self.version, self.acts, self.page = cog, match_id, version, acts, page
         pages = max(1, (len(acts) + PAGE - 1) // PAGE)
-        chunk = acts[page * PAGE:(page + 1) * PAGE]
-        select = ui.Select(placeholder=f"Choose a move ({len(acts)} options" + (f", page {page + 1}/{pages})" if pages > 1 else ")"),
-                           options=[discord.SelectOption(label=a.label[:100], value=str(page * PAGE + i))
-                                    for i, a in enumerate(chunk)])
-        select.callback = self._picked
-        self.add_item(select)
+        page = max(0, min(page, pages - 1))
+        self.add_item(PickSelect(match_id, version, page, acts))
         if pages > 1:
-            prev_btn = ui.Button(label="◀ More", style=discord.ButtonStyle.secondary, disabled=page == 0)
-            next_btn = ui.Button(label="More ▶", style=discord.ButtonStyle.secondary, disabled=page >= pages - 1)
-            prev_btn.callback = lambda it: self._turn(it, -1)
-            next_btn.callback = lambda it: self._turn(it, 1)
-            self.add_item(prev_btn)
-            self.add_item(next_btn)
-
-    async def _turn(self, interaction: discord.Interaction, step: int) -> None:
-        await interaction.response.edit_message(view=MovePicker(self.cog, self.match_id, self.version, self.acts,
-                                                                self.page + step))
-
-    async def _picked(self, interaction: discord.Interaction) -> None:
-        index = int(interaction.data["values"][0])
-        act = self.acts[index]
-        await self.cog.on_move(interaction, self.match_id, act.key, act.label, self.version)
+            self.add_item(PageButton(match_id, version, max(0, page - 1), False, disabled=page == 0))
+            self.add_item(PageButton(match_id, version, min(pages - 1, page + 1), True, disabled=page >= pages - 1))
 
 
 class ChallengeView(ui.View):
     def __init__(self, cog, challenger, opponent, coach: bool):
-        super().__init__(timeout=300)
+        super().__init__(timeout=900)
         self.cog, self.challenger, self.opponent, self.coach = cog, challenger, opponent, coach
         self.answered = False
 

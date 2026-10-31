@@ -99,6 +99,6 @@ RULES: dict[str, str] = {
         "Multi-target Actions (Beam Barrage, Blizzard) choose among enemy characters; Voltage Spike offers all-to-one target, "
         "all-to-Resolve, or a sweep that KOs what it can. Cathedral of Honor's Tolling Bells is always used on the first rise "
         "each round. An intercepted attacker whose interceptor left play deals no damage. A match still running after 40 "
-        "rounds is decided on Resolve. Idle players are auto-moved with the safest option and forfeit after 3 timeouts."
+        "rounds is decided on Resolve. In rated and casual duels an idle player is auto-moved with the safest option after 10 minutes and forfeits after 3 timeouts in a row; practice games against the Oracle have no turn timer."
     ),
 }

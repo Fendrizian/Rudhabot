@@ -218,3 +218,42 @@ class ComponentPayloadTests(CogTestCase):
         it.channel = channel
         self.assertTrue(await cog._post_board(it, match, "title"))       # fell back to the reply
         thread.delete.assert_awaited_once()
+
+
+class MenuLifetimeTests(TcgCogBase):
+    """The move menu used to stop responding after 3 minutes (and on every restart)."""
+
+    async def test_move_menu_never_times_out_and_works_from_its_custom_id(self):
+        from rudhabot.views.tcg_match import PickSelect
+        await self.invoke("tcg starter", self.alice, deck=self.choice("vanguard"))
+        await self.invoke("tcg practice", self.alice)
+        match = self.s.tcg.match_for(self.alice.id)
+        cog = self.cog("TcgCog")
+        picker = MovePicker(cog, match.id, match.version, E.legal_actions(match.game))
+        self.assertIsNone(picker.timeout)
+        select = picker.children[0]
+        self.assertIsInstance(select, PickSelect)
+        # simulate a click arriving much later, e.g. after a restart: only the custom id is known
+        self.clock.advance(hours=2)
+        restored = await PickSelect.from_custom_id(None, select.item, PickSelect.__discord_ui_compiled_template__.match(select.item.custom_id))
+        before = match.version
+        it = FakeInteraction(self.bot, self.alice)
+        it.data = {"values": ["0"]}
+        await restored.callback(it)
+        self.assertGreater(match.version, before)
+        stale = FakeInteraction(self.bot, self.alice)
+        stale.data = {"values": ["0"]}
+        await restored.callback(stale)                                   # same old menu again: refused
+        self.assertIn("out of date", stale.text())
+
+    async def test_paging_rebuilds_the_menu_and_refuses_stale_pages(self):
+        await self.invoke("tcg starter", self.alice, deck=self.choice("vanguard"))
+        await self.invoke("tcg practice", self.alice)
+        match = self.s.tcg.match_for(self.alice.id)
+        cog = self.cog("TcgCog")
+        ok = FakeInteraction(self.bot, self.alice)
+        await cog.on_page(ok, match.id, match.version, 0)
+        self.assertIsInstance(ok.log[-1][1]["view"], MovePicker)
+        stale = FakeInteraction(self.bot, self.alice)
+        await cog.on_page(stale, match.id, match.version - 1, 0)
+        self.assertIn("out of date", stale.text())

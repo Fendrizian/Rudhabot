@@ -79,7 +79,7 @@ class Services:
         oracle = OracleService(ai.models_dir, enabled=ai.oracle_enabled, version=ai.oracle_version,
                                rng=random.Random(rng.random()))
         tcg = TcgService(TcgRepository(JsonStore(paths.tcg, dict), JsonStore(paths.tcg_matches, empty_matches)),
-                         users, clock, rng, TcgTerms(), oracle=oracle)
+                         users, clock, rng, TcgTerms.from_env(), oracle=oracle)
 
         return cls(
             settings=settings,

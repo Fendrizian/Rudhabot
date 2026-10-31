@@ -36,14 +36,27 @@ SAFE_PREFIXES = ("p:respond:pass", "p:mulligan:keep", "p:look_bottom:m0", "p:man
 
 @dataclass(frozen=True)
 class TcgTerms:
+    """Cloudfall tunables. `from_env()` reads TCG_TURN_TIMEOUT_S, TCG_MAX_TIMEOUTS and TCG_PRACTICE_IDLE_S."""
     pack_price: int = 250
     pack_size: int = 5
     win_reward: int = 150
     daily_reward_wins: int = 3
     same_opponent_rewards: int = 2
-    turn_timeout_s: int = 240
+    turn_timeout_s: int = 600            # PvP: idle time before a safe default move is made for the player
     max_timeouts: int = 3
+    practice_idle_s: int = 86_400        # practice vs the AI: no turn timer; abandoned matches are cancelled after this
     elo_k: int = 24
+
+
+    @classmethod
+    def from_env(cls, environ=None) -> "TcgTerms":
+        import os
+        environ = os.environ if environ is None else environ
+        d = cls()
+        num = lambda name, default: int(environ[name]) if environ.get(name, "").strip() else default
+        return cls(turn_timeout_s=num("TCG_TURN_TIMEOUT_S", d.turn_timeout_s),
+                   max_timeouts=num("TCG_MAX_TIMEOUTS", d.max_timeouts),
+                   practice_idle_s=num("TCG_PRACTICE_IDLE_S", d.practice_idle_s))
 
 
 class TcgError(Exception):
@@ -341,6 +354,12 @@ class TcgService:
             if seat is None or match.is_ai(seat):
                 continue
             idle = (now - datetime.fromisoformat(match.record["last_action"])).total_seconds()
+            if match.record["mode"] == "practice":
+                # nobody is waiting on a practice match: no turn timer, just tidy up long-abandoned ones
+                if idle >= self.terms.practice_idle_s:
+                    log.info("cancelling practice match %s after %d s idle", match.id, idle)
+                    self.cancel(match.id)
+                continue
             if idle < self.terms.turn_timeout_s:
                 continue
             async with match.lock:

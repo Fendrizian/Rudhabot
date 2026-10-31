@@ -95,7 +95,7 @@ Some matters are open or ambiguous in the Codex. Each interpretation below is sh
 17. **Safety valves:**
     - At most 80 actions per turn.
     - A match still running after 40 rounds is decided on Resolve.
-    - Idle players get a safe default move after 240 s and forfeit after 3 timeouts in a row.
+    - In duels, an idle player gets a safe default move after 10 minutes (`TCG_TURN_TIMEOUT_S`) and forfeits after 3 timeouts in a row (`TCG_MAX_TIMEOUTS`). Practice games have no turn timer; one abandoned for 24 h (`TCG_PRACTICE_IDLE_S`) is cancelled. Move menus never expire, but a menu from an earlier state is refused.
 
 ## Discord experience
 

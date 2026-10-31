@@ -20,7 +20,8 @@ from rudhabot.tcg.decks import ARCHETYPES
 from rudhabot.tcg.rules_text import RULES
 from rudhabot.ui.tcg_embeds import (CLOUD, board_embed, card_embed, card_line, collection_embed, deck_embed,
                                     doctor_embed, hand_embed)
-from rudhabot.views.tcg_match import ChallengeView, DeckModal, MatchButton, MovePicker, board_view
+from rudhabot.views.tcg_match import (ChallengeView, DeckModal, MatchButton, MovePicker, PageButton, PickSelect,
+                                     board_view)
 
 log = logging.getLogger("rudhabot.tcg")
 ARCHETYPE_CHOICES = [app_commands.Choice(name=f"{a['name']}: {a['plan']}"[:100], value=k) for k, a in ARCHETYPES.items()]
@@ -50,7 +51,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         self.assistant = self.services.assistant
 
     async def cog_load(self) -> None:
-        self.bot.add_dynamic_items(MatchButton)
+        self.bot.add_dynamic_items(MatchButton, PickSelect, PageButton)
         restored = self.tcg.restore()
         if restored:
             log.info("restored %d live Cloudfall match(es)", restored)
@@ -395,6 +396,24 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             await interaction.followup.send(embed=embed, view=picker, ephemeral=True)
         else:
             await interaction.response.send_message(embed=embed, view=picker, ephemeral=True)
+
+    async def on_pick(self, interaction: discord.Interaction, match_id: str, version: int, index: int) -> None:
+        """A choice from a move menu. The options are rebuilt from the current state, which is only valid for the
+        version the menu was made for; anything else is answered as out of date by `on_move`."""
+        match = self.tcg.get(match_id)
+        if match is None:
+            return await interaction.response.edit_message(embed=_note("This match has ended."), view=None)
+        acts = E.legal_actions(match.game) if version == match.version else []
+        if not 0 <= index < len(acts):
+            return await self.on_move(interaction, match_id, "", "", version)    # stale: refused with a clear message
+        await self.on_move(interaction, match_id, acts[index].key, acts[index].label, version)
+
+    async def on_page(self, interaction: discord.Interaction, match_id: str, version: int, page: int) -> None:
+        match = self.tcg.get(match_id)
+        if match is None or version != match.version:
+            return await interaction.response.edit_message(
+                embed=_note("That menu is out of date. Press **Act** again for your current options.", 0xE74C3C), view=None)
+        await interaction.response.edit_message(view=MovePicker(self, match_id, version, E.legal_actions(match.game), page))
 
     async def on_move(self, interaction: discord.Interaction, match_id: str, key: str, label: str, version: int) -> None:
         try:
