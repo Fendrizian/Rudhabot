@@ -11,7 +11,7 @@ from rudhabot.ui.replies import respond
 
 
 class LotteryCog(ServiceCog):
-    @app_commands.command(name="lottery", description="View lottery tickets, prize odds and recent jackpot winners")
+    @app_commands.command(name="lottery", description="View lottery tickets, chances, jackpots and recent winners")
     @not_in_game()
     async def lottery(self, interaction: discord.Interaction):
         s = self.services

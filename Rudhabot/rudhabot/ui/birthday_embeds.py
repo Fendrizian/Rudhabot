@@ -8,7 +8,7 @@ import discord
 from rudhabot.domain.birthday import BirthdayDate
 from rudhabot.services.birthdays import Greeting, Upcoming
 from rudhabot.ui.replies import author_embed
-from rudhabot.ui.theme import CURRENCY, Colors
+from rudhabot.ui.theme import CAKEICON, CURRENCY, Colors
 
 
 def countdown(days: int) -> str:
@@ -16,13 +16,13 @@ def countdown(days: int) -> str:
 
 
 def birthday_saved(user, birthday: BirthdayDate) -> discord.Embed:
-    return author_embed(user, f"🎂 Your birthday is set to **{birthday.label()}**.\n"
+    return author_embed(user, f"{CAKEICON} Your birthday is set to **{birthday.label()}**.\n"
                               f"You'll get a gift and a shout-out when the day comes!", Colors.SUCCESS)
 
 
 def birthday_card(user, birthday: BirthdayDate, today: date, own: bool) -> discord.Embed:
     days = birthday.days_until(today)
-    lines = [f"🎂 **{birthday.label()}**", f"Next birthday {countdown(days)}"]
+    lines = [f"{CAKEICON} **{birthday.label()}**", f"Next birthday {countdown(days)}"]
     turning = birthday.turning(today)
     if turning is not None:
         lines.append(f"Turning **{turning}**")
@@ -32,7 +32,7 @@ def birthday_card(user, birthday: BirthdayDate, today: date, own: bool) -> disco
 
 
 def upcoming_list(rows: list[Upcoming]) -> discord.Embed:
-    embed = discord.Embed(title="🎂 Upcoming birthdays", color=Colors.BIRTHDAY)
+    embed = discord.Embed(title=f"{CAKEICON} Upcoming birthdays", color=Colors.BIRTHDAY)
     if not rows:
         embed.description = "No birthdays registered yet. Use `/birthday set` to add yours!"
         return embed
@@ -47,15 +47,15 @@ def upcoming_list(rows: list[Upcoming]) -> discord.Embed:
 def greeting(event: Greeting) -> discord.Embed:
     age = f" 🎈 Turning **{event.age}** today!" if event.age is not None else ""
     return discord.Embed(
-        title="🎂 Happy Birthday!",
+        title=f"{CAKEICON} Happy Birthday!",
         description=f"Everyone wish <@{event.user_id}> a happy birthday!{age}\n"
                     f"As a gift, **{CURRENCY}{event.gift}** has been added to their wallet.",
         color=Colors.BIRTHDAY,
     )
 
 
-def cake_celebration(cake_emoji: str, message: str, sender_name: str) -> discord.Embed:
-    embed = discord.Embed(title="🎊 Happy Birthday!", description=f"{cake_emoji} {message}\n\n- From {sender_name}",
+def cake_celebration(message: str, sender_name: str) -> discord.Embed:
+    embed = discord.Embed(title=f"{CAKEICON} Happy Birthday!", description=f"{message}\n\n- From {sender_name}",
                           color=Colors.BIRTHDAY)
     embed.set_footer(text="Sent by Rudhabot • Enjoy your special day!")
     return embed

@@ -7,7 +7,7 @@ import discord
 
 from rudhabot.services.loans import AutoPaid, Bankruptcy, DueSoon
 from rudhabot.ui.messenger import Messenger
-from rudhabot.ui.theme import CURRENCY, Colors
+from rudhabot.ui.theme import CURRENCY, LOANDUEICON, Colors
 
 GREY = Colors.NOTIFICATIONS
 
@@ -20,7 +20,7 @@ class LoanNotifier:
         due = warning.due.strftime("%d %B %Y at %H:%M")
 
         def build(description: str, closing_field: tuple[str, str]) -> discord.Embed:
-            embed = discord.Embed(title="⚠️ Loan Payment Warning", description=description, color=GREY)
+            embed = discord.Embed(title=f"{LOANDUEICON} Loan Payment Warning", description=description, color=GREY)
             embed.add_field(name="Total Amount Due", value=f"{CURRENCY}{warning.total_due}", inline=True)
             embed.add_field(name="Due Date", value=due, inline=True)
             embed.add_field(name=closing_field[0], value=closing_field[1], inline=False)

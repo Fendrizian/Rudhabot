@@ -66,7 +66,7 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
      ("tcg starter", "tcg practice", "tcg challenge", "tcg wish banner | pull", "tcg wish shards | daily | craft | convergence",
       "tcg deck build | view | use | analyze", "tcg card | rules | collection | pack | ladder",
       "tcg match | forfeit | forget-me")),
-    ("community", "Lottery & birthdays", "🎉", "Lottery odds and birthday celebrations",
+    ("community", "Lottery & birthdays", "🎉", "Lottery tickets and birthday celebrations",
      ("lottery", "birthday set", "birthday view", "birthday remove", "birthday upcoming")),
     ("admin", "Admin", "🛠️", "Server administrators only",
      ("add-money", "remove-money", "create", "audit", "review list | resolve", "clairvoyance status | reload")),
@@ -381,7 +381,7 @@ def get_commands_data():
         {
             "name": "use",
             "args": "<item>",
-            "description": "Use an item from your inventory: draw lottery tickets, open mystery boxes, crack fortune cookies, set up birthday cakes and more."
+            "description": "Use an item from your inventory: draw lottery tickets, open mystery boxes, crack fortune cookies, set up birthday cakes (`/use cake`) and more."
         },
         {
             "name": "loan",
@@ -491,7 +491,7 @@ def get_commands_data():
         {
             "name": "lottery",
             "args": "",
-            "description": "See the lottery prize tables, your odds, your tickets and recent jackpot winners."
+            "description": "See each ticket's win chance, zonk chance, average return and jackpot, your tickets and recent jackpot winners."
         },
         {
             "name": "birthday set",

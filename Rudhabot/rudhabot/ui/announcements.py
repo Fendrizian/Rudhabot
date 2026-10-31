@@ -8,7 +8,6 @@ from rudhabot.domain.lottery import TicketSpec
 from rudhabot.services.birthdays import Greeting
 from rudhabot.settings import Channels
 from rudhabot.ui import birthday_embeds
-from rudhabot.ui.lottery_embeds import odds
 from rudhabot.ui.messenger import Messenger
 from rudhabot.ui.theme import CURRENCY, Colors
 
@@ -24,8 +23,7 @@ class Announcer:
             title="🎰 LOTTERY JACKPOT! 🎰",
             description=f"<@{user_id}> just hit the **{spec.label} lottery** jackpot"
                         f"{f' {count} times' if count > 1 else ''}!\n\n"
-                        f"**{CURRENCY}{spec.jackpot * count}**\n\n"
-                        f"The odds were {odds(spec, len(spec.table.tiers) - 1)} per ticket.",
+                        f"**{CURRENCY}{spec.jackpot * count}**",
             color=Colors.INCOME,
         )
         thumbnail = _emoji_url(self._catalog.emoji(spec.item))
@@ -39,8 +37,7 @@ class Announcer:
 
     async def cake(self, entry: dict, sender_name: str) -> bool:
         """Deliver a scheduled cake message to the recipient (DM) and the birthday channel. True if either worked."""
-        cake_emoji = self._catalog.emoji("special birthday cake", "🎂")
-        embed = birthday_embeds.cake_celebration(cake_emoji, entry.get("message") or "Congratulations!", sender_name)
+        embed = birthday_embeds.cake_celebration(entry.get("message") or "Congratulations!", sender_name)
         recipient_id = int(entry["scheduled_for"])
         delivered = False
         user = await self._messenger.find_user(recipient_id)

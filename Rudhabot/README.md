@@ -119,7 +119,7 @@ rewards, ratings and permissions are decided only by deterministic code.
 
 ## Lottery
 
-Tickets are bought with `/buy` and drawn instantly with `/use` (any quantity). `/lottery` shows the live odds table.
+Tickets are bought with `/buy` and drawn instantly with `/use` (any quantity). `/lottery` shows each ticket's win and zonk chance, average return and jackpot (no per-prize odds).
 Jackpots are announced in the lottery channel.
 
 | | Regular | Golden |

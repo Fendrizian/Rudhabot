@@ -76,13 +76,15 @@ class LotteryUseTests(CogTestCase):
 
 
 class LotteryInfoTests(CogTestCase):
-    async def test_info_card_lists_odds_prices_and_your_tickets(self):
+    async def test_info_card_shows_chances_return_jackpot_and_your_tickets_but_no_odds_table(self):
         self.fund(self.alice, 0, inventory={REGULAR: 3})
         it = await self.run_command("lottery", self.alice)
         text = it.text()
-        for expected in ("1 in 50,000", "1 in 500,000", "1000000", "100000000", "Regular Ticket", "Golden Ticket",
-                         "Regular: **3**", "Golden: **0**", "64.00%"):
+        for expected in ("1,000,000", "100,000,000", "Regular Ticket", "Golden Ticket", "Win chance", "Zonk **64.00%**",
+                         "Returns about", "Jackpot", "Regular: **3**", "Golden: **0**"):
             self.assertIn(expected, text)
+        self.assertNotIn("1 in ", text)
+        self.assertNotIn("2500", text.replace(",", ""))                  # a middle prize tier: the table is gone
 
     async def test_info_card_shows_recent_jackpot_winners(self):
         self.fund(self.alice, 0, inventory={REGULAR: 1})
@@ -170,6 +172,15 @@ class BirthdayJobTests(CogTestCase):
                 statuses.append(self.s.birthdays._celebrations.all()[0]["status"])
         self.assertEqual(statuses, ["pending", "pending", "failed", "failed"])
         self.assertEqual(self.s.messenger.post.await_count, 3)         # three attempts, then it stops
+
+    async def test_use_cake_by_any_name_opens_the_cake_form(self):
+        from rudhabot.views.birthday import BirthdayCakeModal
+        for name in ("cake", "birthday_cake", "Birthday Cake", "special birthday cake", "bday cake"):
+            self.fund(self.alice, 0, inventory={CAKE_ITEM: 1})
+            it = await self.run_command("use", self.alice, item=name)
+            kind, payload = it.log[-1]
+            self.assertEqual(kind, "modal", name)
+            self.assertIsInstance(payload["modal"], BirthdayCakeModal)
 
     async def test_cake_modal_schedules_and_confirms(self):
         from rudhabot.views.birthday import BirthdayCakeModal

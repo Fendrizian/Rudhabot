@@ -10,6 +10,9 @@
   It is uploaded as `attachment://dri.png`. Section pages and the full list have no image, and navigation sets the
   message's attachments explicitly (`_show` in `views/help.py`).
 
+- `/help` section icons are default Unicode emojis, except Cloudfall, which may get a custom one.
+- `/lottery` shows only each ticket's win chance, zonk chance, average return and jackpot: never the per-prize odds
+  table, and win messages don't quote odds either.
 - **Embed colours come only from `Colors` in `rudhabot/ui/theme.py`** (the house palette; TCG shades run darkest to
   brightest). No hex literals elsewhere: `tests/test_colors.py` enforces it.
 

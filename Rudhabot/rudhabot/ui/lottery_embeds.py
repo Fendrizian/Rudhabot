@@ -1,4 +1,4 @@
-"""Lottery visuals: ticket results, the /lottery info card, and odds formatting."""
+"""Lottery visuals: ticket results, and the /lottery info card."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -13,11 +13,6 @@ from rudhabot.ui.replies import author_embed
 from rudhabot.ui.theme import CURRENCY, Colors
 
 MAX_PRIZE_LINES = 12
-
-
-def odds(spec: TicketSpec, tier_index: int) -> str:
-    table = spec.table
-    return f"1 in {round(table.denominator / table.tiers[tier_index].weight):,}"
 
 
 def percent(value) -> str:
@@ -38,8 +33,7 @@ def _single(user, result: LotteryResult, emoji: str) -> discord.Embed:
     batch, spec = result.batch, result.batch.spec
     amount = batch.total_won
     if batch.jackpots:
-        embed = author_embed(user, f"🎰 **JACKPOT!**\n\nYou won **{CURRENCY}{amount}**!!!\n"
-                                   f"The odds were {odds(spec, len(spec.table.tiers) - 1)}.", Colors.INCOME)
+        embed = author_embed(user, f"🎰 **JACKPOT!**\n\nYou won **{CURRENCY}{amount}**!!!", Colors.INCOME)
     elif amount:
         embed = author_embed(user, f"🎉 **You won {CURRENCY}{amount}!**", Colors.SUCCESS)
     else:
@@ -83,15 +77,13 @@ def lottery_info(specs, catalog: ItemCatalog, inventory: dict, recent: list[dict
         color=Colors.INCOME,
     )
     for spec in specs:
+        # Deliberately no per-prize odds: just the overall chances, the average return and the jackpot.
         table = spec.table
-        prizes = "\n".join(
-            f"{'🎰 ' if t.amount == spec.jackpot else ''}{CURRENCY}{t.amount} — {odds(spec, i)}"
-            for i, t in reversed(list(enumerate(table.tiers)))
-        )
-        header = (f"Win chance **{percent(table.win_probability)}** • Zonk **{percent(table.zonk_probability)}**\n"
-                  f"Returns about **{float(spec.return_to_player) * 100:.0f}%** of the ticket price on average\n")
+        value = (f"Win chance **{percent(table.win_probability)}** • Zonk **{percent(table.zonk_probability)}**\n"
+                 f"Returns about **{float(spec.return_to_player) * 100:.0f}%** of the ticket price on average\n"
+                 f"🎰 Jackpot **{CURRENCY}{spec.jackpot:,}**")
         embed.add_field(name=f"{catalog.emoji(spec.item)} {spec.label} Ticket — {CURRENCY}{spec.price}",
-                        value=header + prizes, inline=False)
+                        value=value, inline=False)
     owned = [f"{catalog.emoji(s.item)} {s.label}: **{inventory.get(s.item, 0)}**" for s in specs]
     embed.add_field(name="Your tickets", value="\n".join(owned), inline=False)
     if recent:

@@ -18,7 +18,7 @@ from rudhabot.domain.casino import baccarat_payout, craps_payout, deal_baccarat,
 from rudhabot.ui import slots_embeds
 from rudhabot.ui.messages import MSG_INVALIDBET, MSG_NONPOS, MSG_NOWALLET, MSG_ONGAME
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY, Colors
+from rudhabot.ui.theme import CARDBACKICON, COINICON, CURRENCY, Colors
 from rudhabot.views import crash as crash_game
 from rudhabot.views import highlow as highlow_game
 from rudhabot.views.blackjack import BlackjackView
@@ -111,7 +111,7 @@ class GamblingCog(ServiceCog):
             except BetRefused as refusal:
                 await self._refuse(interaction, refusal, author_on_funds=True)
                 return
-            await interaction.response.send_message(embed=_plain("🪙 Flipping a coin...", Colors.GAMBLING, interaction.user))
+            await interaction.response.send_message(embed=_plain(f"{COINICON} Flipping a coin...", Colors.GAMBLING, interaction.user))
             await asyncio.sleep(3)
             result = self.rng.choice(["heads", "tails"])
             coin = "<:coinF_heads:1398951529955852328>" if result == "heads" else "<:coinF_tails:1398951563405557861>"
@@ -331,7 +331,7 @@ class GamblingCog(ServiceCog):
             amount = await self._place(interaction, bet)
             if amount is None:
                 return
-            await interaction.response.send_message(embed=_plain("🃏 Dealing from the shoe...", Colors.GAMBLING, interaction.user))
+            await interaction.response.send_message(embed=_plain(f"{CARDBACKICON} Dealing from the shoe...", Colors.GAMBLING, interaction.user))
             await asyncio.sleep(2)
             round_ = deal_baccarat(self.rng)
             net = baccarat_payout(on.value, amount, round_)

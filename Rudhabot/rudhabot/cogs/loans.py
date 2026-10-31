@@ -11,7 +11,7 @@ from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import not_in_game
 from rudhabot.services.loans import AutoPaid, LoanRefused
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY, Colors
+from rudhabot.ui.theme import CURRENCY, LOANDUEICON, Colors
 
 log = logging.getLogger("rudhabot.loans")
 
@@ -59,7 +59,7 @@ class LoansCog(ServiceCog):
             return
         embed = discord.Embed(title="<:loan_approved:1401355324103069867> Loan Approved", color=Colors.LOAN)
         embed.add_field(name="Amount Borrowed", value=f"{CURRENCY}{amount}", inline=True)
-        embed.add_field(name="Due Date", value=f"<:loan_due:1401358370191183902>{opened.due.strftime('%d %B %Y')}", inline=True)
+        embed.add_field(name="Due Date", value=f"{LOANDUEICON}{opened.due.strftime('%d %B %Y')}", inline=True)
         embed.add_field(name="Interest Rate",
                         value=f"<:loan_interest:1401358068238913557>{terms.interest_rate * 100:.2f}% per day", inline=True)
         embed.set_footer(text="You can extend your loan once for a 10% fee.")
@@ -84,7 +84,7 @@ class LoansCog(ServiceCog):
             await respond(interaction, _embed(interaction.user, message), ephemeral=True)
             return
         await respond(interaction, _embed(interaction.user, 
-            f"🗓️ Your loan has been extended by {extended.days} day(s) for a fee of {CURRENCY}{extended.fee}.\n", Colors.EXTEND))
+            f"{LOANDUEICON} Your loan has been extended by {extended.days} day(s) for a fee of {CURRENCY}{extended.fee}.\n", Colors.EXTEND))
 
     @app_commands.command(name="loaninfo", description="Check your current loan status and remaining debt.")
     async def loaninfo(self, interaction: discord.Interaction):
