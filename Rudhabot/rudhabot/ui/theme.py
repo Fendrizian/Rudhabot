@@ -1,0 +1,19 @@
+"""Presentation constants: emoji/icons and embed colours."""
+
+CURRENCY = "<:Rudhanese_Arch:1053507684797780039>"
+BOTICON = "<:rudhabot:1401456647825653802>"
+CAFEICON = "<:cafe:1399370260347355198>"
+SHOPICON = "<:shop:1399027355409973361>"
+INVICON = "<:inventory:1418141016262971442>"
+BOXICON = "<:mystery_box:1418910336265879613>"
+
+
+class Colors:
+    ERROR = 0x992D22
+    SUCCESS = 0x57F287
+    LOSS = 0xED4245
+    NEUTRAL = 0x99AAB5
+    NOTICE = 0x546E7A
+    GOLD = 0xF1C40F
+    PARTY = 0xEB459E
+    BLURPLE = 0x7289DA
