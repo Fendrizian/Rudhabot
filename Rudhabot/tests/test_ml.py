@@ -123,7 +123,8 @@ class ArtifactTests(unittest.TestCase):
         store = ModelStore(DEFAULT_MODELS_DIR)
         net = store.load_current()
         entry = store.manifest()["versions"][net.meta["version"]]
-        self.assertEqual(entry["schema"], F.schema_hash())
+        from rudhabot.ml.model_store import _schema
+        self.assertEqual(entry["schema"], _schema(entry.get("arch", "v1")))
         self.assertIn("auc", entry["metrics"].get("model") or entry["metrics"]["oracle"])
 
 
