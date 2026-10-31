@@ -8,7 +8,7 @@ from tests.cog_case import CogTestCase
 from tests.fakes import FakeChannel, FakeInteraction
 
 
-class TcgCogTests(CogTestCase):
+class TcgCogBase(CogTestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         self.channel = FakeChannel()
@@ -33,6 +33,8 @@ class TcgCogTests(CogTestCase):
     def choice(self, value):
         return discord.app_commands.Choice(name=value, value=value)
 
+
+class TcgCogTests(TcgCogBase):
     async def test_starter_then_refuse_a_second_one(self):
         it = await self.invoke("tcg starter", self.alice, deck=self.choice("storm"))
         self.assertIn("Stormcallers", it.text())
@@ -105,6 +107,58 @@ class TcgCogTests(CogTestCase):
         self.assertIn("conceded", it.text())
         self.assertIsNone(self.s.tcg.match_for(self.alice.id))
         self.assertTrue(any("forfeited" in (m.content.get("content") or "") for m in self.channel.sent))
+
+
+def forbidden():
+    from types import SimpleNamespace
+    return discord.Forbidden(SimpleNamespace(status=403, reason="Forbidden"), {"code": 50013, "message": "Missing Permissions"})
+
+
+class BoardPermissionTests(TcgCogBase):
+    """The /tcg practice 403: the bot may lack Send Messages / Embed Links / thread permissions in a channel."""
+
+    async def test_board_falls_back_to_the_reply_when_the_channel_is_forbidden(self):
+        async def refuse(*a, **k):
+            raise forbidden()
+        self.channel.send = refuse
+        self.channel.get_partial_message = lambda mid: (_ for _ in ()).throw(forbidden())
+        await self.invoke("tcg starter", self.alice, deck=self.choice("vanguard"))
+        it = await self.invoke("tcg practice", self.alice)
+        match = self.s.tcg.match_for(self.alice.id)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.record["board_mode"], "reply")
+        self.assertTrue(any("Cloudfall" in (k.get("embed").title or "") for _, k in it.log if k.get("embed")))
+        self.assertIn("can't post in this channel", " ".join(str(k.get("content")) for _, k in it.log))
+        # moves still work, and the player is shown the current board privately
+        cog = self.cog("TcgCog")
+        act = next(a for a in E.legal_actions(match.game))
+        pick = FakeInteraction(self.bot, self.alice)
+        await cog.on_move(pick, match.id, act.key, act.label, match.version)
+        self.assertTrue(any(k.get("embeds") for _, k in pick.log))
+
+    async def test_a_board_that_cannot_be_shown_anywhere_cancels_the_match(self):
+        async def refuse(*a, **k):
+            raise forbidden()
+        self.channel.send = refuse
+        await self.invoke("tcg starter", self.alice, deck=self.choice("vanguard"))
+        cog = self.cog("TcgCog")
+        match = self.s.tcg.create_practice(self.alice.id, "alice")
+        it = FakeInteraction(self.bot, self.alice)
+        it.channel = self.channel
+        it.followup.send = refuse
+        self.assertFalse(await cog._post_board(it, match, "title"))
+        self.assertIsNone(self.s.tcg.match_for(self.alice.id))             # not stuck in an invisible match
+
+    async def test_pressing_act_on_the_board_refreshes_it(self):
+        await self.invoke("tcg starter", self.alice, deck=self.choice("vanguard"))
+        await self.invoke("tcg practice", self.alice)
+        match = self.s.tcg.match_for(self.alice.id)
+        press = FakeInteraction(self.bot, self.alice)
+        press.message = self.channel.sent[0]
+        await self.cog("TcgCog").on_board_button(press, "act", match.id)
+        kinds = [kind for kind, _ in press.log]
+        self.assertEqual(kinds[:2], ["edit_message", "followup"])
+        self.assertIsInstance(press.log[1][1]["view"], MovePicker)
 
 
 class AssistantAndOracleCogTests(CogTestCase):

@@ -17,16 +17,28 @@ pip install -r requirements.txt
 ```
 
 ```bash
-export DISCORD_TOKEN='your-bot-token'      # never stored in the code; see .env.example for every option
-```
-
-```bash
-export OPENAI_API_KEY='sk-...'             # optional: enables AI-written /ask answers and match recaps
+cp .env.example .env        # then fill in DISCORD_TOKEN and, optionally, OPENAI_API_KEY
 ```
 
 ```bash
 python main.py
 ```
+
+`main.py` loads `.env` (next to it, or in the working directory). Variables already exported in your shell win over the
+file. The startup log says whether the OpenAI assistant is enabled, and if not, why.
+
+Check the OpenAI setup with one real request:
+
+```bash
+python -m rudhabot.llm.check "What's the mass of the sun?"
+```
+
+Discord permissions the bot needs in the channels where people play Cloudfall:
+- *View Channel*, *Send Messages*, *Embed Links* and *Read Message History*: for the live match board.
+- *Create Public Threads* and *Send Messages in Threads*: so each match gets its own thread.
+
+Without these permissions, matches still work. The board is attached to the command reply and refreshes whenever a player
+presses **Act**.
 
 Data files are created in the working directory, exactly where the old bot kept them:
 - existing: `data.json`, `crypto.json`, `specials.json`, `birthdays.json`, `birthday_registry.json`, `lottery.json`;

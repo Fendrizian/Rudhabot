@@ -15,7 +15,7 @@ from rudhabot.tcg.rules_text import RULES
 
 _WORD = re.compile(r"[a-z0-9']+")
 _STOP = frozenset("a an the of to and or in on is it for you your i do does how what can with at by be this that my "
-                  "me are when".split())
+                  "me are when why who which tell about please".split())
 
 
 def _stem(t: str) -> str:
@@ -28,7 +28,17 @@ def _stem(t: str) -> str:
 
 
 def tokens(text: str) -> list[str]:
-    return [_stem(t) for t in _WORD.findall(text.lower()) if t not in _STOP]
+    words = (t[:-2] if t.endswith("'s") else t for t in _WORD.findall(text.lower()))
+    return [_stem(t) for t in words if t and t not in _STOP]
+
+
+_SOFT_STOP = frozenset({"work", "use", "get", "make", "play", "mean"})
+
+
+def _content(terms: list[str]) -> list[str]:
+    """Drop helper verbs ('how do loans *work*') when the question has other words to match on."""
+    kept = [t for t in terms if t not in _SOFT_STOP]
+    return kept or terms
 
 
 @dataclass(frozen=True)
@@ -68,7 +78,7 @@ class KnowledgeBase:
         self._idf = {t: math.log(1 + (n - c + 0.5) / (c + 0.5)) for t, c in df.items()}
 
     def search(self, query: str, k: int = 5, kinds: tuple[str, ...] = ()) -> list[tuple[Doc, float]]:
-        q = tokens(query)
+        q = _content(tokens(query))
         scored = []
         for i, doc in enumerate(self.docs):
             if kinds and doc.kind not in kinds:
@@ -83,6 +93,15 @@ class KnowledgeBase:
                 scored.append((doc, score))
         scored.sort(key=lambda pair: -pair[1])
         return scored[:k]
+
+    def covers(self, query: str, doc: Doc) -> bool:
+        """Whether `doc` actually answers `query`: at least half of the query's terms appear in it. Keeps the offline
+        answer from returning an unrelated document for a general question ('what's the mass of the sun')."""
+        q = set(_content(tokens(query)))
+        if not q:
+            return False
+        have = set(tokens(doc.title + " " + doc.text))
+        return len(q & have) / len(q) >= 0.5
 
     def get(self, doc_id: str) -> Doc | None:
         return next((d for d in self.docs if d.id == doc_id), None)

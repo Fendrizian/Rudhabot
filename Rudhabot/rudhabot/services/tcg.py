@@ -316,6 +316,11 @@ class TcgService:
             finished = self._finish_if_over(match)
             return MoveResult(match, match.game.log[before:], finished)
 
+    def cancel(self, match_id: str) -> None:
+        """Abandon a match that never got going (e.g. its board couldn't be shown): no result, rating or reward."""
+        self.matches.pop(match_id, None)
+        self.repo.delete_match(match_id)
+
     async def forfeit(self, match_id: str, user_id) -> dict:
         match = self.matches.get(match_id)
         if match is None:

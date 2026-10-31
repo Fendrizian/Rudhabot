@@ -75,9 +75,9 @@ class AISettings:
     models_dir: str = DEFAULT_MODELS_DIR
     llm_enabled: bool = True                      # only takes effect when OPENAI_API_KEY is set
     llm_model: str = "gpt-5.4-mini"
-    llm_reasoning_effort: Optional[str] = None    # e.g. "low" for reasoning models; None = provider default
-    llm_timeout_s: float = 20.0
-    llm_max_output_tokens: int = 600
+    llm_reasoning_effort: Optional[str] = None    # None = "low" for reasoning models (gpt-5*, o*), omitted otherwise
+    llm_timeout_s: float = 30.0
+    llm_max_output_tokens: int = 2500             # reasoning models spend part of this on thinking
     llm_per_user_per_hour: int = 12
     llm_per_guild_per_hour: int = 120
     llm_daily_budget: int = 800
@@ -112,6 +112,33 @@ class Settings:
     ai: AISettings = field(default_factory=AISettings.from_env)
     page_size: int = 5
     admin_role_id: int = 1142722971606200460
+
+
+def load_env_file(path: str = ".env", environ=os.environ) -> list[str]:
+    """Load KEY=VALUE lines from a .env file into the environment (without overriding variables that are already set).
+
+    Returns the names that were loaded (never the values). Supports comments, blank lines, `export KEY=...` and quoted
+    values. A missing file is fine.
+    """
+    if not os.path.exists(path):
+        return []
+    loaded = []
+    with open(path, encoding="utf-8") as handle:
+        for raw in handle:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):]
+            key, value = (part.strip() for part in line.split("=", 1))
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            elif " #" in value:
+                value = value.split(" #", 1)[0].rstrip()
+            if key and value and not environ.get(key):
+                environ[key] = value
+                loaded.append(key)
+    return loaded
 
 
 def read_token(environ: Mapping[str, str] = os.environ) -> str:

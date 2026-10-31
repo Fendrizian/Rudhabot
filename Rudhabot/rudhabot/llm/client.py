@@ -31,14 +31,26 @@ class LanguageModel(Protocol):
                      max_output_tokens: int, safety_identifier: Optional[str] = None) -> LLMTurn: ...
 
 
+def is_reasoning_model(model: str) -> bool:
+    """GPT-5-family and o-series models think before answering; their thinking counts against max_output_tokens."""
+    m = model.lower()
+    return m.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4")) and "chat" not in m
+
+
+class LLMError(RuntimeError):
+    """A provider call finished without a usable answer (the message says why, without any user content)."""
+
+
 class OpenAIResponsesModel:
     """OpenAI Responses API (`client.responses.create`) with strict function tools and JSON-schema structured output."""
 
-    def __init__(self, api_key: str, model: str, timeout: float = 20.0, max_retries: int = 1,
+    def __init__(self, api_key: str, model: str, timeout: float = 30.0, max_retries: int = 1,
                  reasoning_effort: Optional[str] = None):
         from openai import AsyncOpenAI           # imported lazily: the bot runs without the package if AI is off
         self._client = AsyncOpenAI(api_key=api_key, timeout=timeout, max_retries=max_retries)
         self.model = model
+        if reasoning_effort is None and is_reasoning_model(model):
+            reasoning_effort = "low"             # quick answers; leaves the token budget for the reply itself
         self.reasoning_effort = reasoning_effort or None
 
     async def create(self, *, instructions, input, tools, text_format, max_output_tokens, safety_identifier=None) -> LLMTurn:
@@ -55,6 +67,11 @@ class OpenAIResponsesModel:
             kwargs["reasoning"] = {"effort": self.reasoning_effort}
             kwargs["include"] = ["reasoning.encrypted_content"]      # needed to continue a stateless tool loop
         response = await self._client.responses.create(**kwargs)
+        if getattr(response, "error", None):
+            raise LLMError(f"response error: {response.error}")
+        if getattr(response, "status", None) == "incomplete":
+            details = getattr(response, "incomplete_details", None)
+            raise LLMError(f"response incomplete: {getattr(details, 'reason', details)}")
         calls = [ToolCall(item.call_id, item.name, item.arguments) for item in response.output
                  if getattr(item, "type", None) == "function_call"]
         usage = {}

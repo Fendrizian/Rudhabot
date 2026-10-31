@@ -191,8 +191,15 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         except TcgError as error:
             return await _reply(interaction, _note(str(error), 0xE74C3C))
         await interaction.response.defer(thinking=True)
-        await self.services.tcg.run_ai(match)
-        await self._post_board(interaction, match, f"🔮 {interaction.user.display_name} vs the Oracle")
+        try:
+            await self.tcg.run_ai(match)
+            posted = await self._post_board(interaction, match, f"🔮 {interaction.user.display_name} vs the Oracle")
+        except Exception:
+            self.tcg.cancel(match.id)                  # never leave the player stuck in a match they can't see
+            raise
+        if not posted:
+            await interaction.followup.send(embed=_note("I couldn't show a match board here, so the match was cancelled. "
+                                                        "Try another channel.", 0xE74C3C), ephemeral=True)
 
     @app_commands.command(name="challenge", description="Challenge another player to a Cloudfall duel")
     async def challenge(self, interaction: discord.Interaction, opponent: discord.Member, coaching: bool = False):
@@ -217,7 +224,13 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             return await interaction.response.edit_message(content=f"❌ {error}", view=None)
         await interaction.response.edit_message(content=f"⚔️ {challenger.display_name} vs {opponent.display_name}: "
                                                         "the duel begins!", view=None)
-        await self._post_board(interaction, match, f"⚔️ {challenger.display_name} vs {opponent.display_name}")
+        try:
+            posted = await self._post_board(interaction, match, f"⚔️ {challenger.display_name} vs {opponent.display_name}")
+        except Exception:
+            self.tcg.cancel(match.id)
+            raise
+        if not posted:
+            await interaction.followup.send(content="I couldn't show the match board here, so the duel was cancelled.")
 
     @app_commands.command(name="match", description="Re-post the board of your current match")
     async def match_cmd(self, interaction: discord.Interaction):
@@ -234,46 +247,78 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             return await _reply(interaction, _note("You're not in a match."))
         summary = await self.tcg.forfeit(match.id, interaction.user.id)
         await _reply(interaction, _note("You conceded."))
-        await self._announce_result(match, summary)
+        await self._announce_result(match, summary, interaction)
 
     # ------------------------------------------------------------------ board plumbing
     async def _post_board(self, interaction: discord.Interaction, match, thread_title: Optional[str],
-                          in_place: bool = False) -> None:
+                          in_place: bool = False) -> bool:
+        """Post the public board, preferring (1) a new thread, (2) the channel, (3) the interaction itself.
+
+        (3) needs no channel permissions at all, so a match can always start. If even that fails, the match is
+        cancelled so the player isn't left stuck in a game nobody can see. Returns whether the board was posted.
+        """
         channel = interaction.channel
-        target = channel
-        if thread_title and isinstance(channel, discord.TextChannel):
-            try:
-                target = await channel.create_thread(name=thread_title[:90], type=discord.ChannelType.public_thread,
-                                                     auto_archive_duration=1440)
-            except (discord.HTTPException, AttributeError):
-                target = channel
+        perms = getattr(interaction, "app_permissions", None)
+        can = lambda *names: perms is None or all(getattr(perms, n, False) for n in names)
         embed = await self._board(match)
-        message = await target.send(embed=embed, view=board_view(match.id, match.record.get("coach")),
-                                    allowed_mentions=NO_MENTIONS)
-        match.record["channel_id"], match.record["message_id"] = getattr(target, "id", None), getattr(message, "id", None)
+        view = board_view(match.id, match.record.get("coach"))
+        message, target, mode = None, None, None
+        if thread_title and isinstance(channel, discord.TextChannel) and can(
+                "create_public_threads", "send_messages_in_threads", "embed_links"):
+            try:
+                thread = await channel.create_thread(name=thread_title[:90], type=discord.ChannelType.public_thread,
+                                                     auto_archive_duration=1440)
+                message, target, mode = await thread.send(embed=embed, view=view, allowed_mentions=NO_MENTIONS), thread, "thread"
+            except discord.HTTPException as error:
+                log.warning("match %s: no thread (%s %s); trying the channel", match.id, error.status, error.text)
+        if message is None and channel is not None and hasattr(channel, "send") and can("send_messages", "embed_links"):
+            try:
+                message, target, mode = await channel.send(embed=embed, view=view, allowed_mentions=NO_MENTIONS), channel, "channel"
+            except discord.HTTPException as error:
+                log.warning("match %s: can't post in channel (%s %s); replying instead", match.id, error.status, error.text)
+        if message is None:
+            try:
+                message = await interaction.followup.send(embed=embed, view=view, wait=True, allowed_mentions=NO_MENTIONS)
+                target, mode = channel, "reply"
+            except discord.HTTPException as error:
+                log.error("match %s: could not show the board at all (%s %s)", match.id, error.status, error.text)
+                if not in_place:                       # a brand-new match nobody can see: cancel it
+                    self.tcg.cancel(match.id)
+                return False
+        match.record["channel_id"] = getattr(target, "id", None) or getattr(message, "channel_id", None)
+        match.record["message_id"] = getattr(message, "id", None)
+        match.record["board_mode"] = mode
         self.tcg._persist(match)
-        note = "Your match board is ready" + (f" in {target.mention}" if target is not channel and hasattr(target, "mention") else "") + "."
-        if interaction.response.is_done():
-            await interaction.followup.send(content=note, ephemeral=True)
+        if mode == "thread":
+            note = f"Your match board is ready in {target.mention}."
+        elif mode == "channel":
+            note = "Your match board is below." + (" (I need *Create Public Threads* to give each match its own thread.)"
+                                                  if thread_title and not can("create_public_threads") else "")
+        else:
+            note = ("I can't post in this channel, so the board is attached to this reply. Press **Act** to play; it "
+                    "refreshes the board. (Give me *Send Messages* and *Embed Links* here for live updates.)")
+        await interaction.followup.send(content=note, ephemeral=True)
+        return True
 
     async def _board(self, match) -> discord.Embed:
         win = await self.oracle.public_win_probability(match.game, 0)
         return board_embed(match.game, match.record, win, self.oracle.version)
 
-    async def _refresh(self, match, finished: bool = False) -> None:
+    async def _refresh(self, match, finished: bool = False) -> bool:
+        """Edit the public board in place. Returns False when that isn't possible (missing access, deleted message)."""
         channel_id, message_id = match.record.get("channel_id"), match.record.get("message_id")
-        if not channel_id or not message_id:
-            return
-        channel = self.bot.get_channel(channel_id)
-        if channel is None:
-            return
+        channel = self.bot.get_channel(channel_id) if channel_id else None
+        if channel is None or not message_id:
+            return False
         try:
             await channel.get_partial_message(message_id).edit(
                 embed=await self._board(match), view=board_view(match.id, match.record.get("coach"), finished))
-        except discord.HTTPException:
-            log.warning("could not refresh board for match %s", match.id)
+            return True
+        except discord.HTTPException as error:
+            log.info("match %s: board not refreshed (%s %s)", match.id, error.status, error.text)
+            return False
 
-    async def _announce_result(self, match, summary: Optional[dict]) -> None:
+    async def _announce_result(self, match, summary: Optional[dict], interaction: Optional[discord.Interaction] = None) -> None:
         if summary is None:
             return
         await self._refresh(match, finished=True)
@@ -295,12 +340,19 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
                      "final_resolve": [p.resolve for p in g.players],
                      "turning_points": [{k: tp[k] for k in ("round", "player", "label")} for tp in tps]}
             lines.append("📜 " + await self.assistant.chronicle(facts))
+        text = "\n".join(lines)[:2000]
         channel = self.bot.get_channel(match.record.get("channel_id") or 0)
         if channel is not None:
             try:
-                await channel.send("\n".join(lines), allowed_mentions=NO_MENTIONS)
+                await channel.send(text, allowed_mentions=NO_MENTIONS)
+                return
+            except discord.HTTPException as error:
+                log.info("match %s: result not posted in channel (%s)", match.id, error.status)
+        if interaction is not None:
+            try:
+                await interaction.followup.send(content=text, allowed_mentions=NO_MENTIONS)
             except discord.HTTPException:
-                pass
+                log.warning("match %s: result could not be announced", match.id)
 
     # ------------------------------------------------------------------ button & picker callbacks
     async def on_board_button(self, interaction: discord.Interaction, op: str, match_id: str) -> None:
@@ -328,8 +380,15 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             return await interaction.followup.send(embed=embed, ephemeral=True)
         acts = E.legal_actions(match.game)
         embed = _note(match.game.pending[0]["text"] if match.game.pending else "Choose your move.")
-        await interaction.response.send_message(embed=embed, view=MovePicker(self, match_id, match.version, acts),
-                                                ephemeral=True)
+        picker = MovePicker(self, match_id, match.version, acts)
+        board_message = getattr(interaction, "message", None)
+        if board_message is not None and board_message.id == match.record.get("message_id"):
+            # answering the click by editing the board keeps it current even without channel permissions
+            await interaction.response.edit_message(embed=await self._board(match),
+                                                    view=board_view(match.id, match.record.get("coach")))
+            await interaction.followup.send(embed=embed, view=picker, ephemeral=True)
+        else:
+            await interaction.response.send_message(embed=embed, view=picker, ephemeral=True)
 
     async def on_move(self, interaction: discord.Interaction, match_id: str, key: str, label: str, version: int) -> None:
         try:
@@ -343,15 +402,18 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         else:
             await interaction.response.edit_message(embed=_note(f"✅ {label}"), view=None)
         if result.finished is not None:
-            await self._announce_result(match, result.finished)
+            await self._announce_result(match, result.finished, interaction)
             return
-        await self._refresh(match)
+        refreshed = await self._refresh(match)
         seat = match.seat_of(interaction.user.id)
+        embeds = [] if refreshed else [await self._board(match)]     # can't update the public board: show it privately
         if E.decider(match.game) == seat:              # still your decision: offer the next menu right away
             acts = E.legal_actions(match.game)
             prompt = match.game.pending[0]["text"] if match.game.pending else "Your move."
-            await interaction.followup.send(embed=_note(prompt), view=MovePicker(self, match.id, match.version, acts),
-                                            ephemeral=True)
+            await interaction.followup.send(embeds=embeds + [_note(prompt)],
+                                            view=MovePicker(self, match.id, match.version, acts), ephemeral=True)
+        elif embeds:
+            await interaction.followup.send(embeds=embeds, ephemeral=True)
 
     # ------------------------------------------------------------------ idle players
     @tasks.loop(seconds=30)
