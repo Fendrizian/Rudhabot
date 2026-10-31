@@ -8,6 +8,7 @@ from discord import app_commands
 
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import not_in_game
+from rudhabot.domain.fortunes import crack
 from rudhabot.services.lottery import TicketRefused
 from rudhabot.services.shop import ShopRefused
 from rudhabot.ui import lottery_embeds
@@ -18,6 +19,8 @@ from rudhabot.views.cafe import CafeBuyView, special_fields
 from rudhabot.views.inventory import InventoryView, create_inventory_embed, inventory_pages
 from rudhabot.views.shop import ItemRow, shop_page
 
+
+FORTUNES_SHOWN = 10          # fortunes listed when several cookies are eaten at once
 
 class ShopCog(ServiceCog):
     @app_commands.command(name="cafe", description="View the Joot Cafe menu")
@@ -138,12 +141,25 @@ class ShopCog(ServiceCog):
             if inventory[item] <= 0:
                 del inventory[item]
             self.users.update(user.id, inventory=inventory)
+            if item == "fortune cookie":
+                await self._read_fortunes(interaction, emoji, quantity)
+                return
             verb = "drank" if s.catalog.is_beverage(item) else "ate"
             await respond(interaction, author_embed(user, f"✅ You {verb} **{quantity} {emoji}{item.title()}**!", 0x57F287))
         elif item in s.catalog.shop_items:
             await respond(interaction, error_embed(f"❌ You can't use **{emoji}{item.title()}**. This item is not usable.", user))
         else:
             await respond(interaction, error_embed("❌ This item can't be used.", user))
+
+    async def _read_fortunes(self, interaction, emoji: str, quantity: int):
+        """Each cookie draws one fortune uniformly at random (see domain/fortunes.py). Up to 10 are listed."""
+        fortunes = [crack(self.services.rng) for _ in range(quantity)]
+        shown = fortunes[:FORTUNES_SHOWN]
+        lines = [f"🥠 *{f}*" for f in shown]
+        if len(fortunes) > len(shown):
+            lines.append(f"…and {len(fortunes) - len(shown)} more crumbs of wisdom.")
+        title = f"{emoji} Your fortune" + ("s" if quantity > 1 else "")
+        await respond(interaction, author_embed(interaction.user, "\n".join(lines), 0xE67E22, title=title))
 
     async def _open_mystery_boxes(self, interaction, inventory: dict, quantity: int):
         s, user, catalog = self.services, interaction.user, self.services.catalog

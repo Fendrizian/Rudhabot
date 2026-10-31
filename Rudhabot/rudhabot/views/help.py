@@ -376,7 +376,7 @@ def get_commands_data():
         {
             "name": "use",
             "args": "<item>",
-            "description": "Use an item from your inventory: draw lottery tickets, open mystery boxes, set up birthday cakes and more."
+            "description": "Use an item from your inventory: draw lottery tickets, open mystery boxes, crack fortune cookies, set up birthday cakes and more."
         },
         {
             "name": "loan",
