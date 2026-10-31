@@ -111,15 +111,31 @@ class Services:
 def _build_assistant(settings: Settings, tcg: TcgService, oracle: OracleService) -> Assistant:
     """The LLM is optional: without OPENAI_API_KEY (or with RUDHABOT_LLM_ENABLED=0) /ask answers from local docs."""
     import os
+    import logging
+    log = logging.getLogger("rudhabot.llm")
     ai = settings.ai
-    model = None
+    model, reason = None, None
     key = os.environ.get(OPENAI_KEY_ENV_VAR, "").strip()
-    if ai.llm_enabled and key:
-        from rudhabot.llm.client import OpenAIResponsesModel
-        model = OpenAIResponsesModel(key, ai.llm_model, timeout=ai.llm_timeout_s, reasoning_effort=ai.llm_reasoning_effort)
+    if not ai.llm_enabled:
+        reason = "RUDHABOT_LLM_ENABLED=0"
+    elif not key:
+        reason = f"{OPENAI_KEY_ENV_VAR} is not set (export it, or put it in the .env file next to main.py)"
+    else:
+        try:
+            from rudhabot.llm.client import OpenAIResponsesModel
+            model = OpenAIResponsesModel(key, ai.llm_model, timeout=ai.llm_timeout_s,
+                                         reasoning_effort=ai.llm_reasoning_effort)
+        except ImportError:
+            reason = "the `openai` package is not installed (pip install -r requirements.txt)"
+    if model is not None:
+        log.info("OpenAI assistant enabled: model %s%s", ai.llm_model,
+                 f", reasoning effort {model.reasoning_effort}" if model.reasoning_effort else "")
+    else:
+        log.warning("OpenAI assistant disabled: %s. /ask will answer from local docs only.", reason)
     limiter = RateLimiter(ai.llm_per_user_per_hour, ai.llm_per_guild_per_hour, ai.llm_daily_budget)
     return Assistant(KnowledgeBase(), model, limiter, ai.llm_max_output_tokens,
-                     status_provider=lambda uid: tcg_status(tcg, uid), similar_cards=oracle.similar_cards)
+                     status_provider=lambda uid: tcg_status(tcg, uid), similar_cards=oracle.similar_cards,
+                     disabled_reason=reason)
 
 
 def tcg_status(tcg: TcgService, user_id: int) -> dict:

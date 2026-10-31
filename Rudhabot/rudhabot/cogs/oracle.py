@@ -31,8 +31,10 @@ class OracleCog(ServiceCog, commands.GroupCog, group_name="oracle", group_descri
         embed.add_field(name="Calls since start", value=calls[:1024], inline=False)
         embed.add_field(name="Latency", value=f"p50 {st['latency_ms_p50']:.1f} ms · p95 {st['latency_ms_p95']:.1f} ms", inline=False)
         a = self.services.assistant
-        embed.add_field(name="OpenAI assistant", value=("on · " + a.model.model if a.enabled else "off (local answers)")
-                        + f" · {a.stats}", inline=False)
+        state = f"on · `{a.model.model}`" if a.enabled else f"off: {a.disabled_reason}"
+        if a.last_error:
+            state += f"\nlast error: `{a.last_error[:200]}`"
+        embed.add_field(name="OpenAI assistant", value=(state + f"\ncalls: {a.stats}")[:1024], inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="reload", description="Reload the Oracle model (optionally a specific version, for rollback)")

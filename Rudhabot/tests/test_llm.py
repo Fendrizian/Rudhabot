@@ -134,3 +134,69 @@ class SettingsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnvAndClientTests(unittest.IsolatedAsyncioTestCase):
+    def test_dotenv_is_loaded_without_overriding_the_environment(self):
+        import os, tempfile
+        from rudhabot.settings import load_env_file
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, ".env")
+            with open(path, "w") as f:
+                f.write("# comment\nexport OPENAI_API_KEY='sk-test'\nDISCORD_TOKEN=from-file\nEMPTY=\nX=1 # note\n")
+            env = {"DISCORD_TOKEN": "already-set"}
+            self.assertEqual(load_env_file(path, env), ["OPENAI_API_KEY", "X"])
+            self.assertEqual(env, {"DISCORD_TOKEN": "already-set", "OPENAI_API_KEY": "sk-test", "X": "1"})
+            self.assertEqual(load_env_file(os.path.join(tmp, "missing"), env), [])
+
+    def test_assistant_reports_why_it_is_off_and_is_enabled_by_the_key(self):
+        import os
+        from unittest import mock
+        import discord
+        from rudhabot.container import Services
+        from rudhabot.settings import Settings
+        client = discord.Client(intents=discord.Intents.default())
+        with mock.patch.dict(os.environ, {"OPENAI_API_KEY": ""}):
+            off = Services.build(Settings(ai=AISettings()), client).assistant
+        self.assertFalse(off.enabled)
+        self.assertIn("OPENAI_API_KEY", off.disabled_reason)
+        with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
+            on = Services.build(Settings(ai=AISettings()), client).assistant
+        self.assertTrue(on.enabled)
+        self.assertEqual(on.model.reasoning_effort, "low")              # gpt-5.x: thinking kept short by default
+
+    async def test_general_questions_without_ai_say_so_instead_of_guessing(self):
+        bot = Assistant(KB, None, RateLimiter(), disabled_reason="OPENAI_API_KEY is not set")
+        result = await bot.ask(1, None, "What's the mass of the sun?")
+        self.assertIn("General questions need the AI assistant", result.text)
+        self.assertIn("OPENAI_API_KEY", result.notice)
+
+    async def test_openai_request_shape_and_incomplete_responses(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from rudhabot.llm.client import LLMError, OpenAIResponsesModel
+        model = OpenAIResponsesModel("sk-test", "gpt-5.4-mini")
+        ok = SimpleNamespace(error=None, status="completed", output=[], output_text='{"a": 1}',
+                             usage=SimpleNamespace(input_tokens=5, output_tokens=7))
+        model._client.responses.create = AsyncMock(return_value=ok)
+        turn = await model.create(instructions="i", input=[], tools=TOOLS, text_format=ANSWER_FORMAT,
+                                  max_output_tokens=100, safety_identifier="h")
+        sent = model._client.responses.create.call_args.kwargs
+        self.assertEqual((sent["model"], sent["store"], sent["reasoning"]), ("gpt-5.4-mini", False, {"effort": "low"}))
+        self.assertEqual(sent["include"], ["reasoning.encrypted_content"])
+        self.assertEqual(sent["text"], {"format": ANSWER_FORMAT})
+        self.assertEqual(turn.usage, {"input_tokens": 5, "output_tokens": 7})
+        cut = SimpleNamespace(error=None, status="incomplete", incomplete_details=SimpleNamespace(reason="max_output_tokens"),
+                              output=[], output_text="")
+        model._client.responses.create = AsyncMock(return_value=cut)
+        with self.assertRaisesRegex(LLMError, "max_output_tokens"):
+            await model.create(instructions="i", input=[], tools=[], text_format=None, max_output_tokens=10)
+        plain = OpenAIResponsesModel("sk-test", "gpt-4.1-mini")
+        self.assertIsNone(plain.reasoning_effort)                       # non-reasoning models get no reasoning params
+
+    async def test_general_knowledge_is_allowed_by_the_instructions(self):
+        from rudhabot.llm.assistant import INSTRUCTIONS
+        self.assertIn("General questions", INSTRUCTIONS)
+        bot, model = assistant([answer("About 1.989 × 10^30 kg.")])
+        result = await bot.ask(1, None, "What's the mass of the sun?")
+        self.assertEqual((result.source, result.text), ("openai", "About 1.989 × 10^30 kg."))
