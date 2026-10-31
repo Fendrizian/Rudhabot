@@ -16,7 +16,7 @@ PAGE = 23          # select options per page (Discord allows 25; we keep room fo
 
 class MatchButton(ui.DynamicItem[ui.Button], template=r"tcg:(?P<op>act|hand|hint|log):(?P<mid>[0-9a-f]{10})"):
     LABELS = {"act": ("Act", "⚡", discord.ButtonStyle.primary), "hand": ("Hand", "🃏", discord.ButtonStyle.secondary),
-              "hint": ("Oracle hint", "🔮", discord.ButtonStyle.secondary), "log": ("Log", "📜", discord.ButtonStyle.secondary)}
+              "hint": ("Clairvoyance hint", "🔮", discord.ButtonStyle.secondary), "log": ("Log", "📜", discord.ButtonStyle.secondary)}
 
     def __init__(self, op: str, match_id: str):
         label, emoji, style = self.LABELS[op]

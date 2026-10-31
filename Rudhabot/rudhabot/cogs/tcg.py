@@ -1,7 +1,7 @@
-"""/tcg: Asgrelia: Cloudfall, the trading card game. Commands are thin: they call TcgService / OracleService and render.
+"""/tcg: Asgrelia: Cloudfall, the trading card game. Commands are thin: they call TcgService / ClairvoyanceService and render.
 
 Matches run in their own thread when the channel allows it. The public board shows both sides (never a hand) and the
-Oracle's spectator-safe win estimate; players act through an ephemeral menu of the engine's legal moves.
+Clairvoyance's spectator-safe win estimate; players act through an ephemeral menu of the engine's legal moves.
 """
 from __future__ import annotations
 
@@ -43,11 +43,12 @@ async def _reply(interaction: discord.Interaction, embed: discord.Embed, ephemer
 
 class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description="Asgrelia: Cloudfall trading card game"):
     deck = app_commands.Group(name="deck", description="Build, view and test your Cloudfall decks")
+    wishes = app_commands.Group(name="wish", description="Skyfall Wishes: banners, shards, crafting and the Convergence")
 
     def __init__(self, bot):
         super().__init__(bot)
         self.tcg = self.services.tcg
-        self.oracle = self.services.oracle
+        self.clairvoyance = self.services.clairvoyance
         self.assistant = self.services.assistant
 
     async def cog_load(self) -> None:
@@ -71,7 +72,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         arche = ARCHETYPES[deck.value]
         embed = deck_embed(arche["name"], list(arche["cards"]))
         embed.description = (f"Welcome to Asgrelia! **{arche['name']}** is now your active deck.\n*{arche['plan']}*\n"
-                             "Try `/tcg practice` against the Oracle, or `/tcg challenge` a friend.")
+                             "Try `/tcg practice` against the Clairvoyance, or `/tcg challenge` a friend.")
         await _reply(interaction, embed, ephemeral=False)
 
     @app_commands.command(name="collection", description="Show your Cloudfall cards, decks and record")
@@ -94,7 +95,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         card = find_card(name)
         if card is None:
             return await _reply(interaction, _note("No card by that name."))
-        await _reply(interaction, card_embed(card, self.oracle.similar_cards(card.id)), ephemeral=False)
+        await _reply(interaction, card_embed(card, self.clairvoyance.similar_cards(card.id)), ephemeral=False)
 
     @card.autocomplete("name")
     async def _card_autocomplete(self, interaction: discord.Interaction, current: str):
@@ -168,7 +169,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         decks = self.tcg.profile(interaction.user.id)["decks"]
         return [app_commands.Choice(name=d, value=d) for d in decks if current.lower() in d.lower()][:25]
 
-    @deck.command(name="analyze", description="Deck Doctor: the Oracle tests your deck against every archetype")
+    @deck.command(name="analyze", description="Deck Doctor: the Clairvoyance tests your deck against every archetype")
     async def deck_analyze(self, interaction: discord.Interaction):
         try:
             cards = self.tcg.active_deck(interaction.user.id)
@@ -176,12 +177,103 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             return await _reply(interaction, _note(str(error), 0xE74C3C))
         await interaction.response.defer(ephemeral=True, thinking=True)
         profile = self.tcg.profile(interaction.user.id)
-        report = await self.oracle.gauntlet(cards)
-        swaps = self.oracle.suggest_swaps(cards, profile["collection"])
+        report = await self.clairvoyance.gauntlet(cards)
+        swaps = self.clairvoyance.suggest_swaps(cards, profile["collection"])
         await interaction.followup.send(embed=doctor_embed(profile["active_deck"], report, swaps), ephemeral=True)
 
+    # ================================================================== Skyfall Wishes (gacha)
+    async def _gacha(self, interaction, action):
+        from rudhabot.services.gacha import GachaRefused
+        try:
+            return action()
+        except GachaRefused as error:
+            await _reply(interaction, _note(str(error), 0xE74C3C))
+            return None
+
+    @wishes.command(name="banner", description="This week's featured banner, rates, your pity and shards")
+    async def wish_banner(self, interaction: discord.Interaction):
+        from rudhabot.domain import gacha as G
+        svc = self.services.gacha
+        profile = self.tcg.profile(interaction.user.id)
+        b = svc.banner("featured")
+        pity = svc.pity(profile, "featured")
+        e = discord.Embed(title=f"🌠 {b.name}", color=0xF1C40F,
+                          description=f"Featured ★5: **{CARD_BY_ID[b.featured5].name}**\n"
+                                      f"Featured ★4: {', '.join(CARD_BY_ID[c].name for c in b.featured4)}")
+        e.add_field(name="Rates", inline=False,
+                    value=f"★5 {G.RATES[5] * 100:.1f}% · ★4 {G.RATES[4] * 100:.0f}% · ★3 {G.RATES[3] * 100:.0f}% · "
+                          f"★2 {G.RATES[2] * 100:.1f}%\nSoft pity from wish {G.SOFT_PITY_START}, guaranteed ★5 by wish "
+                          f"{G.HARD_PITY}; a ★4+ at least every {G.FOUR_STAR_PITY} wishes. Featured ★5 is a 50/50; lose it "
+                          f"and the next ★5 is featured. {G.FOIL_RATE * 100:.0f}% of cards are ✨ Cloudshine foils (cosmetic).")
+        e.add_field(name="You", value=f"◇ {profile.get('shards', 0):,} Cloud Shards · {profile.get('dust', 0):,} Vapor Dust\n"
+                                      f"Pity {pity.pity5}/{G.HARD_PITY}" + (" · next ★5 is featured" if pity.guaranteed else ""))
+        conv = svc.convergence()
+        meter = " · ".join(f"{'✅' if m['reached'] else '⬜'} {m['at']}" for m in conv["milestones"])
+        e.add_field(name="🌌 Convergence (server-wide this week)", inline=False,
+                    value=f"{conv['wishes']:,} wishes by {conv['participants']} players · {meter}")
+        e.set_footer(text=f"One wish = {G.WISH_COST} shards · /tcg wish pull · /tcg wish daily · /tcg wish shards")
+        await _reply(interaction, e, ephemeral=False)
+
+    @wishes.command(name="pull", description="Make 1 or 10 wishes")
+    @app_commands.choices(count=[app_commands.Choice(name="1 wish", value=1), app_commands.Choice(name="10 wishes", value=10)],
+                          banner=[app_commands.Choice(name="This week's featured banner", value="featured"),
+                                  app_commands.Choice(name="Cloudfall Standard", value="standard")])
+    async def wish_pull(self, interaction: discord.Interaction, count: app_commands.Choice[int],
+                        banner: Optional[app_commands.Choice[str]] = None):
+        from rudhabot.domain.gacha import STARS
+        result = await self._gacha(interaction, lambda: self.services.gacha.wish(
+            interaction.user.id, count.value, banner.value if banner else "featured"))
+        if result is None:
+            return
+        pulls, new, dust, b = result
+        best = max(p.stars for p in pulls)
+        lines = []
+        for pull, is_new in sorted(zip(pulls, new), key=lambda pn: -pn[0].stars):
+            lines.append(f"{STARS[pull.stars]} {'✨ ' if pull.foil else ''}**{CARD_BY_ID[pull.card].name}**"
+                         + (" · featured" if pull.featured else "") + (" · NEW" if is_new else ""))
+        color = {5: 0xF1C40F, 4: 0x9B59B6, 3: 0x3498DB}.get(best, 0x95A5A6)
+        e = discord.Embed(title=f"🌠 {'A star falls' if best >= 5 else 'The sky answers'} · {b.name}",
+                          description="\n".join(lines), color=color)
+        profile = self.tcg.profile(interaction.user.id)
+        e.set_footer(text=f"◇ {profile.get('shards', 0):,} shards left" + (f" · +{dust} Vapor Dust from extra copies" if dust else ""))
+        await _reply(interaction, e, ephemeral=False)
+
+    @wishes.command(name="shards", description="Buy Cloud Shards (1 ra each), from your wallet or credit card")
+    @app_commands.choices(pay_with=[app_commands.Choice(name="Wallet", value="wallet"), app_commands.Choice(name="Credit card", value="card")])
+    async def wish_shards(self, interaction: discord.Interaction, amount: app_commands.Range[int, 1, 16000],
+                          pay_with: Optional[app_commands.Choice[str]] = None):
+        total = await self._gacha(interaction, lambda: self.services.gacha.buy_shards(
+            interaction.user.id, amount, pay_with.value if pay_with else "wallet"))
+        if total is not None:
+            await _reply(interaction, _note(f"◇ Bought {amount:,} Cloud Shards. You now have {total:,}."))
+
+    @wishes.command(name="daily", description="Claim today's free Cloud Shards")
+    async def wish_daily(self, interaction: discord.Interaction):
+        total = await self._gacha(interaction, lambda: self.services.gacha.claim_daily(interaction.user.id))
+        if total is not None:
+            await _reply(interaction, _note(f"◇ Daily shards claimed! You have {total:,}."))
+
+    @wishes.command(name="craft", description="Craft a card with Vapor Dust")
+    async def wish_craft(self, interaction: discord.Interaction, card: str):
+        found = find_card(card)
+        if found is None:
+            return await _reply(interaction, _note("No card by that name."))
+        left = await self._gacha(interaction, lambda: self.services.gacha.craft(interaction.user.id, found.id))
+        if left is not None:
+            await _reply(interaction, _note(f"🛠️ Crafted **{found.name}**. {left:,} Vapor Dust left."))
+
+    @wish_craft.autocomplete("card")
+    async def _craft_autocomplete(self, interaction: discord.Interaction, current: str):
+        return await self._card_autocomplete(interaction, current)
+
+    @wishes.command(name="convergence", description="Claim your share of this week's server-wide Convergence rewards")
+    async def wish_convergence(self, interaction: discord.Interaction):
+        reward = await self._gacha(interaction, lambda: self.services.gacha.claim_convergence(interaction.user.id))
+        if reward is not None:
+            await _reply(interaction, _note(f"🌌 The Convergence answers: +{reward:,} Cloud Shards."), ephemeral=False)
+
     # ================================================================== matches
-    @app_commands.command(name="practice", description="Play a practice match against the Oracle AI (unrated, coaching on)")
+    @app_commands.command(name="practice", description="Play a practice match against the Clairvoyance AI (unrated, coaching on)")
     @app_commands.choices(difficulty=DIFFICULTY_CHOICES, opponent=ARCHETYPE_CHOICES)
     async def practice(self, interaction: discord.Interaction, difficulty: Optional[app_commands.Choice[str]] = None,
                        opponent: Optional[app_commands.Choice[str]] = None):
@@ -194,7 +286,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         await interaction.response.defer(thinking=True)
         try:
             await self.tcg.run_ai(match)
-            posted = await self._post_board(interaction, match, f"🔮 {interaction.user.display_name} vs the Oracle")
+            posted = await self._post_board(interaction, match, f"🔮 {interaction.user.display_name} vs the Clairvoyance")
         except Exception:
             self.tcg.cancel(match.id)                  # never leave the player stuck in a match they can't see
             raise
@@ -308,8 +400,8 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         return True
 
     async def _board(self, match) -> discord.Embed:
-        win = await self.oracle.public_win_probability(match.game, 0)
-        return board_embed(match.game, match.record, win, self.oracle.version)
+        win = await self.clairvoyance.public_win_probability(match.game, 0)
+        return board_embed(match.game, match.record, win, self.clairvoyance.version)
 
     async def _refresh(self, match, finished: bool = False) -> bool:
         """Edit the public board in place. Returns False when that isn't possible (missing access, deleted message)."""
@@ -338,7 +430,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         if self.services.settings.ai.chronicle_enabled:
             record = summary["record"]
             try:
-                tps = await self.oracle._run("turning_points", lambda: self.oracle.turning_points_sync(
+                tps = await self.clairvoyance._run("turning_points", lambda: self.clairvoyance.turning_points_sync(
                     g, record["decks"], record["names"], record["seed"], record["keys"], record.get("level", 3),
                     record.get("first")), lambda: [])
             except Exception:
@@ -380,10 +472,10 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             if not match.record.get("coach"):
                 return await _reply(interaction, _note("Coaching is off in this match (rated games are unassisted)."))
             await interaction.response.defer(ephemeral=True, thinking=True)
-            hints = await self.oracle.hints(match.game)
+            hints = await self.clairvoyance.hints(match.game)
             text = "\n".join(f"**{h.label}** · win {round(h.win * 100)}% ({h.delta * 100:+.0f})" for h in hints) or "No hint."
-            embed = discord.Embed(title="🔮 Oracle's top moves", description=text, color=CLOUD)
-            embed.set_footer(text=f"{self.oracle.version} · estimates, not guarantees · only you can see this")
+            embed = discord.Embed(title="🔮 Clairvoyance's top moves", description=text, color=CLOUD)
+            embed.set_footer(text=f"{self.clairvoyance.version} · estimates, not guarantees · only you can see this")
             return await interaction.followup.send(embed=embed, ephemeral=True)
         acts = E.legal_actions(match.game)
         embed = _note(match.game.pending[0]["text"] if match.game.pending else "Choose your move.")
@@ -422,7 +514,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             return await interaction.response.edit_message(embed=_note(str(error), 0xE74C3C), view=None)
         match = result.match
         if result.finished is None and match.decider_is_ai:
-            await interaction.response.edit_message(embed=_note(f"✅ {label}\n🔮 The Oracle is thinking…"), view=None)
+            await interaction.response.edit_message(embed=_note(f"✅ {label}\n🔮 The Clairvoyance is thinking…"), view=None)
             result = await self.tcg.run_ai(match)
         else:
             await interaction.response.edit_message(embed=_note(f"✅ {label}"), view=None)

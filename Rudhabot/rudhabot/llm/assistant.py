@@ -28,7 +28,7 @@ MAX_ANSWER = 1200
 MAX_TOOL_ROUNDS = 3
 EXTRA_COMMANDS = {"ask", "tcg starter", "tcg collection", "tcg pack", "tcg deck build", "tcg deck view", "tcg deck list",
                   "tcg deck use", "tcg deck analyze", "tcg card", "tcg rules", "tcg challenge", "tcg practice",
-                  "tcg forfeit", "tcg ladder", "tcg forget-me", "oracle status"}
+                  "tcg forfeit", "tcg ladder", "tcg forget-me", "clairvoyance status"}
 
 INSTRUCTIONS = """You are Rudhabot, a friendly assistant inside a Discord server. Rudhabot is also an economy bot with \
 games and the Asgrelia: Cloudfall trading card game.
@@ -71,7 +71,7 @@ TOOLS = [
     _fn("search_docs", "Search Rudhabot's command help, the Cloudfall rules and card texts.",
         {"query": {"type": "string"}, "kind": {"type": "string", "enum": ["any", "command", "rule", "card"]}},
         ["query", "kind"]),
-    _fn("get_card", "Get the exact text of one Cloudfall card by name or id, plus cards the Oracle model rates similar.",
+    _fn("get_card", "Get the exact text of one Cloudfall card by name or id, plus cards the Clairvoyance model rates similar.",
         {"name": {"type": "string"}}, ["name"]),
     _fn("my_cloudfall_status", "The asking user's own Cloudfall profile (deck, rating) and their current match, if any.",
         {}, []),
@@ -126,7 +126,7 @@ class Assistant:
                 return json.dumps({"error": "no such card"})
             similar = [find_card(c).name for c, _ in (self.similar_cards(card.id) if self.similar_cards else [])]
             return json.dumps({"id": card.id, "name": card.name, "type": card.kind, "cost": card.cost, "text": card.text,
-                               "oracle_similar": similar})
+                               "clairvoyance_similar": similar})
         if name == "my_cloudfall_status":
             return json.dumps(self.status_provider(user_id) if self.status_provider else {})
         return json.dumps({"error": "unknown tool"})

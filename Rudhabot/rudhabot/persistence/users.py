@@ -6,7 +6,7 @@ through this class instead of module-level load/save helpers.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Iterable, Iterator, Mapping, Optional
 
 from rudhabot.persistence.json_store import JsonStore
 
@@ -17,10 +17,31 @@ ACCOUNT_FIELDS = frozenset({
 })
 
 
+def money_snapshot(account: Optional[Mapping]) -> dict[str, float]:
+    """Every money-like balance on an account: wallet, bank and crypto holdings."""
+    if not account:
+        return {}
+    out: dict[str, float] = {"wallet": int(account.get("wallet", 0) or 0), "bank": int(account.get("bank", 0) or 0)}
+    for coin, amount in (account.get("crypto") or {}).items():
+        out[f"crypto:{coin}"] = float(amount or 0)
+    return out
+
+
 class UserRepository:
-    def __init__(self, store: JsonStore, coin_symbols: Iterable[str]):
+    """Every write reports its money changes to `audit` (an AuditService), whichever command or job made it."""
+
+    def __init__(self, store: JsonStore, coin_symbols: Iterable[str], audit=None):
         self._store = store
         self._coin_symbols = tuple(coin_symbols)
+        self.audit = audit
+
+    def _report(self, uid: str, before: Mapping[str, float], after: Mapping[str, float]) -> None:
+        if self.audit is None:
+            return
+        for key in sorted(set(before) | set(after)):
+            delta = after.get(key, 0) - before.get(key, 0)
+            if abs(delta) > 1e-9:
+                self.audit.record(uid, key, delta, after.get(key, 0))
 
     # ------------------------------------------------------------------ reads
     def get(self, user_id: int | str) -> dict:
@@ -60,6 +81,7 @@ class UserRepository:
         uid = str(user_id)
         data = self._store.load()
         account = data.get(uid)
+        before = money_snapshot(account)
         if account is None:
             account = self._blank_account()
         else:
@@ -68,16 +90,25 @@ class UserRepository:
             account[name] = int(value) if name in ("wallet", "bank") else value
         data[uid] = account
         self._store.save(data)
+        self._report(uid, before, money_snapshot(account))
 
     def save_all(self, data: Mapping[str, dict]) -> None:
+        before = {uid: money_snapshot(acc) for uid, acc in self._store.load().items()}
         self._store.save(dict(data))
+        self._report_all(before, data)
 
     @contextmanager
     def transaction(self) -> Iterator[dict[str, dict]]:
         """Load every account, let the caller mutate them in memory, and save only if the block succeeds."""
         data = self._store.load()
+        before = {uid: money_snapshot(acc) for uid, acc in data.items()}
         yield data
         self._store.save(data)
+        self._report_all(before, data)
+
+    def _report_all(self, before: Mapping[str, Mapping], data: Mapping[str, dict]) -> None:
+        for uid in sorted(set(before) | set(data)):
+            self._report(uid, before.get(uid, {}), money_snapshot(data.get(uid)))
 
     # -------------------------------------------------- convenience (atomic)
     def credit_wallet(self, user_id: int | str, amount: int) -> int:

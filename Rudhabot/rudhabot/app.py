@@ -11,6 +11,7 @@ from discord.ext import commands
 
 from rudhabot.container import Services
 from rudhabot.errors import AlreadyInGame, NotAuthorized
+from rudhabot.services.audit import set_context
 from rudhabot.settings import Settings
 from rudhabot.ui.messages import MSG_NOPERMISSION, MSG_ONGAME
 from rudhabot.ui.theme import Colors
@@ -21,8 +22,18 @@ log = logging.getLogger("rudhabot")
 class RudhaTree(app_commands.CommandTree):
     """Turns check failures into the standard messages and keeps unexpected errors from going unanswered."""
 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        # runs in the same task as the command, so every money change it makes is labelled "/command"
+        command = interaction.command
+        set_context(f"/{command.qualified_name}" if command else "slash command", interaction.user.id, "command")
+        return True
+
     async def on_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
         cause = getattr(error, "original", error)
+        reviews = getattr(getattr(interaction.client, "services", None), "reviews", None)
+        if reviews is not None:                     # repeated failures are one of Clairvoyance's review signals
+            name = getattr(interaction.command, "qualified_name", "?")
+            reviews.on_failure(interaction.user.id, f"/{name}: {type(cause).__name__}")
         if isinstance(cause, AlreadyInGame):
             await self._tell(interaction, MSG_ONGAME, Colors.ERROR)
         elif isinstance(cause, NotAuthorized):

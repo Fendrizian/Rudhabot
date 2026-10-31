@@ -1,6 +1,6 @@
-# The Cloudfall Oracle: Rudhabot's in-house model
+# The Cloudfall Clairvoyance: Rudhabot's in-house model
 
-The Oracle is a compact neural network that Rudhabot **trains and serves itself**. It learns to read Asgrelia: Cloudfall
+The Clairvoyance is a compact neural network that Rudhabot **trains and serves itself**. It learns to read Asgrelia: Cloudfall
 positions. It uses no hosted model and no pretrained weights. Its only training data is games the bot's own rules engine plays
 against itself.
 
@@ -62,12 +62,12 @@ All numbers come from `models/manifest.json`, produced by `python -m rudhabot.ml
 
 | | log-loss ↓ | Brier ↓ | ECE ↓ | AUC ↑ |
 |---|---|---|---|---|
-| **Oracle (calibrated)** | **0.490** | **0.164** | **0.018** | **0.839** |
-| Oracle (uncalibrated) | 0.493 | 0.164 | 0.022 | 0.839 |
+| **Clairvoyance (calibrated)** | **0.490** | **0.164** | **0.018** | **0.839** |
+| Clairvoyance (uncalibrated) | 0.493 | 0.164 | 0.022 | 0.839 |
 | Heuristic baseline | 0.626 | 0.205 | 0.066 | 0.757 |
 | Constant 0.5 | 0.693 | 0.250 | — | 0.500 |
 
-The Oracle is clearly a better estimator than the hand-written baseline. Its AUC is +0.08 higher, and its calibration error
+The Clairvoyance is clearly a better estimator than the hand-written baseline. Its AUC is +0.08 higher, and its calibration error
 is a quarter of the baseline's.
 
 **Playing strength.** Each arena plays every seed twice with seats swapped, and intervals are Wilson 95%:
@@ -104,7 +104,7 @@ neighbourhoods are noisy, so the UI words this as "plays a similar role" and tre
 ## Lifecycle
 
 ```bash
-python -m rudhabot.ml.train --version oracle-v2           # self-play → train → calibrate → evaluate → register
+python -m rudhabot.ml.train --version clairvoyance-v2           # self-play → train → calibrate → evaluate → register
 ```
 
 ```bash
@@ -117,10 +117,10 @@ python -m rudhabot.ml.evaluate --games 150                # re-measure the curre
 - **Safety on load:** an artifact whose schema hash differs from the running feature code is refused, and the bot falls back
   to the heuristic. A missing or corrupt file, an exception or a timeout all fall back too, and the fallback is counted.
 - **Rollback:**
-  - Set `ORACLE_VERSION=oracle-v1`, or run `/oracle reload version:oracle-v1`.
+  - Set `CLAIRVOYANCE_VERSION=oracle-v1`, or run `/clairvoyance reload version:oracle-v1`.
   - Or set `"current"` in the manifest.
-  - `ORACLE_ENABLED=0` disables the model entirely; the heuristic AI keeps every feature working.
-- **Monitoring:** `/oracle status` (admin) shows the version, load errors, held-out metrics, arena results, per-task call
+  - `CLAIRVOYANCE_ENABLED=0` disables the model entirely; the heuristic AI keeps every feature working.
+- **Monitoring:** `/clairvoyance status` (admin) shows the version, load errors, held-out metrics, arena results, per-task call
   and fallback counts, and live p50/p95 latency. Logs record task, model version and latency, never message content.
 
 ## Limitations

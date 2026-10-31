@@ -125,10 +125,10 @@ class AssistantTests(unittest.IsolatedAsyncioTestCase):
 
 class SettingsTests(unittest.TestCase):
     def test_env_overrides_and_safe_defaults(self):
-        s = AISettings.from_env({"ORACLE_ENABLED": "0", "RUDHABOT_LLM_MODEL": "gpt-test", "RUDHABOT_LLM_PER_USER_PER_HOUR": "3"})
-        self.assertFalse(s.oracle_enabled)
+        s = AISettings.from_env({"CLAIRVOYANCE_ENABLED": "0", "RUDHABOT_LLM_MODEL": "gpt-test", "RUDHABOT_LLM_PER_USER_PER_HOUR": "3"})
+        self.assertFalse(s.clairvoyance_enabled)
         self.assertEqual((s.llm_model, s.llm_per_user_per_hour), ("gpt-test", 3))
-        self.assertTrue(AISettings.from_env({}).oracle_enabled)
+        self.assertTrue(AISettings.from_env({}).clairvoyance_enabled)
         self.assertFalse(any("key" in f.lower() for f in AISettings.__dataclass_fields__))     # the key is never stored
 
 

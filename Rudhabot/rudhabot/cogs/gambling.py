@@ -1,4 +1,4 @@
-"""Gambling commands: coinflip, dice, rps, slots, roulette, highlow, crash, blackjack.
+"""Gambling commands: coinflip, dice, rps, slots, roulette, highlow, crash, blackjack, baccarat, craps.
 
 Self-contained games (coinflip, dice, rps, slots) hold the player lock for their whole duration through
 `GamblingSessions.session()`. Button-driven games (roulette, highlow, crash, blackjack) take the lock once the bet
@@ -13,6 +13,8 @@ from discord import app_commands
 
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.domain.blackjack import BlackjackGame
+from rudhabot.domain.cards import card_emojis
+from rudhabot.domain.casino import baccarat_payout, craps_payout, deal_baccarat, play_craps
 from rudhabot.ui import slots_embeds
 from rudhabot.ui.messages import MSG_INVALIDBET, MSG_NONPOS, MSG_NOWALLET, MSG_ONGAME
 from rudhabot.ui.replies import respond
@@ -304,3 +306,79 @@ class GamblingCog(ServiceCog):
             self.users.credit_wallet(interaction.user.id, total_winnings)
             embed = view.create_game_embed()
         await interaction.response.send_message(embed=embed, view=view)
+
+    # ----------------------------------------------------------------- baccarat
+    async def _place(self, interaction, bet: str) -> int | None:
+        account = self.users.get(interaction.user.id)
+        try:
+            amount = self._bet_amount(account, bet)
+            self._positive(amount)
+            self._funds(account, amount)
+        except BetRefused as refusal:
+            await self._refuse(interaction, refusal, author_on_funds=True)
+            return None
+        return amount
+
+    @app_commands.command(name="baccarat", description="Baccarat (punto banco): bet on Player, Banker or Tie")
+    @app_commands.describe(bet="Amount to bet or 'all'", on="Player pays 1:1, Banker 1:1 minus 5%, Tie 8:1")
+    @app_commands.choices(on=[app_commands.Choice(name="Player (1:1)", value="player"),
+                              app_commands.Choice(name="Banker (0.95:1)", value="banker"),
+                              app_commands.Choice(name="Tie (8:1)", value="tie")])
+    async def baccarat(self, interaction: discord.Interaction, bet: str, on: app_commands.Choice[str]):
+        if await self._busy(interaction):
+            return
+        with self.sessions.session(interaction.user.id):
+            amount = await self._place(interaction, bet)
+            if amount is None:
+                return
+            await interaction.response.send_message(embed=_plain("🃏 Dealing from the shoe...", 0x99AAB5, interaction.user))
+            await asyncio.sleep(2)
+            round_ = deal_baccarat(self.rng)
+            net = baccarat_payout(on.value, amount, round_)
+            wallet = self._settle(interaction.user.id, net)
+            show = lambda cards: " ".join(card_emojis.get(c, c) for c in cards)
+            outcome = {"player": "Player wins", "banker": "Banker wins", "tie": "Tie"}[round_.winner]
+            result = (f"🎉 You win {CURRENCY}{net:,}!" if net > 0 else f"💸 You lose {CURRENCY}{amount:,}." if net < 0
+                      else "↩️ Push: your bet is returned.")
+            embed = _plain(f"**Player** {show(round_.player)} = **{round_.player_total}**\n"
+                           f"**Banker** {show(round_.banker)} = **{round_.banker_total}**\n\n"
+                           f"**{outcome}**{' (natural)' if round_.natural else ''}. You bet **{on.name}**.\n{result}",
+                           0x57F287 if net > 0 else 0xED4245 if net < 0 else 0x99AAB5, interaction.user)
+            embed.set_footer(text=f"Wallet: {wallet:,}")
+            await interaction.edit_original_response(embed=embed)
+
+    # -------------------------------------------------------------------- craps
+    @app_commands.command(name="craps", description="Craps: Pass Line, Don't Pass or a one-roll Field bet")
+    @app_commands.describe(bet="Amount to bet or 'all'", play="Which bet to make")
+    @app_commands.choices(play=[app_commands.Choice(name="Pass Line (1:1)", value="pass"),
+                                app_commands.Choice(name="Don't Pass (1:1, 12 pushes)", value="dontpass"),
+                                app_commands.Choice(name="Field (one roll: 2 pays 2:1, 12 pays 3:1)", value="field")])
+    async def craps(self, interaction: discord.Interaction, bet: str, play: app_commands.Choice[str]):
+        if await self._busy(interaction):
+            return
+        with self.sessions.session(interaction.user.id):
+            amount = await self._place(interaction, bet)
+            if amount is None:
+                return
+            r = play_craps(play.value, self.rng)
+            net = craps_payout(amount, r)
+            dice = lambda d: f"{DICE_EMOJIS[d[0]]}{DICE_EMOJIS[d[1]]} **{sum(d)}**"
+            await interaction.response.send_message(embed=_plain(f"🎲 Come-out roll...\n{dice(r.rolls[0])}"
+                                                                 + (f"\nPoint is **{r.point}**" if r.point else ""),
+                                                                 0x99AAB5, interaction.user))
+            if r.point:
+                for shown in range(2, len(r.rolls) + 1, max(1, (len(r.rolls) - 1) // 3 or 1)):
+                    await asyncio.sleep(1.2)
+                    history = " · ".join(str(sum(d)) for d in r.rolls[1:shown])
+                    await interaction.edit_original_response(embed=_plain(
+                        f"🎲 Point **{r.point}**\nRolls: {history}\n{dice(r.rolls[shown - 1])}", 0x99AAB5, interaction.user))
+            await asyncio.sleep(1.2)
+            wallet = self._settle(interaction.user.id, net)
+            rolls = " · ".join(str(sum(d)) for d in r.rolls)
+            result = (f"🎉 You win {CURRENCY}{net:,}!" if net > 0 else f"💸 You lose {CURRENCY}{amount:,}." if net < 0
+                      else "↩️ Push: your bet is returned.")
+            embed = _plain(f"🎲 {dice(r.rolls[-1])}\nRolls: {rolls}" + (f" (point {r.point})" if r.point else "")
+                           + f"\nYou played **{play.name}**.\n{result}",
+                           0x57F287 if net > 0 else 0xED4245 if net < 0 else 0x99AAB5, interaction.user)
+            embed.set_footer(text=f"Wallet: {wallet:,}")
+            await interaction.edit_original_response(embed=embed)

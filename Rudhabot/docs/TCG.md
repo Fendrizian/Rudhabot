@@ -105,7 +105,7 @@ Some matters are open or ambiguous in the Codex. Each interpretation below is sh
   - `/tcg deck build` opens a text modal (`Dren Voskarl x3, A19 x2, …`) that checks both legality and ownership.
 - **Matches:**
   - `/tcg challenge @user [coaching]` runs a PvP match in its own thread. `/tcg practice [difficulty] [opponent]` plays
-    against the Oracle AI.
+    against the Clairvoyance AI.
   - The board shows both fields, never a hand, plus a spectator-safe win bar.
   - **Act** opens your ephemeral menu of legal moves. **Hand** shows your hand ephemerally. **🔮 hint** works only with
     coaching on. **Log** shows the recent events.
@@ -122,3 +122,47 @@ Some matters are open or ambiguous in the Codex. Each interpretation below is sh
 - Replays are stored only for live matches; finished matches keep a 20-entry summary history per player.
 - Reaction windows beyond the two above, and full "any order" trigger sequencing, are not built.
 - Balance has not been playtested. The Codex's watchlist levers are not applied, since the Codex marks them as conditional.
+
+## Skyfall Wishes (gacha)
+
+`/tcg wish banner | pull | shards | daily | craft | convergence`. Rules live in `domain/gacha.py` and the service in
+`services/gacha.py`. Every roll is made server-side with the bot's RNG.
+
+**Rarity:**
+
+| Rarity | Cards | Count |
+|---|---|---|
+| ★5 Pure White | Grade 5 characters and Unique cards | 8 |
+| ★4 White | Grade 4 characters, and other cards costing 5+ | 8 |
+| ★3 Light Gray | Grade 3 characters, and other cards costing 3–4 | 38 |
+| ★2 Gray | everything else | 58 |
+
+**Rates (published in `/tcg wish banner`):**
+- Base: ★5 1.6% · ★4 9% · ★3 28% · ★2 61.4%.
+- Measured over 300,000 simulated wishes including pity: ★5 2.6%, about 39 wishes per ★5 on average.
+
+**Pity and the featured banner:**
+- From wish 56 the ★5 chance rises by 5 points per wish. Wish 75 is a guaranteed ★5.
+- Every 10th wish without a ★4 or better is a guaranteed ★4.
+- Each ISO week features one ★5 and three ★4, rotating through every ★5.
+- A ★5 is the featured one 50% of the time. If you lose the 50/50, your next ★5 is the featured one (shown as
+  "next ★5 is featured"), so in practice the featured share is 2/3.
+- The standard banner has no rate-up and keeps its own pity.
+
+**Currency:**
+- One wish costs 160 Cloud Shards.
+- You can get shards from:
+  - `/tcg wish daily`: 80 a day;
+  - `/tcg wish shards`: 1 ra each, paid from your wallet or credit card, up to 16,000 per purchase;
+  - rated PvP wins: +60, under the same daily cap as the ra reward;
+  - practice wins against Clairvoyance: +20, up to 3 a day.
+
+**Extras:**
+- **Cloudshine:** 4% of cards come as cosmetic ✨ foils, tracked separately.
+- **Vapor Dust and crafting:** copies beyond a card's deck limit become Dust (★2 5 · ★3 20 · ★4 80 · ★5 300).
+  `/tcg wish craft` makes any card (★2 30 · ★3 100 · ★4 400 · ★5 1,600).
+- **Convergence:** every wish anyone makes fills a server-wide weekly meter. At 250 / 750 / 1,500 wishes, everyone who
+  wished that week can claim 160 / 320 / 640 shards with `/tcg wish convergence`.
+
+**Auditing:** shard and dust balances appear in the audit trail, and ra spent on shards is audited like any other wallet
+change.

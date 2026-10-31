@@ -6,7 +6,7 @@ Match integrity
     player saw, so a duplicate click, a replayed component or an out-of-date menu is rejected instead of applied twice.
   * After every move the match's replay recipe is persisted; `restore()` rebuilds every live match after a restart.
   * Idle players are auto-moved with the safest option (pass / skip / don't attack) and forfeit after repeated timeouts.
-Rewards and rating are decided here by fixed rules, never by the Oracle or the LLM.
+Rewards and rating are decided here by fixed rules, never by the Clairvoyance or the LLM.
 """
 from __future__ import annotations
 
@@ -125,10 +125,11 @@ def deck_text(cards: list[str]) -> str:
 
 class TcgService:
     def __init__(self, repo: TcgRepository, users: UserRepository, clock: Clock, rng: random.Random,
-                 terms: TcgTerms = TcgTerms(), oracle=None):
+                 terms: TcgTerms = TcgTerms(), clairvoyance=None):
         self.repo, self.users, self.clock, self.rng, self.terms = repo, users, clock, rng, terms
-        self.oracle = oracle
+        self.clairvoyance = clairvoyance
         self.matches: dict[str, Match] = {}
+        self.gacha = None                     # GachaService, set by the container: match wins pay Cloud Shards
 
     # ================================================================== collection & decks
     def profile(self, user_id) -> dict:
@@ -252,7 +253,7 @@ class TcgService:
                         channel_id=None) -> Match:
         deck = self.active_deck(user_id)
         key = opponent if opponent in ARCHETYPES else self.rng.choice(sorted(ARCHETYPES))
-        ai_name = f"Oracle ({ARCHETYPES[key]['name']}, {difficulty})"
+        ai_name = f"Clairvoyance ({ARCHETYPES[key]['name']}, {difficulty})"
         return self._new_match([user_id, f"{AI_SEAT_PREFIX}{difficulty}"], [name, ai_name],
                                [deck, list(ARCHETYPES[key]["cards"])], "practice", coach=True, difficulty=difficulty,
                                channel_id=channel_id)
@@ -319,8 +320,8 @@ class TcgService:
                 acts = E.legal_actions(match.game)
                 if len(acts) == 1:
                     key = acts[0].key
-                elif self.oracle is not None:
-                    key = await self.oracle.choose_move(match.game, difficulty)
+                elif self.clairvoyance is not None:
+                    key = await self.clairvoyance.choose_move(match.game, difficulty)
                 else:
                     key = acts[0].key
                 self._apply(match, key)
@@ -414,8 +415,32 @@ class TcgService:
                 summary["rewards"][winner_uid] = reward
         for uid, p in profiles.items():
             self.repo.save_profile(uid, p)
+        if self.gacha is not None:
+            for seat, uid in humans:
+                if g.winner != seat:
+                    continue
+                if rated and summary["rewards"].get(uid):
+                    self.gacha.grant_shards(uid, 60, "rated Cloudfall win")
+                    summary.setdefault("shards", {})[uid] = 60
+                elif record["mode"] == "practice" and self._practice_shards_left(uid):
+                    self.gacha.grant_shards(uid, 20, "practice win vs Clairvoyance")
+                    summary.setdefault("shards", {})[uid] = 20
         summary["record"] = record
         return summary
+
+    def _practice_shards_left(self, uid: str) -> bool:
+        """Practice wins pay a few shards, at most 3 times a day (so the AI can't be farmed)."""
+        profile = self.repo.profile(uid)
+        today = self.clock.now().date().isoformat()
+        tally = profile.get("practice_shards", {"day": None, "count": 0})
+        if tally.get("day") != today:
+            tally = {"day": today, "count": 0}
+        if tally["count"] >= 3:
+            return False
+        tally["count"] += 1
+        profile["practice_shards"] = tally
+        self.repo.save_profile(uid, profile)
+        return True
 
     def _reward(self, profile: dict, opponent_uid: str) -> int:
         today = self.clock.now().date().isoformat()

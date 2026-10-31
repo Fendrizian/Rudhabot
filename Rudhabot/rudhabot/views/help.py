@@ -24,20 +24,25 @@ THUMBNAIL = "https://micronations.wiki/images/en/images/images/6/6a/Flag_of_Rudh
 
 # (key, title, emoji, one-line summary, command names in display order)
 SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
-    ("start", "Getting started", "👋", "Help and the /ask assistant", ("help", "ask")),
-    ("economy", "Economy", "💰", "Earn, bank, send and compare money",
-     ("balance", "work", "daily", "crime", "deposit", "withdraw", "send", "rob", "leaderboard")),
+    ("start", "Getting started", "👋", "Help and the /ask assistant (or just @mention Rudhabot)", ("help", "ask")),
+    ("economy", "Economy", "💰", "Earn, send and compare money",
+     ("balance", "work", "daily", "crime", "send", "rob", "leaderboard")),
+    ("bank", "Bank", "🏦", "Deposits, savings, card tiers, credit cards and loans",
+     ("deposit", "withdraw", "bank account | tiers | history", "bank save | unsave", "bank upgrade",
+      "bank card info | pay", "loan", "loaninfo", "pay", "extend")),
     ("shop", "Shop & Café", "🛍️", "Buy, sell and use items", ("shop", "cafe", "buy", "sell", "inventory", "use")),
-    ("loans", "Loans", "🏦", "Borrow from the bank and pay it back", ("loan", "loaninfo", "pay", "extend")),
-    ("crypto", "Crypto", "📈", "Trade Rudharta's coins", ("crypto", "buycoin", "sellcoin", "portfolio")),
+    ("markets", "Markets", "📈", "The stock exchange and crypto",
+     ("stocks market | quote", "stocks buy | sell | portfolio", "crypto", "buycoin", "sellcoin", "portfolio")),
     ("games", "Gambling games", "🎰", "Bet on coins, dice, cards and more",
-     ("coinflip", "dice", "rps", "slots", "roulette", "highlow", "crash", "blackjack")),
+     ("coinflip", "dice", "rps", "slots", "roulette", "highlow", "crash", "blackjack", "baccarat", "craps")),
     ("tcg", "Cloudfall TCG", "⛅", "Asgrelia: Cloudfall, the trading card game",
-     ("tcg starter", "tcg practice", "tcg challenge", "tcg deck build | view | use | analyze",
-      "tcg card | rules | collection | pack | ladder", "tcg match | forfeit | forget-me")),
+     ("tcg starter", "tcg practice", "tcg challenge", "tcg wish banner | pull", "tcg wish shards | daily | craft | convergence",
+      "tcg deck build | view | use | analyze", "tcg card | rules | collection | pack | ladder",
+      "tcg match | forfeit | forget-me")),
     ("community", "Lottery & birthdays", "🎉", "Lottery odds and birthday celebrations",
      ("lottery", "birthday set", "birthday view", "birthday remove", "birthday upcoming")),
-    ("admin", "Admin", "🛠️", "Server administrators only", ("add-money", "remove-money", "create", "oracle status | reload")),
+    ("admin", "Admin", "🛠️", "Server administrators only",
+     ("add-money", "remove-money", "create", "audit", "review list | resolve", "clairvoyance status | reload")),
 ]
 SECTION_BY_KEY = {key: (title, emoji, summary, names) for key, title, emoji, summary, names in SECTIONS}
 
@@ -183,6 +188,66 @@ def get_commands_data():
             "description": "Ask Rudhabot how anything works. Answers come from Rudhabot's own docs (AI-written when OpenAI is configured)."
         },
         {
+            "name": "bank account | tiers | history",
+            "args": "",
+            "description": "Your private bank statement (balances, monthly limits, savings, credit, Clairvoyance tips), the card tiers, and your recent transactions."
+        },
+        {
+            "name": "bank save | unsave",
+            "args": "<amount|all>",
+            "description": "Move bank money into savings (daily interest by card tier) and back (once a day)."
+        },
+        {
+            "name": "bank upgrade",
+            "args": "",
+            "description": "Upgrade your card: Red → Silver → Gold → Platinum for higher limits, interest and credit."
+        },
+        {
+            "name": "bank card info | pay",
+            "args": "[amount] [source]",
+            "description": "Your credit card: balance, limit and statement; pay it from your wallet or bank. Pay for things with pay_with:card."
+        },
+        {
+            "name": "stocks market | quote",
+            "args": "[symbol]",
+            "description": "The Rudharta Exchange: NAS (National Shop) and JOOT (Joot Cafe), priced by what the server buys."
+        },
+        {
+            "name": "stocks buy | sell | portfolio",
+            "args": "<symbol> <shares>",
+            "description": "Trade shares from your wallet (0.5% fee; big orders move the price) and track profit and loss."
+        },
+        {
+            "name": "baccarat",
+            "args": "<bet> <player|banker|tie>",
+            "description": "Punto banco baccarat: Player 1:1, Banker 1:1 minus 5%, Tie 8:1."
+        },
+        {
+            "name": "craps",
+            "args": "<bet> <pass|dontpass|field>",
+            "description": "Craps: Pass Line, Don't Pass or the one-roll Field bet."
+        },
+        {
+            "name": "tcg wish banner | pull",
+            "args": "[count] [banner]",
+            "description": "Skyfall Wishes: this week's featured banner, published rates and pity; make 1 or 10 wishes."
+        },
+        {
+            "name": "tcg wish shards | daily | craft | convergence",
+            "args": "",
+            "description": "Get Cloud Shards (daily, buy, or win matches), craft cards with Vapor Dust, and claim the server-wide Convergence."
+        },
+        {
+            "name": "audit",
+            "args": "[user]",
+            "description": "Admin: the latest economy audit entries (every money change is logged)."
+        },
+        {
+            "name": "review list | resolve",
+            "args": "",
+            "description": "Admin: Clairvoyance's unusual-activity signals, for human review only (nothing is changed automatically)."
+        },
+        {
             "name": "tcg starter",
             "args": "<deck>",
             "description": "Asgrelia: Cloudfall: claim a free starter deck (one of six archetypes)."
@@ -190,7 +255,7 @@ def get_commands_data():
         {
             "name": "tcg practice",
             "args": "[difficulty] [opponent]",
-            "description": "Play Cloudfall against the Oracle, Rudhabot's own trained AI, with coaching hints."
+            "description": "Play Cloudfall against the Clairvoyance, Rudhabot's own trained AI, with coaching hints."
         },
         {
             "name": "tcg challenge",
@@ -200,12 +265,12 @@ def get_commands_data():
         {
             "name": "tcg deck build | view | use | analyze",
             "args": "",
-            "description": "Build decks from your collection; `analyze` runs the Oracle's Deck Doctor against every archetype."
+            "description": "Build decks from your collection; `analyze` runs the Clairvoyance's Deck Doctor against every archetype."
         },
         {
             "name": "tcg card | rules | collection | pack | ladder",
             "args": "",
-            "description": "Look up cards (with the Oracle's similar cards), read the rules, open packs and see the rated ladder."
+            "description": "Look up cards (with the Clairvoyance's similar cards), read the rules, open packs and see the rated ladder."
         },
         {
             "name": "tcg match | forfeit | forget-me",
@@ -378,9 +443,9 @@ def get_commands_data():
             "description": "Add money to a user's account (Admin and Banker)."
         },
         {
-            "name": "oracle status | reload",
+            "name": "clairvoyance status | reload",
             "args": "[version]",
-            "description": "Admin: the Oracle model's version, measured quality, latency and health; reload or roll back."
+            "description": "Admin: the Clairvoyance model's version, measured quality, latency and health; reload or roll back."
         },
         {
             "name": "remove-money",

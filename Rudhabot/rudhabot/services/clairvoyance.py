@@ -1,6 +1,6 @@
-"""The Oracle service: Rudhabot's in-house ML, served to the rest of the bot.
+"""The Clairvoyance service: Rudhabot's in-house ML, served to the rest of the bot.
 
-Everything here is *advisory*. The Oracle ranks moves the engine already says are legal, estimates win probability and
+Everything here is *advisory*. The Clairvoyance ranks moves the engine already says are legal, estimates win probability and
 compares cards; the TCG service applies moves only through `engine.apply`, which re-validates them.
 
 Serving: inference runs in a worker thread (`asyncio.to_thread`) behind a semaphore and a timeout, so the Discord event
@@ -19,16 +19,16 @@ from typing import Optional
 
 import numpy as np
 
-from rudhabot.ml.features import encode
-from rudhabot.ml.nn import OracleNet
-from rudhabot.ml.oracle_store import ArtifactError, ModelStore
+from rudhabot.ml.features import encoder_for
+from rudhabot.ml.nn import _Net
+from rudhabot.ml.model_store import ArtifactError, ModelStore
 from rudhabot.ml.policy import BlendEvaluator, HeuristicEvaluator, NetEvaluator, choose, score_actions, terminal_value
 from rudhabot.tcg import engine as E
 from rudhabot.tcg.cards import CARD_BY_ID, CARD_IDS, CARD_INDEX
 from rudhabot.tcg.decks import ARCHETYPES
 from rudhabot.tcg.state import Game
 
-log = logging.getLogger("rudhabot.oracle")
+log = logging.getLogger("rudhabot.clairvoyance")
 
 DIFFICULTIES = {          # (softmax temperature over win-probabilities, ε random-move rate)
     "easy": (0.08, 0.25),
@@ -44,7 +44,7 @@ class Hint:
     delta: float
 
 
-class OracleService:
+class ClairvoyanceService:
     def __init__(self, models_dir: str = "models", enabled: bool = True, version: Optional[str] = None,
                  timeout: float = 4.0, concurrency: int = 2, rng: Optional[random.Random] = None):
         self.store = ModelStore(models_dir)
@@ -52,7 +52,7 @@ class OracleService:
         self.rng = rng or random.Random()
         self._sem = asyncio.Semaphore(concurrency)
         self.heuristic = HeuristicEvaluator()
-        self.net: Optional[OracleNet] = None
+        self.net: Optional[_Net] = None
         self.load_error: Optional[str] = None
         self.stats = Counter()
         self.latency_ms: deque = deque(maxlen=500)
@@ -60,19 +60,19 @@ class OracleService:
         if enabled:
             self.reload(version)
         else:
-            self.load_error = "disabled by configuration (ORACLE_ENABLED=0)"
+            self.load_error = "disabled by configuration (CLAIRVOYANCE_ENABLED=0)"
 
     # ------------------------------------------------------------------ lifecycle
     def reload(self, version: Optional[str] = None) -> bool:
         try:
             self.net = self.store.load_current(version)
             self.load_error = None
-            log.info("oracle model %s loaded (%d params)", self.version, self.net.n_params())
+            log.info("clairvoyance model %s loaded (%d params)", self.version, self.net.n_params())
             return True
         except (ArtifactError, OSError, ValueError, KeyError) as error:
             self.net = None
             self.load_error = str(error)
-            log.warning("oracle model unavailable, using heuristic fallback: %s", error)
+            log.warning("clairvoyance model unavailable, using heuristic fallback: %s", error)
             return False
 
     @property
@@ -100,7 +100,9 @@ class OracleService:
         return {"model": self.version, "ready": self.ready, "load_error": self.load_error, "serving": entry.get("serving"),
                 "calls": dict(self.stats), "latency_ms_p50": float(np.percentile(lat, 50)),
                 "latency_ms_p95": float(np.percentile(lat, 95)),
-                "metrics": entry.get("metrics", {}).get("oracle"), "strength": entry.get("strength"),
+                # "model" in v2 manifests, "oracle" in the legacy oracle-v1 entry
+                "metrics": entry.get("metrics", {}).get("model") or entry.get("metrics", {}).get("oracle"),
+                "strength": entry.get("strength"),
                 "params": entry.get("params")}
 
     # ------------------------------------------------------------------ guarded execution
@@ -112,10 +114,10 @@ class OracleService:
                 result = await asyncio.wait_for(asyncio.to_thread(fn), timeout=timeout or self.timeout)
         except Exception as error:                     # timeout, model error: degrade, never break the game
             self.stats[f"{task}_fallback"] += 1
-            log.warning("oracle %s failed (%s: %s); using fallback", task, type(error).__name__, error)
+            log.warning("clairvoyance %s failed (%s: %s); using fallback", task, type(error).__name__, error)
             result = fallback()
         self.latency_ms.append((time.perf_counter() - start) * 1000)
-        log.debug("oracle task=%s model=%s ms=%.1f", task, self.version, self.latency_ms[-1])
+        log.debug("clairvoyance task=%s model=%s ms=%.1f", task, self.version, self.latency_ms[-1])
         return result
 
     # ------------------------------------------------------------------ products
@@ -133,9 +135,10 @@ class OracleService:
             return float(self.heuristic.values([g], seat)[0])
         views = []
         for persp in (seat, g.other(seat)):
-            dense, bags = encode(g, persp)
-            bags[0, :] = 0
-            p = float(self.net.predict(dense[None], bags[None])[0])
+            arrays = list(encoder_for(self.net.ARCH)[0](g, persp))
+            arrays[-1] = arrays[-1].copy()
+            arrays[-1][0, :] = 0                           # bags are last for every architecture: hide the hand
+            p = float(self.net.predict(*[a[None] for a in arrays])[0])
             views.append(p if persp == seat else 1 - p)
         return float(np.mean(views))
 
@@ -207,7 +210,7 @@ class OracleService:
         return out
 
     def gauntlet_sync(self, deck: list[str], games_per_archetype: int = 2, budget_s: float = 20.0, seed: int = 0) -> dict:
-        """Play `deck` against each archetype (seat-swapped) with the Oracle piloting both sides; time-bounded."""
+        """Play `deck` against each archetype (seat-swapped) with the Clairvoyance piloting both sides; time-bounded."""
         from rudhabot.ml.policy import SearchPolicy
         policy = SearchPolicy(self.move_evaluator, temperature=0.0)
         rng = random.Random(seed)

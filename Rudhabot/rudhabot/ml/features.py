@@ -1,4 +1,4 @@
-"""State encoding for the Cloudfall Oracle.
+"""State encoding for the Cloudfall Clairvoyance.
 
 `encode(game, seat)` returns what *that player could legitimately know*: the public board, both players' public
 counters, and their own hand. It never reads the opponent's hand or either deck's order (`test_ml` checks this by
@@ -116,3 +116,65 @@ def encode(g: Game, me: int) -> tuple[np.ndarray, np.ndarray]:
 def encode_many(games: list[Game], me: int) -> tuple[np.ndarray, np.ndarray]:
     pairs = [encode(g, me) for g in games]
     return np.stack([p[0] for p in pairs]), np.stack([p[1] for p in pairs])
+
+
+# ====================================================================================== v2: per-slot unit identity
+#
+# v2 keeps every v1 signal and adds, for each of the 8 field slots, *which card* stands there and *what is attached to
+# it*, so the network can learn unit-specific values (a corrupted Fenn is not a corrupted Dren) through a slot encoder
+# shared by all slots. Arrays:
+#   glob  [GLOB_DIM]           global + both players' public counters + Clash preview
+#   slots [8, SLOT_FEATURES]   per-slot numeric attributes (v1 layout); slots 0-3 = me, 4-7 = opponent
+#   cids  [8]                  card index of the unit in each slot, -1 if empty
+#   att   [8, N_CARDS]         attachment counts per slot (equipment, boons, afflictions)
+#   bags  [3, N_CARDS]         own hand, own board, opponent board (as v1)
+FEATURES_V2_VERSION = "cloudfall-features-v2"
+GLOB_DIM = GLOBAL_DIM + 2 * PLAYER_DIM + PREVIEW_DIM
+
+
+def schema_hash_v2() -> str:
+    spec = f"{FEATURES_V2_VERSION}|{GLOB_DIM}|{SLOT_FEATURES}|{N_CARDS}|{','.join(CARD_IDS)}"
+    return hashlib.sha256(spec.encode()).hexdigest()[:16]
+
+
+def encode_v2(g: Game, me: int):
+    dense, bags = encode(g, me)
+    slot_start = GLOBAL_DIM + 2 * PLAYER_DIM
+    glob = np.concatenate([dense[:slot_start], dense[DENSE_DIM - PREVIEW_DIM:]])
+    slots = dense[slot_start:slot_start + 8 * SLOT_FEATURES].reshape(8, SLOT_FEATURES)
+    cids = np.full(8, -1, dtype=np.int32)
+    att = np.zeros((8, N_CARDS), dtype=np.float32)
+    for side, seat in enumerate((me, g.other(me))):
+        for i, u in enumerate(g.players[seat].field):
+            if u is None:
+                continue
+            k = side * 4 + i
+            cids[k] = CARD_INDEX[u.cid]
+            for cid in (*u.equipment(), *u.boons, *u.afflictions):
+                att[k, CARD_INDEX[cid]] += 1
+    return glob, slots, cids, att, bags
+
+
+def encode_many_v2(games: list[Game], me: int):
+    parts = [encode_v2(g, me) for g in games]
+    return tuple(np.stack([p[i] for p in parts]) for i in range(5))
+
+
+def hide_hand_v2(arrays):
+    """Spectator-safe copy: zero the own-hand bag."""
+    glob, slots, cids, att, bags = arrays
+    bags = bags.copy()
+    bags[:, 0, :] = 0
+    return glob, slots, cids, att, bags
+
+
+def _encode_v1(g: Game, me: int):
+    return encode(g, me)
+
+
+ENCODERS = {"v1": (_encode_v1, encode_many, schema_hash), "v2": (encode_v2, encode_many_v2, schema_hash_v2)}
+
+
+def encoder_for(arch: str):
+    """(encode_one, encode_many, schema_hash) for a network architecture."""
+    return ENCODERS[arch]

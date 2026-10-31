@@ -7,7 +7,7 @@ Public API
     decider(game) -> seat | None               who must act
     replay(decks, names, seed, keys, ...)      rebuild a match exactly (restart recovery)
 
-Every decision is a data-only `Act`. Discord, the Oracle AI and the tests all drive the game through the same three calls,
+Every decision is a data-only `Act`. Discord, the Clairvoyance AI and the tests all drive the game through the same three calls,
 so nothing outside this module can adjudicate an outcome. Interpretations of under-specified rules are listed in
 docs/TCG.md and marked `# interp:` below.
 """

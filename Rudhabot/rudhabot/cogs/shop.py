@@ -1,6 +1,8 @@
 """Shop, cafe and inventory commands, plus /use (mystery boxes, lottery tickets, cakes, food and drink)."""
 from __future__ import annotations
 
+from typing import Optional
+
 import discord
 from discord import app_commands
 
@@ -49,9 +51,13 @@ class ShopCog(ServiceCog):
             await interaction.response.send_message(embed=embed, view=view)
 
     @app_commands.command(name="buy", description="Buy an item from the shop or cafe")
-    @app_commands.describe(item="Name of the item to buy", quantity="Quantity of the item to buy")
+    @app_commands.describe(item="Name of the item to buy", quantity="Quantity of the item to buy",
+                           pay_with="Pay from your wallet (default) or with your credit card")
+    @app_commands.choices(pay_with=[app_commands.Choice(name="Wallet", value="wallet"),
+                                    app_commands.Choice(name="Credit card", value="card")])
     @not_in_game()
-    async def buy(self, interaction: discord.Interaction, item: str, quantity: int = 1):
+    async def buy(self, interaction: discord.Interaction, item: str, quantity: int = 1,
+                  pay_with: Optional[app_commands.Choice[str]] = None):
         user, catalog = interaction.user, self.services.catalog
         canonical = catalog.resolve(item)
         if not canonical:
@@ -59,10 +65,11 @@ class ShopCog(ServiceCog):
             return
         emoji, title = catalog.emoji(canonical), canonical.title()
         try:
-            purchase = self.services.shop.buy(user.id, canonical, quantity)
+            purchase = self.services.shop.buy(user.id, canonical, quantity, pay_with.value if pay_with else "wallet")
         except ShopRefused as refusal:
             ephemeral = True
             message = {
+                "card_declined": refusal.data.get("message", "❌ Card declined."),
                 "not_positive": "❌ Quantity must be at least 1",
                 "unknown_item": "❌ Item not found.",
                 "already_bought_special": f"❌ You can only buy one {emoji}**{title}** per month!",
@@ -74,7 +81,8 @@ class ShopCog(ServiceCog):
                 ephemeral = False
             await respond(interaction, error_embed(message, user), ephemeral=ephemeral)
             return
-        await respond(interaction, author_embed(user, f"✅ You bought **{quantity} {emoji}{title}** for {CURRENCY}{purchase.total}", 0x57F287))
+        paid = " on your credit card 💳" if pay_with and pay_with.value == "card" else ""
+        await respond(interaction, author_embed(user, f"✅ You bought **{quantity} {emoji}{title}** for {CURRENCY}{purchase.total}{paid}", 0x57F287))
 
     @app_commands.command(name="sell", description="Sell shop items for half their price.")
     @app_commands.describe(item="Name of the item to sell", quantity="Quantity to sell (default 1)")

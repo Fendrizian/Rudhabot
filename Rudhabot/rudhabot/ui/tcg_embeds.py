@@ -41,7 +41,7 @@ def card_embed(card: Card, similar: list[tuple[str, float]] = ()) -> discord.Emb
         embed.add_field(name="Power / Grade", value=f"{card.power or 'None'}" + (f", Grade {card.grade}" if card.grade else ""),
                         inline=True)
     if similar:
-        embed.add_field(name="🔮 Oracle: plays a similar role to",
+        embed.add_field(name="🔮 Clairvoyance: plays a similar role to",
                         value=", ".join(f"{CARD_BY_ID[c].name}" for c, _ in similar), inline=False)
     embed.set_footer(text="Asgrelia: Cloudfall · base set")
     return embed
@@ -104,7 +104,7 @@ def board_embed(g: Game, record: dict, win_p0: Optional[float] = None, model: st
     recent = [line for line in g.log[-6:]]
     if recent:
         embed.add_field(name="Recent", value="\n".join(recent)[-1024:], inline=False)
-    footer = f"match {record['id']}" + (f" · win% by Oracle {model}, both hands hidden" if win_p0 is not None else "")
+    footer = f"match {record['id']}" + (f" · win% by Clairvoyance {model}, both hands hidden" if win_p0 is not None else "")
     if record.get("coach"):
         footer += " · coaching on (unrated)"
     embed.set_footer(text=footer)
@@ -153,7 +153,7 @@ def deck_embed(name: str, cards: list[str], problems: list[str] = ()) -> discord
 
 def doctor_embed(name: str, report: dict, swaps: list) -> discord.Embed:
     embed = discord.Embed(title=f"🔮 Deck Doctor: {name}", color=CLOUD,
-                          description="The Oracle piloted your deck against each archetype (seat-swapped). Small samples, so "
+                          description="The Clairvoyance piloted your deck against each archetype (seat-swapped). Small samples, so "
                                       "treat these as a rough guide, not a verdict.")
     rows = []
     for key, res in sorted(report["matchups"].items(), key=lambda kv: -kv[1]["score"]):

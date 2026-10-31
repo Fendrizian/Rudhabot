@@ -2,13 +2,21 @@
 
 A Discord economy and games bot (discord.py 2.x) built around **its own intelligence layer**:
 
-- **The Oracle** is an in-house neural model, trained by Rudhabot on self-play of its own card game. It powers the AI
-  opponent, coaching hints, a live win-chance bar, post-match turning points, Deck Doctor and card similarity. See `docs/ML.md`.
-- **Asgrelia: Cloudfall** is a full trading card game built from the TCG Codex: 112 cards, 8 Protocols and 4 Skies, with
-  rated duels in threads and a ladder. See `docs/TCG.md`.
-- **`/ask`** is an assistant grounded in Rudhabot's own docs. It uses OpenAI when configured and local retrieval
-  otherwise. See `docs/OPENAI.md`.
-- Everything from v1 is still here: economy, shop and café, loans, crypto, gambling games, the lottery and birthdays.
+- **Clairvoyance** is Rudhabot's in-house ML, with no hosted model involved. It does three things:
+  - a slot-encoder value network for the card game (AI opponent, coaching, live win chance, Deck Doctor, similar cards,
+    gentle finance tips);
+  - an intent router that turns plain words ("show my inventory") into the right command;
+  - an anomaly monitor that raises review signals for moderators.
+
+  See `docs/ML.md`.
+- **Asgrelia: Cloudfall** is a full trading card game built from the TCG Codex, with rated duels, a ladder and the
+  **Skyfall Wishes** gacha. See `docs/TCG.md`.
+- **The economy** has an audit log of every money change, a bank with card tiers, savings and credit cards, the
+  **Rudharta Exchange** (NAS and JOOT stocks driven by real shop activity) and **Baccarat** and **Craps**. See
+  `docs/ECONOMY.md`.
+- **`/ask`** (or an @mention) routes commands locally, and answers questions with OpenAI when it's configured. See
+  `docs/OPENAI.md`.
+- Everything from v1 is still here.
 
 ## Run
 
@@ -46,7 +54,7 @@ Data files are created in the working directory, exactly where the old bot kept 
 
 Existing files are read unchanged. No migration is needed, and nothing in the old files is rewritten.
 
-The Oracle model ships in `models/` (`oracle-v1`, 173 KB). The bot works without it (`ORACLE_ENABLED=0`): it falls back to a
+The Clairvoyance model ships in `models/` (`oracle-v1`, 173 KB). The bot works without it (`CLAIRVOYANCE_ENABLED=0`): it falls back to a
 deterministic heuristic AI.
 
 ## Test
@@ -58,7 +66,7 @@ python -m unittest discover -s tests -t .      # offline: no Discord connection,
 Rebuild or evaluate the model:
 
 ```bash
-python -m rudhabot.ml.train --version oracle-v2     # ~7 minutes on 4 cores
+python -m rudhabot.ml.train --version clairvoyance-v2     # ~7 minutes on 4 cores
 ```
 
 ```bash
@@ -71,7 +79,11 @@ python -m rudhabot.ml.evaluate
 |---|---|
 | Cloudfall | `/tcg starter`, `/tcg collection`, `/tcg pack`, `/tcg deck build/view/use/analyze`, `/tcg card`, `/tcg rules`, `/tcg practice`, `/tcg challenge`, `/tcg match`, `/tcg forfeit`, `/tcg ladder`, `/tcg forget-me` |
 | Assistant | `/ask <question> [private]` |
-| Model ops (admin) | `/oracle status`, `/oracle reload [version]` |
+| Bank | `/deposit`, `/withdraw` (monthly card limits), `/bank account | tiers | history | save | unsave | upgrade`, `/bank card info | pay` |
+| Markets | `/stocks market | quote | buy | sell | portfolio` |
+| Casino | `/baccarat`, `/craps` |
+| Skyfall Wishes | `/tcg wish banner | pull | shards | daily | craft | convergence` |
+| Admin | `/audit`, `/review list | resolve`, `/clairvoyance status | reload` |
 
 Designed for Discord:
 - Each duel gets its own **thread**, so channels stay readable.
@@ -88,10 +100,10 @@ Each layer only depends on the ones above it.
 |---|---|
 | `settings`, `errors`, `clock` | Immutable config dataclasses (`AISettings.from_env()` for the AI layer), shared exceptions, an injectable clock |
 | `domain/`, `tcg/` | Pure rules, with no Discord and no files. v1 games, plus the Cloudfall engine (`tcg/engine.py`, deterministic and replayable) |
-| `ml/` | The Oracle: features, numpy network, policy and search, self-play, training, evaluation, versioned artifact store |
+| `ml/` | The Clairvoyance: features, numpy network, policy and search, self-play, training, evaluation, versioned artifact store |
 | `llm/` | Provider interface (`LanguageModel`) and the OpenAI Responses client, local retrieval, rate limits, the assistant |
 | `persistence/` | `JsonStore` (atomic writes; corrupt files are backed up) and repositories, including `TcgRepository` |
-| `services/` | v1 services, plus `OracleService` (threaded, bounded, timed out, with fallback) and `TcgService` (match lifecycle) |
+| `services/` | v1 services, plus `ClairvoyanceService` (threaded, bounded, timed out, with fallback) and `TcgService` (match lifecycle) |
 | `ui/`, `views/` | Embeds and components (`MatchButton` dynamic items survive restarts) |
 | `cogs/` | Thin slash commands, one cog per area |
 | `container.py`, `app.py` | Composition root |

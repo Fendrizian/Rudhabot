@@ -17,15 +17,22 @@ from rudhabot.llm.knowledge import KnowledgeBase
 from rudhabot.llm.limits import RateLimiter
 from rudhabot.persistence.birthdays import BirthdayRegistry, CelebrationLog
 from rudhabot.persistence.json_store import JsonStore
+from rudhabot.persistence.ledger import Ledger
 from rudhabot.persistence.lottery import LotteryLedger, empty_ledger
 from rudhabot.persistence.prices import PriceBook, starting_prices
 from rudhabot.persistence.specials import SpecialStockRepository, initial_stocks
 from rudhabot.persistence.tcg import TcgRepository, empty_matches
 from rudhabot.persistence.users import UserRepository
+from rudhabot.ml.intent import IntentRouter
+from rudhabot.services.audit import AuditService
+from rudhabot.services.bank import BankService
 from rudhabot.services.birthdays import BirthdayService
+from rudhabot.services.gacha import GachaService
+from rudhabot.services.review import ReviewService
+from rudhabot.services.stocks import StockExchange, initial_state
 from rudhabot.services.crypto_market import CryptoMarket
 from rudhabot.services.loans import LoanService
-from rudhabot.services.oracle import OracleService
+from rudhabot.services.clairvoyance import ClairvoyanceService
 from rudhabot.services.lottery import LotteryService
 from rudhabot.services.permissions import AdminPolicy
 from rudhabot.services.sessions import GamblingSessions
@@ -57,9 +64,15 @@ class Services:
     messenger: Messenger
     loan_notices: LoanNotifier
     announcer: Announcer
-    oracle: OracleService
+    clairvoyance: ClairvoyanceService
     tcg: TcgService
     assistant: Assistant
+    audit: AuditService
+    bank: BankService
+    stocks: StockExchange
+    gacha: GachaService
+    reviews: ReviewService
+    intents: IntentRouter
 
     @classmethod
     def build(cls, settings: Settings, client: discord.Client, *, clock: Clock | None = None,
@@ -71,15 +84,25 @@ class Services:
         symbols = [c.symbol for c in coins]
         catalog = ItemCatalog()
 
-        users = UserRepository(JsonStore(paths.data, dict), symbols)
+        # the audit trail comes first: every repository that holds money reports to it
+        audit = AuditService(Ledger(paths.ledger), clock, settings.channels.audit)
+        reviews = ReviewService(JsonStore(paths.reviews, dict), audit.ledger, Ledger(paths.failures), clock)
+        audit.listeners.append(reviews.on_audit)
+        users = UserRepository(JsonStore(paths.data, dict), symbols, audit=audit)
         stocks = SpecialStockRepository(JsonStore(paths.specials, lambda: initial_stocks(catalog.special_item_names(), 20)))
         menu = CafeMenu(catalog, stocks, clock)
         messenger = Messenger(client)
         ai = settings.ai
-        oracle = OracleService(ai.models_dir, enabled=ai.oracle_enabled, version=ai.oracle_version,
+        clairvoyance = ClairvoyanceService(ai.models_dir, enabled=ai.clairvoyance_enabled, version=ai.clairvoyance_version,
                                rng=random.Random(rng.random()))
-        tcg = TcgService(TcgRepository(JsonStore(paths.tcg, dict), JsonStore(paths.tcg_matches, empty_matches)),
-                         users, clock, rng, TcgTerms.from_env(), oracle=oracle)
+        tcg_repo = TcgRepository(JsonStore(paths.tcg, dict), JsonStore(paths.tcg_matches, empty_matches))
+        tcg = TcgService(tcg_repo, users, clock, rng, TcgTerms.from_env(), clairvoyance=clairvoyance)
+        bank = BankService(JsonStore(paths.bank, dict), users, clock, audit)
+        exchange = StockExchange(JsonStore(paths.stocks, lambda: initial_state(clock.now().isoformat(timespec="seconds"))),
+                                 users, clock, random.Random(rng.random()), audit)
+        shop = ShopService(catalog, menu, users, stocks, bank=bank, exchange=exchange)
+        gacha = GachaService(tcg_repo, JsonStore(paths.gacha, dict), users, clock, rng, audit, bank)
+        tcg.gacha = gacha
 
         return cls(
             settings=settings,
@@ -88,7 +111,7 @@ class Services:
             catalog=catalog,
             users=users,
             menu=menu,
-            shop=ShopService(catalog, menu, users, stocks),
+            shop=shop,
             sessions=GamblingSessions(),
             admin=AdminPolicy(settings.admin_role_id),
             loans=LoanService(users, settings.loans, clock),
@@ -102,13 +125,25 @@ class Services:
             messenger=messenger,
             loan_notices=LoanNotifier(messenger),
             announcer=Announcer(messenger, settings.channels, catalog),
-            oracle=oracle,
+            clairvoyance=clairvoyance,
             tcg=tcg,
-            assistant=_build_assistant(settings, tcg, oracle),
+            assistant=_build_assistant(settings, tcg, clairvoyance),
+            audit=audit,
+            bank=bank,
+            stocks=exchange,
+            gacha=gacha,
+            reviews=reviews,
+            intents=IntentRouter(_intent_model(ai.models_dir)),
         )
 
 
-def _build_assistant(settings: Settings, tcg: TcgService, oracle: OracleService) -> Assistant:
+def _intent_model(models_dir: str):
+    import os
+    path = os.path.join(models_dir, "intent-v1.npz")
+    return path if os.path.exists(path) else None
+
+
+def _build_assistant(settings: Settings, tcg: TcgService, clairvoyance: ClairvoyanceService) -> Assistant:
     """The LLM is optional: without OPENAI_API_KEY (or with RUDHABOT_LLM_ENABLED=0) /ask answers from local docs."""
     import os
     import logging
@@ -134,7 +169,7 @@ def _build_assistant(settings: Settings, tcg: TcgService, oracle: OracleService)
         log.warning("OpenAI assistant disabled: %s. /ask will answer from local docs only.", reason)
     limiter = RateLimiter(ai.llm_per_user_per_hour, ai.llm_per_guild_per_hour, ai.llm_daily_budget)
     return Assistant(KnowledgeBase(), model, limiter, ai.llm_max_output_tokens,
-                     status_provider=lambda uid: tcg_status(tcg, uid), similar_cards=oracle.similar_cards,
+                     status_provider=lambda uid: tcg_status(tcg, uid), similar_cards=clairvoyance.similar_cards,
                      disabled_reason=reason)
 
 

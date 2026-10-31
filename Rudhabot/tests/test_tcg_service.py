@@ -9,7 +9,7 @@ from rudhabot.clock import FixedClock
 from rudhabot.persistence.json_store import JsonStore
 from rudhabot.persistence.tcg import TcgRepository
 from rudhabot.persistence.users import UserRepository
-from rudhabot.services.oracle import OracleService
+from rudhabot.services.clairvoyance import ClairvoyanceService
 from rudhabot.services.tcg import TcgError, TcgService, TcgTerms, parse_deck_text, safe_default
 from rudhabot.settings import DEFAULT_MODELS_DIR
 from rudhabot.tcg import engine as E
@@ -19,9 +19,9 @@ ALICE, BOB, CARL = 1001, 1002, 1003
 
 
 class Base(unittest.IsolatedAsyncioTestCase):
-    def build(self, oracle=None):
+    def build(self, clairvoyance=None):
         return TcgService(TcgRepository(JsonStore(self.path("tcg.json"), dict), JsonStore(self.path("m.json"), dict)),
-                          self.users, self.clock, random.Random(42), TcgTerms(), oracle=oracle)
+                          self.users, self.clock, random.Random(42), TcgTerms(), clairvoyance=clairvoyance)
 
     def path(self, name):
         return os.path.join(self.tmp.name, name)
@@ -121,7 +121,7 @@ class MatchTests(Base):
         self.assertIsNone(restarted.repo.get_match(match.id))
 
     async def test_practice_ai_moves_until_the_human_must_decide(self):
-        svc = self.build(oracle=OracleService(DEFAULT_MODELS_DIR, rng=random.Random(0)))
+        svc = self.build(clairvoyance=ClairvoyanceService(DEFAULT_MODELS_DIR, rng=random.Random(0)))
         match = svc.create_practice(ALICE, "Alice", "hard", opponent="storm")
         self.svc = svc
         for _ in range(60):

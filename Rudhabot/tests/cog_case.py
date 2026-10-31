@@ -54,6 +54,7 @@ class CogTestCase(unittest.IsolatedAsyncioTestCase):
         it = FakeInteraction(self.bot, actor, guild)
         it.command = command
         try:
+            await self.bot.tree.interaction_check(it)          # discord.py calls the tree's check first
             await command._check_can_run(it)
             await command.callback(command.binding, it, **kwargs)
         except discord.app_commands.AppCommandError as error:

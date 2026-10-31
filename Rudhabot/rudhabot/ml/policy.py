@@ -1,4 +1,4 @@
-"""Move selection for the Oracle: 1-ply afterstate search over the engine's legal actions.
+"""Move selection for the Clairvoyance: 1-ply afterstate search over the engine's legal actions.
 
 The engine enumerates legal moves; an evaluator scores the state each move leads to; the policy picks one. The AI therefore
 can only ever *choose among moves the rules already allow*. Before searching, hidden information is re-sampled
@@ -13,8 +13,8 @@ from typing import Optional, Protocol, Sequence
 
 import numpy as np
 
-from rudhabot.ml.features import _preview, encode_many
-from rudhabot.ml.nn import OracleNet
+from rudhabot.ml.features import _preview, encoder_for
+from rudhabot.ml.nn import _Net
 from rudhabot.tcg import engine as E
 from rudhabot.tcg.state import Game
 
@@ -48,9 +48,10 @@ class HeuristicEvaluator:
 
 
 class NetEvaluator:
-    def __init__(self, net: OracleNet, name: Optional[str] = None):
+    def __init__(self, net: _Net, name: Optional[str] = None):
         self.net = net
-        self.name = name or net.meta.get("version", "oracle")
+        self.name = name or net.meta.get("version", "clairvoyance")
+        self._encode_many = encoder_for(net.ARCH)[1]
 
     def values(self, games: Sequence[Game], me: int) -> np.ndarray:
         out = np.empty(len(games), dtype=np.float32)
@@ -59,17 +60,16 @@ class NetEvaluator:
             if g.over:
                 out[i] = terminal_value(g, me)
         if live:
-            dense, bags = encode_many([games[i] for i in live], me)
-            out[live] = self.net.predict(dense, bags)
+            out[live] = self.net.predict(*self._encode_many([games[i] for i in live], me))
         return out
 
 
 class BlendEvaluator:
     """logit(P) = logit(P_net) + w * logit(P_heuristic): the learned model plus the hand-written prior."""
 
-    def __init__(self, net: OracleNet, weight: float = 0.5, name: Optional[str] = None):
+    def __init__(self, net: _Net, weight: float = 0.5, name: Optional[str] = None):
         self.net_eval, self.heuristic, self.weight = NetEvaluator(net), HeuristicEvaluator(), weight
-        self.name = name or f"{net.meta.get('version', 'oracle')}+h{weight:g}"
+        self.name = name or f"{net.meta.get('version', 'clairvoyance')}+h{weight:g}"
 
     def values(self, games: Sequence[Game], me: int) -> np.ndarray:
         p_net = np.clip(self.net_eval.values(games, me), 1e-4, 1 - 1e-4)
@@ -113,23 +113,29 @@ def score_actions(g: Game, evaluator: Evaluator, rng: random.Random, use_determi
     return ranked
 
 
-def choose(g: Game, evaluator: Evaluator, rng: random.Random, temperature: float = 0.0, epsilon: float = 0.0):
+def choose_scored(g: Game, evaluator: Evaluator, rng: random.Random, temperature: float = 0.0, epsilon: float = 0.0):
+    """(action, estimated value of the state it leads to for the decider, or None if not evaluated)."""
     acts = E.legal_actions(g)
     if len(acts) == 1:
-        return acts[0]
+        return acts[0], None
     if epsilon and rng.random() < epsilon:
-        return rng.choice(acts)
+        return rng.choice(acts), None
     ranked = score_actions(g, evaluator, rng)
     if temperature <= 0:
-        return ranked[0][0]
+        return ranked[0]
     logits = np.array([v for _, v in ranked]) / temperature
     probs = np.exp(logits - logits.max())
     probs /= probs.sum()
-    return ranked[int(rng.choices(range(len(ranked)), weights=probs.tolist())[0])][0]
+    return ranked[int(rng.choices(range(len(ranked)), weights=probs.tolist())[0])]
+
+
+def choose(g: Game, evaluator: Evaluator, rng: random.Random, temperature: float = 0.0, epsilon: float = 0.0):
+    return choose_scored(g, evaluator, rng, temperature, epsilon)[0]
 
 
 class RandomPolicy:
     name = "random"
+    last_value = None
 
     def pick(self, g: Game, rng: random.Random):
         return rng.choice(E.legal_actions(g))
@@ -139,6 +145,8 @@ class SearchPolicy:
     def __init__(self, evaluator: Evaluator, temperature: float = 0.0, epsilon: float = 0.0):
         self.evaluator, self.temperature, self.epsilon = evaluator, temperature, epsilon
         self.name = evaluator.name
+        self.last_value: Optional[float] = None       # value of the chosen move's afterstate (for TD targets)
 
     def pick(self, g: Game, rng: random.Random):
-        return choose(g, self.evaluator, rng, self.temperature, self.epsilon)
+        act, self.last_value = choose_scored(g, self.evaluator, rng, self.temperature, self.epsilon)
+        return act

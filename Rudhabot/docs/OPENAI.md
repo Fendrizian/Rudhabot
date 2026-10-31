@@ -5,14 +5,14 @@ OpenAI is Rudhabot's **second** intelligence component. It handles open-ended la
 - explaining Rudhabot's features and the Cloudfall rules;
 - narrating finished matches.
 
-Game logic, rewards and the in-house Oracle never depend on it, and every Rudhabot feature works without it.
+Game logic, rewards and the in-house Clairvoyance never depend on it, and every Rudhabot feature works without it.
 
 ## Routing: who decides what
 
 | Task | Handled by | Why |
 |---|---|---|
 | Legal moves, outcomes, rewards, ratings, balances, permissions | Deterministic code (`tcg/engine.py`, services) | Must be exact and server-authoritative |
-| Win probability, AI moves, hints, Deck Doctor, similar cards | In-house Oracle (`docs/ML.md`) | Fast (sub-millisecond), private, owned, measurable |
+| Win probability, AI moves, hints, Deck Doctor, similar cards | In-house Clairvoyance (`docs/ML.md`) | Fast (sub-millisecond), private, owned, measurable |
 | Finding Rudhabot's own docs, rules or cards | Local BM25 retrieval (`llm/knowledge.py`) | Grounding; also the offline answer |
 | General knowledge; phrasing an answer, explaining a rule, writing a recap | OpenAI Responses API | Language quality; not authoritative about Rudhabot |
 
@@ -25,7 +25,7 @@ Game logic, rewards and the in-house Oracle never depend on it, and every Rudhab
    ```bash
    python -m rudhabot.llm.check "What's the mass of the sun?"
    ```
-3. `/oracle status` (admin) shows whether the assistant is on, why it is off, its call counts and the last provider error.
+3. `/clairvoyance status` (admin) shows whether the assistant is on, why it is off, its call counts and the last provider error.
 
 When the assistant is off, `/ask` still answers questions about Rudhabot from the local docs. For general questions it
 says that the AI is off, and why, instead of returning an unrelated document.
@@ -61,11 +61,11 @@ says that the AI is off, and why, instead of returning an unrelated document.
    neutralised, and replies are sent with `AllowedMentions.none()`. Suggested commands are kept only if they exist in
    Rudhabot, and are **shown, never executed**.
 8. **Fallback.** Any error, timeout, invalid output or runaway tool loop produces the deterministic local answer instead,
-   and `last_error` is recorded for `/oracle status`. The footer always says whether the answer was written by AI or taken
+   and `last_error` is recorded for `/clairvoyance status`. The footer always says whether the answer was written by AI or taken
    from the built-in docs.
 
 The **Chronicle** is a 2–3 sentence recap posted when a match ends. It is written only from engine facts (names, winner,
-reason, rounds, final Resolve) and the Oracle's turning points, and falls back to a plain template.
+reason, rounds, final Resolve) and the Clairvoyance's turning points, and falls back to a plain template.
 
 ## Configuration (environment variables or `.env`)
 

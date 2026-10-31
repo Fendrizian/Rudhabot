@@ -1,4 +1,4 @@
-"""Command-level tests for /tcg, /ask and /oracle through the real bot, cogs and services (no network)."""
+"""Command-level tests for /tcg, /ask and /clairvoyance through the real bot, cogs and services (no network)."""
 import discord
 
 from rudhabot.tcg import engine as E
@@ -42,10 +42,10 @@ class TcgCogTests(TcgCogBase):
         self.assertIn("already claimed", again.text())
         self.assertEqual(again.ephemeral(), [True])
 
-    async def test_card_lookup_shows_text_and_oracle_neighbours(self):
+    async def test_card_lookup_shows_text_and_clairvoyance_neighbours(self):
         it = await self.invoke("tcg card", self.alice, name="Wahen")
         self.assertIn("Valleyflow", it.text())
-        self.assertIn("Oracle", it.text())
+        self.assertIn("Clairvoyance", it.text())
 
     async def test_practice_match_full_flow_through_buttons_and_picker(self):
         await self.invoke("tcg starter", self.alice, deck=self.choice("vanguard"))
@@ -72,7 +72,7 @@ class TcgCogTests(TcgCogBase):
             await cog.on_move(pick, match.id, act.key, act.label, picker.version)
             self.assertIn("✅", pick.text())
             moves += 1
-        self.assertGreater(len(match.record["keys"]), moves)                     # the Oracle moved too
+        self.assertGreater(len(match.record["keys"]), moves)                     # the Clairvoyance moved too
         self.assertTrue(board.edits)                                             # the public board was refreshed
 
     async def test_stale_menus_are_refused(self):
@@ -161,15 +161,15 @@ class BoardPermissionTests(TcgCogBase):
         self.assertIsInstance(press.log[1][1]["view"], MovePicker)
 
 
-class AssistantAndOracleCogTests(CogTestCase):
+class AssistantAndClairvoyanceCogTests(CogTestCase):
     async def test_ask_without_openai_uses_local_docs_and_discloses_it(self):
-        it = await self.run_command("ask", self.alice, question="how do loans work?")
+        it = await self.run_command("ask", self.alice, question="what's the capital of france")
         footer = it.last_embed.footer.text
         self.assertIn("built-in docs", footer)
-        self.assertIn("loan", it.text().lower())
+        self.assertIn("AI answers are off", it.text())
 
-    async def test_oracle_status_is_admin_only(self):
-        command = self.bot.tree.get_command("oracle").get_command("status")
+    async def test_clairvoyance_status_is_admin_only(self):
+        command = self.bot.tree.get_command("clairvoyance").get_command("status")
         it = FakeInteraction(self.bot, self.alice)
         it.command = command
         try:

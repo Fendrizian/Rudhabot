@@ -1,4 +1,4 @@
-"""Evaluation for the Cloudfall Oracle: probabilistic quality (log-loss, Brier, calibration, AUC), playing strength
+"""Evaluation for the Cloudfall Clairvoyance: probabilistic quality (log-loss, Brier, calibration, AUC), playing strength
 (seat-swapped arenas with Wilson 95% intervals) and serving latency.
 
     python -m rudhabot.ml.evaluate                  # evaluate the current artifact
@@ -64,11 +64,12 @@ def prob_metrics(p: np.ndarray, y: np.ndarray) -> dict:
 
 def latency(net, n: int = 300, seed: int = 0) -> dict:
     """Measured wall-clock for (a) one network evaluation and (b) a full AI move decision on real mid-game states."""
-    from rudhabot.ml.features import encode
+    from rudhabot.ml.features import encoder_for
     from rudhabot.ml.policy import NetEvaluator, choose
     from rudhabot.ml.selfplay import deck_pair
     from rudhabot.tcg import engine as E
     from rudhabot.tcg.decks import ARCHETYPES
+    encode_one = encoder_for(net.ARCH)[0]
     rng = random.Random(seed)
     states = []
     for s in range(40):
@@ -84,9 +85,9 @@ def latency(net, n: int = 300, seed: int = 0) -> dict:
     evaluator = NetEvaluator(net)
     for i in range(n):
         g = states[i % len(states)]
-        dense, bags = encode(g, E.decider(g))
+        arrays = encode_one(g, E.decider(g))
         t = time.perf_counter()
-        net.predict(dense[None], bags[None])
+        net.predict(*[a[None] for a in arrays])
         evals.append(time.perf_counter() - t)
     for g in states:
         branching.append(len(E.legal_actions(g)))
@@ -99,7 +100,7 @@ def latency(net, n: int = 300, seed: int = 0) -> dict:
 
 
 def main() -> None:
-    from rudhabot.ml.oracle_store import ModelStore
+    from rudhabot.ml.model_store import ModelStore
     from rudhabot.ml.selfplay import PolicySpec, arena
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models", default="models")

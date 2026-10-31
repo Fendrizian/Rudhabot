@@ -143,19 +143,37 @@ class EconomyCog(ServiceCog):
         self.users.update(interaction.user.id, **{source: account[source] - amount, destination: account[destination] + amount})
         await respond(interaction, _plain(interaction.user, verb.format(c=CURRENCY, n=amount), color))
 
-    @app_commands.command(name="deposit", description="Deposit money to your bank")
+    async def _bank_move(self, interaction: discord.Interaction, amount: str, kind: str, verb: str, color: int):
+        """Deposits and withdrawals go through the bank, which enforces the card tier's monthly limits."""
+        from rudhabot.services.bank import BankRefused
+        text = amount.strip().lower()
+        if text != "all":
+            try:
+                value = parse_amount(amount, 0)
+            except AmountError:
+                await respond(interaction, _plain(interaction.user, INVALID_AMOUNT))
+                return
+            if value <= 0:
+                await respond(interaction, _plain(interaction.user, NOT_POSITIVE))
+                return
+        try:
+            moved = self.services.bank.transfer(interaction.user.id, None if text == "all" else value, kind)
+        except BankRefused as refusal:
+            await respond(interaction, _plain(interaction.user, str(refusal)))
+            return
+        await respond(interaction, _plain(interaction.user, verb.format(c=CURRENCY, n=moved), color))
+
+    @app_commands.command(name="deposit", description="Deposit money to your bank (monthly limit depends on your card tier)")
     @app_commands.describe(amount="Amount to deposit or 'all'")
     @not_in_game()
     async def deposit(self, interaction: discord.Interaction, amount: str):
-        await self._bank_transfer(interaction, amount, "wallet", "bank", "❌ You don't have enough money in your wallet.",
-                                  "🏦 You deposited **{c}{n}** to your bank.", 0x206694)
+        await self._bank_move(interaction, amount, "deposit", "🏦 You deposited **{c}{n}** to your bank.", 0x206694)
 
-    @app_commands.command(name="withdraw", description="Withdraw money from your bank")
+    @app_commands.command(name="withdraw", description="Withdraw money from your bank (monthly limit depends on your card tier)")
     @app_commands.describe(amount="Amount to withdraw or 'all'")
     @not_in_game()
     async def withdraw(self, interaction: discord.Interaction, amount: str):
-        await self._bank_transfer(interaction, amount, "bank", "wallet", "❌ You don't have enough money in your bank.",
-                                  "🏦 You withdrew **{c}{n}** to your wallet.", 0x3498DB)
+        await self._bank_move(interaction, amount, "withdraw", "🏦 You withdrew **{c}{n}** to your wallet.", 0x3498DB)
 
     @app_commands.command(name="send", description="Give money from your wallet to another user")
     @app_commands.describe(target="The user to give money to", amount="Amount of money to give or 'all'")

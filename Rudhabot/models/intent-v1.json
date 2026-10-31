@@ -1,0 +1,76 @@
+{
+  "model": "intent-v1",
+  "labels": 28,
+  "train_examples": 2538,
+  "temperature": 1.2,
+  "test": {
+    "n": 58,
+    "accuracy": 0.8103448275862069,
+    "macro_f1": 0.7974025974025974,
+    "ece": 0.09065287380382933,
+    "confident_answers": {
+      "0.6": {
+        "coverage": 0.8103448275862069,
+        "accuracy": 0.9148936170212766
+      }
+    },
+    "errors": [
+      [
+        "i'm lost, show me around",
+        "shop",
+        "help"
+      ],
+      [
+        "am i broke",
+        "bank",
+        "balance"
+      ],
+      [
+        "what's in my backpack",
+        "balance",
+        "inventory"
+      ],
+      [
+        "what's cooking at joot",
+        "chat",
+        "cafe"
+      ],
+      [
+        "how do i get a gold card",
+        "gacha",
+        "bank"
+      ],
+      [
+        "how much do i owe on my card",
+        "loan",
+        "card"
+      ],
+      [
+        "how is nas trading today",
+        "chat",
+        "stocks"
+      ],
+      [
+        "i want to invest in joot",
+        "inventory",
+        "stocks"
+      ],
+      [
+        "i want a card duel",
+        "card",
+        "tcg_play"
+      ],
+      [
+        "what does taint do",
+        "help",
+        "tcg_rules"
+      ],
+      [
+        "what's on the banner this week",
+        "chat",
+        "gacha"
+      ]
+    ]
+  },
+  "data": "developer-written phrases with augmentation; TEST phrasings written separately, never trained on"
+}

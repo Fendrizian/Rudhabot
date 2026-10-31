@@ -42,7 +42,7 @@ class HelpCommandTests(CogTestCase):
         self.assertIn(NavButton, kinds)
 
     async def test_help_with_a_section_jumps_straight_to_it(self):
-        section = discord.app_commands.Choice(name="Loans", value="loans")
+        section = discord.app_commands.Choice(name="Bank", value="bank")
         it = await self.run_command("help", self.alice, section=section)
         self.assertIn("/loan <amount> <days>", it.text())
         self.assertNotIn("/slots", it.text())
