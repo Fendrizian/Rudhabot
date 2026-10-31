@@ -5,9 +5,10 @@
   `alphabetical()` in `Rudhabot/rudhabot/views/help.py` does the sorting, and `tests/test_help.py` enforces it. New
   commands just need an entry in `get_commands_data()` and a section in `SECTIONS`, with no manual ordering.
   `test_every_registered_slash_command_is_documented` fails if a command is missing from help.
-- `/help` keeps the bot icon (`BOTICON`) in its title. Every help page embeds the Digital Research Institute banner
-  (`rudhabot/assets/dri.png`: the wide 960×540 red version with a transparent background, readable on light and
-  dark themes) as a full-size image, uploaded with the message as `attachment://dri.png`.
+- `/help` keeps the bot icon (`BOTICON`) in its title. **Only the main help page (the overview) shows the Digital
+  Research Institute banner** (`rudhabot/assets/dri.png`: the wide 960×540 red version with a transparent background).
+  It is uploaded as `attachment://dri.png`. Section pages and the full list have no image, and navigation sets the
+  message's attachments explicitly (`_show` in `views/help.py`).
 
 ## Checks
 - Run the tests from `Rudhabot/` (offline, no Discord or OpenAI calls):

@@ -43,13 +43,13 @@ class HelpDataTests(CogTestCase):
             samples = __import__("re").findall(r"`/([^`]+)`", field.value)
             self.assertTrue(all(a.casefold() <= b.casefold() for a, b in zip(samples, samples[1:])), field.name)
 
-    def test_every_page_embeds_the_dri_emblem_and_keeps_the_bot_icon(self):
+    def test_only_the_main_page_embeds_the_dri_banner(self):
         from rudhabot.ui.theme import BOTICON
         from rudhabot.views.help import HELP_IMAGE
         self.assertTrue(HELP_IMAGE.endswith("dri.png"))
-        for target in ["home", "full"] + [k for k, *_ in SECTIONS]:
-            embed = render(target)[0]
-            self.assertEqual(embed.image.url, "attachment://dri.png", target)
+        self.assertEqual(render("home")[0].image.url, "attachment://dri.png")
+        for target in ["full"] + [k for k, *_ in SECTIONS]:
+            self.assertIsNone(render(target)[0].image.url, target)
         self.assertTrue(render("home")[0].title.startswith(BOTICON))
         self.assertIn("Copyright 2026.", render("home")[0].description)
 
@@ -71,6 +71,7 @@ class HelpCommandTests(CogTestCase):
         it = await self.run_command("help", self.alice, section=section)
         self.assertIn("/loan <amount> <days>", it.text())
         self.assertNotIn("/slots", it.text())
+        self.assertNotIn("file", it.log[0][1])                             # no banner on a section page
         full = await self.run_command("help", self.alice, section=discord.app_commands.Choice(name="Full", value="full"))
         self.assertIn(f"Page 1/{full_pages()}", full.last_embed.footer.text)
 
@@ -85,12 +86,12 @@ class HelpCommandTests(CogTestCase):
         await SectionSelect().callback(owner)
         self.assertEqual(owner.log[0][0], "edit_message")
         self.assertIn("/blackjack", owner.text())
+        self.assertEqual(owner.log[0][1]["attachments"], [])               # leaving the main page drops the banner
         other = click(self.bob, self.alice.id)
         await SectionSelect().callback(other)
         self.assertEqual(other.log[0][0], "send")
         self.assertTrue(other.log[0][1]["ephemeral"])
-        self.assertEqual(other.log[0][1]["file"].filename, "dri.png")    # private copies carry their own upload
-        self.assertNotIn("file", owner.log[0][1])                          # edits reuse the original attachment
+        self.assertNotIn("file", other.log[0][1])                          # a section copy has no banner
 
     async def test_navigation_works_from_custom_ids_alone(self):
         # e.g. after a restart: discord.py rebuilds the item from its id
@@ -99,6 +100,8 @@ class HelpCommandTests(CogTestCase):
         it = FakeInteraction(self.bot, self.alice)
         await rebuilt.callback(it)
         self.assertIn(f"Page 3/{full_pages()}", it.last_embed.footer.text)
+        self.assertEqual(it.log[0][1]["attachments"], [])
         home = FakeInteraction(self.bot, self.alice)
         await NavButton("home", 0).callback(home)
         self.assertEqual(len(home.last_embed.fields), len(SECTIONS))
+        self.assertEqual([a.filename for a in home.log[0][1]["attachments"]], ["dri.png"])   # back home: banner returns

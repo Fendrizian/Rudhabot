@@ -22,9 +22,9 @@ ABOUT = ("**Rudhabot** is a bot specialized for the Rudharta Discord server, wit
          "needs. **Rudhabot** is developed by the Digital Research Institute, and as such is the property of the Kingdom "
          "of Rudharta created by ``fendrizian``. Copyright 2026.")
 THUMBNAIL = "https://micronations.wiki/images/en/images/images/6/6a/Flag_of_Rudharta.png"
-# The Digital Research Institute emblem, shown full-size on every help page. It is uploaded with the help message and
-# referenced as attachment://dri.png; Discord keeps the attachment when the message is edited, so page changes don't
-# re-upload it.
+# The Digital Research Institute banner, shown full-size on the main help page (the overview) only. It is uploaded with
+# the message and referenced as attachment://dri.png. Discord keeps attachments across edits and would show an
+# unreferenced one as a loose image, so every page change sets the attachments explicitly (see _show).
 HELP_IMAGE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "dri.png")
 HELP_IMAGE_NAME = "dri.png"
 
@@ -38,6 +38,16 @@ def _with_image(embed: discord.Embed) -> discord.Embed:
     if os.path.exists(HELP_IMAGE):
         embed.set_image(url=f"attachment://{HELP_IMAGE_NAME}")
     return embed
+
+
+def shows_image(embed: discord.Embed) -> bool:
+    return embed.image.url == f"attachment://{HELP_IMAGE_NAME}"
+
+
+def image_upload(embed: discord.Embed) -> dict:
+    """Keyword arguments for sending `embed`: the banner file when the page shows it, nothing otherwise."""
+    image = help_file() if shows_image(embed) else None
+    return {"file": image} if image else {}
 
 # (key, title, emoji, one-line summary, command names; displayed alphabetically by alphabetical())
 SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
@@ -132,11 +142,11 @@ async def _show(interaction: Interaction, embed: discord.Embed, view: ui.View) -
     meta = getattr(message, "interaction_metadata", None) if message is not None else None
     owner = getattr(getattr(meta, "user", None), "id", None)
     if owner is None or owner == interaction.user.id or getattr(message, "flags", None) and message.flags.ephemeral:
-        await interaction.response.edit_message(embed=embed, view=view)
+        # the banner belongs to the overview only: re-attach it there, drop it everywhere else
+        image = help_file() if shows_image(embed) else None
+        await interaction.response.edit_message(embed=embed, view=view, attachments=[image] if image else [])
     else:
-        image = help_file()
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True,
-                                                **({"file": image} if image else {}))
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True, **image_upload(embed))
 
 
 class SectionSelect(ui.DynamicItem[ui.Select], template=r"help:menu"):
@@ -196,8 +206,8 @@ def render(target: str, page: int = 0) -> tuple[discord.Embed, ui.View]:
     elif target in SECTION_BY_KEY:
         embed, view = section_embed(target), help_view(target)
     else:
-        embed, view = overview_embed(), help_view("home")
-    return _with_image(embed), view
+        return _with_image(overview_embed()), help_view("home")          # the banner is on the main page only
+    return embed, view
 
 
 def get_commands_data():
