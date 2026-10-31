@@ -20,14 +20,32 @@ class HelpDataTests(CogTestCase):
         registered = {c.name for c in self.bot.tree.get_commands()}
         self.assertEqual(registered - documented, set())
 
-    def test_full_list_shows_every_command_once_in_section_order(self):
+    def test_full_list_shows_every_command_once_alphabetically(self):
         seen = []
         for page in range(full_pages()):
             embed, _ = render("full", page)
             seen += [f.name for f in embed.fields]
         self.assertEqual(len(seen), len(get_commands_data()))
         self.assertEqual(len(set(seen)), len(seen))
-        self.assertEqual(ordered_commands()[0]["name"], SECTIONS[0][4][0])
+        self.assertEqual([c["name"] for c in ordered_commands()],
+                         sorted((c["name"] for c in get_commands_data()), key=str.casefold))
+
+    def test_every_view_lists_commands_alphabetically(self):
+        # house rule: alphabetical in every section, in the full list and in the overview samples
+        for key, *_ in SECTIONS:
+            names = [f.name.lstrip("/").split(" <")[0].split(" [")[0] for f in render(key)[0].fields]
+            self.assertEqual(names, sorted(names, key=str.casefold), key)
+        seen = []
+        for page in range(full_pages()):
+            seen += [f.name.lstrip("/") for f in render("full", page)[0].fields]
+        self.assertEqual(seen, sorted(seen, key=str.casefold))
+        for field in render("home")[0].fields:
+            samples = __import__("re").findall(r"`/([^`]+)`", field.value)
+            self.assertTrue(all(a.casefold() <= b.casefold() for a, b in zip(samples, samples[1:])), field.name)
+
+    def test_help_uses_the_dri_icon(self):
+        self.assertTrue(render("home")[0].title.startswith("<:DRI:1566010680799264789>"))
+        self.assertTrue(render("full")[0].title.startswith("<:DRI:1566010680799264789>"))
 
 
 class HelpCommandTests(CogTestCase):

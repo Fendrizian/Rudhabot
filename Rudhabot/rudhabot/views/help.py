@@ -13,7 +13,7 @@ from typing import Optional
 import discord
 from discord import ButtonStyle, Interaction, ui
 
-from rudhabot.ui.theme import BOTICON
+from rudhabot.ui.theme import HELPICON
 
 PER_PAGE = 6
 COLOR = 0x607D8B
@@ -22,7 +22,7 @@ ABOUT = ("**Rudhabot** is a bot specialized for the Rudharta Discord server, wit
          "of Rudharta created by ``fendrizian``. Copyright 2025.")
 THUMBNAIL = "https://micronations.wiki/images/en/images/images/6/6a/Flag_of_Rudharta.png"
 
-# (key, title, emoji, one-line summary, command names in display order)
+# (key, title, emoji, one-line summary, command names; displayed alphabetically by alphabetical())
 SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     ("start", "Getting started", "👋", "Help and the /ask assistant (or just @mention Rudhabot)", ("help", "ask")),
     ("economy", "Economy", "💰", "Earn, send and compare money",
@@ -51,19 +51,25 @@ def _by_name() -> dict[str, dict]:
     return {c["name"]: c for c in get_commands_data()}
 
 
+def alphabetical(names) -> list[str]:
+    """House rule: /help always lists commands alphabetically (case-insensitive), wherever they appear."""
+    return sorted(names, key=str.casefold)
+
+
 def _field(embed: discord.Embed, command: dict) -> None:
     embed.add_field(name=f"/{command['name']} {command['args']}".strip(), value=command["description"], inline=False)
 
 
 # ------------------------------------------------------------------ embeds
 def overview_embed() -> discord.Embed:
-    embed = discord.Embed(title=f"{BOTICON} HELP", color=COLOR,
+    embed = discord.Embed(title=f"{HELPICON} HELP", color=COLOR,
                           description=ABOUT + "\n\nPick a section below, or press **Full list** to see every command. "
                                               "Tip: `/ask` answers questions in plain words.")
     embed.set_thumbnail(url=THUMBNAIL)
     commands = _by_name()
     for key, title, emoji, summary, names in SECTIONS:
-        sample = " ".join(f"`/{n.split(' |')[0]}`" for n in names[:4]) + (" …" if len(names) > 4 else "")
+        ordered = alphabetical(names)
+        sample = " ".join(f"`/{n.split(' |')[0]}`" for n in ordered[:4]) + (" …" if len(ordered) > 4 else "")
         embed.add_field(name=f"{emoji} {title} ({sum(1 for n in names if n in commands)})", value=f"{summary}\n{sample}",
                         inline=True)
     embed.set_footer(text=f"{len(commands)} commands in {len(SECTIONS)} sections")
@@ -74,7 +80,7 @@ def section_embed(key: str) -> discord.Embed:
     title, emoji, summary, names = SECTION_BY_KEY[key]
     commands = _by_name()
     embed = discord.Embed(title=f"{emoji} {title}", description=summary, color=COLOR)
-    for name in names:
+    for name in alphabetical(names):
         if name in commands:
             _field(embed, commands[name])
     position = [k for k, *_ in SECTIONS].index(key) + 1
@@ -83,10 +89,9 @@ def section_embed(key: str) -> discord.Embed:
 
 
 def ordered_commands() -> list[dict]:
-    """Every command, grouped in section order (anything unsectioned last)."""
+    """Every command for the full list, alphabetically."""
     commands = _by_name()
-    order = [n for *_, names in SECTIONS for n in names if n in commands]
-    return [commands[n] for n in order] + [c for n, c in commands.items() if n not in order]
+    return [commands[n] for n in alphabetical(commands)]
 
 
 def full_pages() -> int:
@@ -95,7 +100,7 @@ def full_pages() -> int:
 
 def create_help_embed(commands_data, page, total_pages):
     """The full list, one page at a time (kept for the "Full list" view)."""
-    embed = discord.Embed(title=f"{BOTICON} HELP · all commands", description=ABOUT, color=COLOR)
+    embed = discord.Embed(title=f"{HELPICON} HELP · all commands", description=ABOUT, color=COLOR)
     embed.set_thumbnail(url=THUMBNAIL)
     for command in commands_data[page * PER_PAGE:(page + 1) * PER_PAGE]:
         _field(embed, command)
