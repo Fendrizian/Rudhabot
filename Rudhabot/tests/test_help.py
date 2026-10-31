@@ -43,15 +43,22 @@ class HelpDataTests(CogTestCase):
             samples = __import__("re").findall(r"`/([^`]+)`", field.value)
             self.assertTrue(all(a.casefold() <= b.casefold() for a, b in zip(samples, samples[1:])), field.name)
 
-    def test_help_uses_the_dri_icon(self):
-        self.assertTrue(render("home")[0].title.startswith("<:DRI:1566010680799264789>"))
-        self.assertTrue(render("full")[0].title.startswith("<:DRI:1566010680799264789>"))
+    def test_every_page_embeds_the_dri_emblem_and_keeps_the_bot_icon(self):
+        from rudhabot.ui.theme import BOTICON
+        from rudhabot.views.help import HELP_IMAGE
+        self.assertTrue(HELP_IMAGE.endswith("dri.png"))
+        for target in ["home", "full"] + [k for k, *_ in SECTIONS]:
+            embed = render(target)[0]
+            self.assertEqual(embed.image.url, "attachment://dri.png", target)
+        self.assertTrue(render("home")[0].title.startswith(BOTICON))
+        self.assertIn("Copyright 2026.", render("home")[0].description)
 
 
 class HelpCommandTests(CogTestCase):
     async def test_plain_help_shows_the_section_overview_with_navigation(self):
         it = await self.run_command("help", self.alice)
         embed, view = it.log[0][1]["embed"], it.log[0][1]["view"]
+        self.assertEqual(it.log[0][1]["file"].filename, "dri.png")        # the emblem is uploaded with the message
         self.assertEqual(len(embed.fields), len(SECTIONS))
         self.assertIn("Economy", it.text())
         self.assertIsNone(view.timeout)                                  # navigation never expires
@@ -82,6 +89,8 @@ class HelpCommandTests(CogTestCase):
         await SectionSelect().callback(other)
         self.assertEqual(other.log[0][0], "send")
         self.assertTrue(other.log[0][1]["ephemeral"])
+        self.assertEqual(other.log[0][1]["file"].filename, "dri.png")    # private copies carry their own upload
+        self.assertNotIn("file", owner.log[0][1])                          # edits reuse the original attachment
 
     async def test_navigation_works_from_custom_ids_alone(self):
         # e.g. after a restart: discord.py rebuilds the item from its id

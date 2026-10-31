@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 
 from rudhabot.cogs.base import ServiceCog
-from rudhabot.views.help import SECTIONS, NavButton, SectionSelect, render
+from rudhabot.views.help import SECTIONS, NavButton, SectionSelect, help_file, render
 
 SECTION_CHOICES = ([app_commands.Choice(name=f"{title}", value=key) for key, title, *_ in SECTIONS]
                    + [app_commands.Choice(name="Full list (all commands)", value="full")])
@@ -22,4 +22,5 @@ class HelpCog(ServiceCog):
     @app_commands.choices(section=SECTION_CHOICES)
     async def help_slash(self, interaction: discord.Interaction, section: Optional[app_commands.Choice[str]] = None):
         embed, view = render(section.value if section else "home")
-        await interaction.response.send_message(embed=embed, view=view)
+        image = help_file()                     # the emblem the embed shows (attachment://dri.png)
+        await interaction.response.send_message(embed=embed, view=view, **({"file": image} if image else {}))
