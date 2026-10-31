@@ -22,7 +22,7 @@ INTENTS: dict[str, tuple[str, str, bool]] = {
     "loan": ("check or take a loan", "loaninfo", True),
     "deposit": ("deposit money in the bank", "deposit", False),
     "withdraw": ("withdraw money from the bank", "withdraw", False),
-    "bank": ("open your bank account, savings and card tier", "bank account", True),
+    "bank": ("see your balance, savings and card tier", "balance", True),
     "card": ("check or pay your credit card", "card info", True),
     "stocks": ("see the stock market", "stocks market", True),
     "crypto": ("check the crypto market", "crypto", True),

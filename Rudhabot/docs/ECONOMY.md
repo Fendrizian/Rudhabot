@@ -70,7 +70,11 @@ happens:
 
 **Net worth:** wallet + bank + savings.
 
-**Clairvoyance insights:** `/bank account` and `/bank card info` are private, and may show one or two quiet observations
+**Balance:** `/balance [user]` shows wallet, bank, savings, the total and the card tier. For yourself it also shows the
+monthly limits and the credit card.
+
+**Clairvoyance insights:** your own `/balance` (sent to you privately) and `/bank card info` may show one or two quiet
+observations
 computed only from your own ledger:
 - your statement is due soon;
 - your card is mostly used;

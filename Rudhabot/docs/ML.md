@@ -9,7 +9,7 @@ pretrained weights. It has three tasks:
 | **Intent router** | `intent-v1` n-gram MLP (789k params, 1 MB) | developer-written phrases | `/ask` and @mentions: map plain words to an existing command, or ask a clarifying question |
 | **Anomaly monitor** | isolation forest + rules, fitted on this server's own ledger | the server's last 7 days of hourly activity windows | review signals for moderators (`/review`) |
 
-It also produces private **finance insights** in `/bank account` and `/bank card info`. These are derived from the person's
+It also produces private **finance insights** in your own `/balance` (sent privately) and in `/bank card info`. These are derived from the person's
 own ledger.
 
 **Trust boundary (all tasks):** Clairvoyance only advises.

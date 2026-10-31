@@ -291,3 +291,34 @@ class PortfolioCommandTests(CogTestCase):
         it = await self.run_command("portfolio", self.bob)
         self.assertIn("/buycoin", it.text())
         self.assertIn("/stocks buy", it.text())
+
+
+class BalanceCommandTests(CogTestCase):
+    async def test_own_balance_merges_the_bank_statement(self):
+        self.fund(self.alice, 1_500, bank=12_000)
+        self.s.bank.savings_deposit(self.alice.id, 2_000)
+        it = await self.run_command("balance", self.alice)
+        embed = it.log[0][1]["embed"]
+        fields = {f.name: f.value for f in embed.fields}
+        self.assertTrue(embed.title.startswith("<:balance:1399370324734246952>"))          # wallet emoji kept
+        self.assertIn("Red", fields["Card"])
+        self.assertIn("<:bankcard_red:", fields["Card"])
+        self.assertIn("2,000", fields["Savings"])
+        self.assertIn("13,500", fields["Total Balance"])                                     # 1,500 + 10,000 + 2,000 savings
+        self.assertIn("This month", fields)
+        self.assertIn("Credit card", fields)
+        self.assertFalse(it.log[0][1].get("ephemeral"))                                      # still a public /balance
+        tips = [k for kind, k in it.log[1:] if kind == "followup"]
+        self.assertTrue(tips and tips[0]["ephemeral"] and tips[0]["embed"].title == "💡 Clairvoyance")
+
+    async def test_someone_elses_balance_hides_their_private_details(self):
+        self.fund(self.bob, 300)
+        it = await self.run_command("balance", self.alice, user=self.bob)
+        names = [f.name for f in it.log[0][1]["embed"].fields]
+        self.assertIn("Card", names)
+        self.assertNotIn("Credit card", names)
+        self.assertNotIn("This month", names)
+        self.assertEqual(len(it.log), 1)                                                      # no tips about others
+
+    def test_bank_account_was_merged_into_balance(self):
+        self.assertIsNone(self.bot.tree.get_command("bank").get_command("account"))

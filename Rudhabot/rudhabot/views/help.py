@@ -43,9 +43,9 @@ def _with_image(embed: discord.Embed) -> discord.Embed:
 SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     ("start", "Getting started", "👋", "Help and the /ask assistant (or just @mention Rudhabot)", ("help", "ask")),
     ("economy", "Economy", "💰", "Earn, send and compare money",
-     ("balance", "work", "daily", "crime", "send", "rob", "leaderboard")),
+     ("work", "daily", "crime", "send", "rob", "leaderboard")),
     ("bank", "Bank", "🏦", "Deposits, savings, card tiers, credit cards and loans",
-     ("deposit", "withdraw", "bank account | tiers | history", "bank save | unsave", "bank upgrade",
+     ("balance", "deposit", "withdraw", "bank tiers | history", "bank save | unsave", "bank upgrade",
       "bank card info | pay", "loan", "loaninfo", "pay", "extend")),
     ("shop", "Shop & Café", "🛍️", "Buy, sell and use items", ("shop", "cafe", "buy", "sell", "inventory", "use")),
     ("markets", "Markets", "📈", "The stock exchange and crypto",
@@ -214,9 +214,9 @@ def get_commands_data():
             "description": "Ask Rudhabot how anything works. Answers come from Rudhabot's own docs (AI-written when OpenAI is configured)."
         },
         {
-            "name": "bank account | tiers | history",
+            "name": "bank tiers | history",
             "args": "",
-            "description": "Your private bank statement (balances, monthly limits, savings, credit, Clairvoyance tips), the card tiers, and your recent transactions."
+            "description": "Compare the card tiers, and see your recent transactions."
         },
         {
             "name": "bank save | unsave",
@@ -306,7 +306,7 @@ def get_commands_data():
         {
             "name": "balance",
             "args": "[user]",
-            "description": "Check your wallet and bank balance, or view another user's balance."
+            "description": "Wallet, bank, savings, total and card tier (anyone's). For yourself also your monthly limits, credit card and private Clairvoyance tips."
         },
         {
             "name": "work",

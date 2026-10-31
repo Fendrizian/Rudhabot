@@ -54,3 +54,12 @@ def finance_insights(entries: list[dict], profile: dict, bank_balance: int, now:
                                    f"savings (`/bank save`)."))
     candidates.sort(key=lambda c: -c[0])
     return [text for _, text in candidates[:limit]]
+
+
+def insights_for(services, user_id, profile: dict, bank_balance: int) -> list[str]:
+    """The person's own insights; never raises (an insight must not break the screen showing it)."""
+    try:
+        entries = services.audit.recent(400, user_id)
+        return finance_insights(entries, profile, bank_balance, services.clock.now())
+    except Exception:
+        return []

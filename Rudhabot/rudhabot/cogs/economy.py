@@ -35,17 +35,44 @@ class EconomyCog(ServiceCog):
         return self.clock.now(timezone.utc).replace(tzinfo=None)
 
     # ------------------------------------------------------------------ balance
-    @app_commands.command(name="balance", description="Check your wallet and bank balance")
+    @app_commands.command(name="balance", description="Your wallet, bank, savings and card (or another user's balance)")
     @app_commands.describe(user="User to check balance for")
     @not_in_game()
     async def balance(self, interaction: discord.Interaction, user: discord.User = None):
+        """Balances and card tier for anyone; monthly limits, credit card and Clairvoyance tips only for yourself."""
+        from rudhabot.domain.bank import next_tier
+        from rudhabot.services.insights import insights_for
         target = user or interaction.user
+        own = target.id == interaction.user.id
         account = self.users.get(target.id)
+        bank = self.services.bank
+        profile = bank.account(target.id)
+        tier = bank.tier_of(profile)
+        wallet, banked, savings = account.get("wallet", 0), account.get("bank", 0), profile["savings"]
         embed = discord.Embed(title=f"<:balance:1399370324734246952> {target.name}'s Balance", color=0xAD1457)
-        embed.add_field(name="Wallet", value=f"{CURRENCY}{account.get('wallet', 0)}", inline=False)
-        embed.add_field(name="Bank", value=f"{CURRENCY}{account.get('bank', 0)}", inline=False)
-        embed.add_field(name="Total Balance", value=f"{CURRENCY}{account.get('wallet', 0) + account.get('bank', 0)}", inline=False)
+        embed.add_field(name="Wallet", value=f"{CURRENCY}{wallet:,}")
+        embed.add_field(name="Bank", value=f"{CURRENCY}{banked:,}")
+        embed.add_field(name="Savings", value=f"{CURRENCY}{savings:,}\n{tier.daily_interest * 100:.2f}% a day")
+        embed.add_field(name="Total Balance", value=f"{CURRENCY}{wallet + banked + savings:,}", inline=False)
+        embed.add_field(name="Card", value=f"{tier.emoji} **{tier.name}**", inline=own)
+        if own:
+            usage, credit = profile["usage"], profile["credit"]
+            embed.add_field(name="This month", value=f"Deposits {usage['deposit']:,}/{tier.monthly_limit:,}\n"
+                                                      f"Withdrawals {usage['withdraw']:,}/{tier.monthly_limit:,}")
+            status = "❄️ frozen" if credit.get("frozen") else "active"
+            embed.add_field(name="Credit card", value=f"Owed {CURRENCY}{credit['balance']:,} of {tier.credit_limit:,} ({status})"
+                                                       + (f"\nStatement {credit['statement']:,} due {credit['due']}"
+                                                          if credit.get("statement") else ""))
+            upcoming = next_tier(tier.key)
+            if upcoming:
+                embed.set_footer(text=f"Next card: {upcoming.name} (net worth {upcoming.net_worth_required:,}, "
+                                      f"fee {upcoming.upgrade_fee:,}) · /bank upgrade")
         await respond(interaction, embed)
+        if own:                                   # personal tips stay private, even though the balance is public
+            tips = insights_for(self.services, target.id, profile, banked)
+            if tips:
+                await interaction.followup.send(embed=discord.Embed(title="💡 Clairvoyance", description="\n".join(tips),
+                                                                    color=0x206694), ephemeral=True)
 
     # ------------------------------------------------------------------ earning
     async def _on_cooldown(self, interaction, cooldown: Cooldown, account: dict, now, text: str, **fmt) -> bool:

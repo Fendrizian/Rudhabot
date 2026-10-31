@@ -1,4 +1,4 @@
-"""/bank and /card: card tiers, savings accounts and credit cards. Thin: parse input, call BankService, render."""
+"""/bank: card tiers, savings and credit cards (balances themselves are in /balance). Thin: parse input, call BankService, render."""
 from __future__ import annotations
 
 from typing import Optional
@@ -44,39 +44,11 @@ class BankCog(ServiceCog, commands.GroupCog, group_name="bank", group_descriptio
         return self.services.bank
 
     def _insights(self, user_id, profile: dict, bank_balance: int) -> list[str]:
-        from rudhabot.services.insights import finance_insights
-        try:
-            entries = self.services.audit.recent(400, user_id)
-            return finance_insights(entries, profile, bank_balance, self.clock.now())
-        except Exception:                                             # an insight must never break the bank screen
-            return []
+        from rudhabot.services.insights import insights_for
+        return insights_for(self.services, user_id, profile, bank_balance)
 
     async def _refuse(self, interaction, error: BankRefused) -> None:
         await respond(interaction, _embed(interaction.user, "🏦 Bank", str(error), 0x992D22), ephemeral=True)
-
-    @app_commands.command(name="account", description="Your balances, card tier, monthly limits and savings interest")
-    async def account(self, interaction: discord.Interaction):
-        profile = self.bank.account(interaction.user.id)
-        acc = self.users.get(interaction.user.id)
-        tier = self.bank.tier_of(profile)
-        credit = profile["credit"]
-        e = _embed(interaction.user, f"{tier.emoji} {tier.name} card · Rudharta Bank")
-        e.add_field(name="Wallet", value=f"{CURRENCY}{acc['wallet']:,}")
-        e.add_field(name="Bank", value=f"{CURRENCY}{acc['bank']:,}")
-        e.add_field(name="Savings", value=f"{CURRENCY}{profile['savings']:,}\n{tier.daily_interest * 100:.2f}% a day "
-                                           f"(on up to {tier.interest_cap:,})")
-        e.add_field(name="This month", value=f"Deposits {profile['usage']['deposit']:,}/{tier.monthly_limit:,}\n"
-                                              f"Withdrawals {profile['usage']['withdraw']:,}/{tier.monthly_limit:,}")
-        status = "❄️ frozen" if credit.get("frozen") else "active"
-        e.add_field(name="Credit card", value=f"Owed {CURRENCY}{credit['balance']:,} of {tier.credit_limit:,} ({status})"
-                                              + (f"\nStatement {credit['statement']:,} due {credit['due']}" if credit.get("statement") else ""))
-        tips = self._insights(interaction.user.id, profile, acc["bank"])
-        if tips:
-            e.add_field(name="💡 Clairvoyance", value="\n".join(tips), inline=False)
-        upcoming = next_tier(tier.key)
-        if upcoming:
-            e.set_footer(text=f"Next: {upcoming.name} (net worth {upcoming.net_worth_required:,}, fee {upcoming.upgrade_fee:,}) · /bank upgrade")
-        await respond(interaction, e, ephemeral=True)                 # a bank statement is private
 
     @app_commands.command(name="tiers", description="Compare the card tiers")
     async def tiers(self, interaction: discord.Interaction):
