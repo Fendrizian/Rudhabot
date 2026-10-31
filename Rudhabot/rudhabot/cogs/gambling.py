@@ -18,7 +18,7 @@ from rudhabot.domain.casino import baccarat_payout, craps_payout, deal_baccarat,
 from rudhabot.ui import slots_embeds
 from rudhabot.ui.messages import MSG_INVALIDBET, MSG_NONPOS, MSG_NOWALLET, MSG_ONGAME
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY
+from rudhabot.ui.theme import CURRENCY, Colors
 from rudhabot.views import crash as crash_game
 from rudhabot.views import highlow as highlow_game
 from rudhabot.views.blackjack import BlackjackView
@@ -38,7 +38,7 @@ class BetRefused(Exception):
     """A bet that cannot be played; the message is shown (privately) to the player."""
 
 
-def _plain(message: str, color: int = 0x992D22, user=None) -> discord.Embed:
+def _plain(message: str, color: int = Colors.FAIL, user=None) -> discord.Embed:
     """An embed; `user` adds the author header (some game messages have one, others never did)."""
     embed = discord.Embed(description=message, color=color)
     if user is not None:
@@ -111,16 +111,16 @@ class GamblingCog(ServiceCog):
             except BetRefused as refusal:
                 await self._refuse(interaction, refusal, author_on_funds=True)
                 return
-            await interaction.response.send_message(embed=_plain("🪙 Flipping a coin...", 0x99AAB5, interaction.user))
+            await interaction.response.send_message(embed=_plain("🪙 Flipping a coin...", Colors.GAMBLING, interaction.user))
             await asyncio.sleep(3)
             result = self.rng.choice(["heads", "tails"])
             coin = "<:coinF_heads:1398951529955852328>" if result == "heads" else "<:coinF_tails:1398951563405557861>"
             if choice == result:
                 self._settle(interaction.user.id, amount)
-                embed = _plain(f"{coin} **{result.capitalize()}!**\n🎉 You win! {CURRENCY}{amount * 2}", 0x57F287, interaction.user)
+                embed = _plain(f"{coin} **{result.capitalize()}!**\n🎉 You win! {CURRENCY}{amount * 2}", Colors.SUCCESS, interaction.user)
             else:
                 self._settle(interaction.user.id, -amount)
-                embed = _plain(f"{coin} **{result.capitalize()}!**\n💸 You lose! {CURRENCY}{amount}", 0xED4245, interaction.user)
+                embed = _plain(f"{coin} **{result.capitalize()}!**\n💸 You lose! {CURRENCY}{amount}", Colors.LOSS, interaction.user)
             await interaction.edit_original_response(embed=embed)
 
     # --------------------------------------------------------------------- dice
@@ -140,7 +140,7 @@ class GamblingCog(ServiceCog):
             except BetRefused as refusal:
                 await self._refuse(interaction, refusal, author_on_funds=True)
                 return
-            await interaction.response.send_message(embed=_plain("🎲 Rolling the dice...", 0x99AAB5, interaction.user))
+            await interaction.response.send_message(embed=_plain("🎲 Rolling the dice...", Colors.GAMBLING, interaction.user))
             await asyncio.sleep(3)
             die1, die2 = self.rng.randint(1, 6), self.rng.randint(1, 6)
             total = die1 + die2
@@ -148,10 +148,10 @@ class GamblingCog(ServiceCog):
             if guess == total:
                 multiplier = 6 if total in (2, 12) else 5 if total in (3, 11) else 4 if total in (4, 10) else 3
                 self._settle(interaction.user.id, amount * multiplier - amount)
-                embed = _plain(f"{faces}\n\n🎉 You win! {CURRENCY}{amount * multiplier} (x{multiplier})", 0x57F287, interaction.user)
+                embed = _plain(f"{faces}\n\n🎉 You win! {CURRENCY}{amount * multiplier} (x{multiplier})", Colors.SUCCESS, interaction.user)
             else:
                 self._settle(interaction.user.id, -amount)
-                embed = _plain(f"{faces}\n\n💸 You lose! {CURRENCY}{amount}", 0xED4245, interaction.user)
+                embed = _plain(f"{faces}\n\n💸 You lose! {CURRENCY}{amount}", Colors.LOSS, interaction.user)
             await interaction.edit_original_response(embed=embed)
 
     # ---------------------------------------------------------------------- rps
@@ -177,13 +177,13 @@ class GamblingCog(ServiceCog):
             bot_choice = self.rng.choice(list(RPS_EMOJIS))
             faces = f"{RPS_EMOJIS[choice]} vs {RPS_EMOJIS[bot_choice]}"
             if choice == bot_choice:
-                embed = _plain(f"{faces}\n\n🤝 It's a tie! Your bet is pulled back.", 0x99AAB5, interaction.user)
+                embed = _plain(f"{faces}\n\n🤝 It's a tie! Your bet is pulled back.", Colors.GAMBLING, interaction.user)
             elif (choice, bot_choice) in RPS_BEATS:
                 self._settle(interaction.user.id, amount)
-                embed = _plain(f"{faces}\n\n🎉 You win! {CURRENCY}{amount}", 0x57F287, interaction.user)
+                embed = _plain(f"{faces}\n\n🎉 You win! {CURRENCY}{amount}", Colors.SUCCESS, interaction.user)
             else:
                 self._settle(interaction.user.id, -amount)
-                embed = _plain(f"{faces}\n\n💸 You lose! {CURRENCY}{amount}", 0xED4245, interaction.user)
+                embed = _plain(f"{faces}\n\n💸 You lose! {CURRENCY}{amount}", Colors.LOSS, interaction.user)
             await respond(interaction, embed)
 
     # -------------------------------------------------------------------- slots
@@ -227,7 +227,7 @@ class GamblingCog(ServiceCog):
         embed = discord.Embed(
             title="<a:roulette_wheel:1400109956761522206> ROULETTE",
             description=f"**Total Bet:** {CURRENCY}0\n**Current Bets:** None\n\nClick betting options below to place your bets!",
-            color=0x99AAB5,
+            color=Colors.GAMBLING,
         )
         embed.set_author(name=interaction.user.name, icon_url=interaction.user.display_avatar.url)
         embed.add_field(name="Wallet", value=f"{CURRENCY}{account['wallet']}")
@@ -331,7 +331,7 @@ class GamblingCog(ServiceCog):
             amount = await self._place(interaction, bet)
             if amount is None:
                 return
-            await interaction.response.send_message(embed=_plain("🃏 Dealing from the shoe...", 0x99AAB5, interaction.user))
+            await interaction.response.send_message(embed=_plain("🃏 Dealing from the shoe...", Colors.GAMBLING, interaction.user))
             await asyncio.sleep(2)
             round_ = deal_baccarat(self.rng)
             net = baccarat_payout(on.value, amount, round_)
@@ -343,7 +343,7 @@ class GamblingCog(ServiceCog):
             embed = _plain(f"**Player** {show(round_.player)} = **{round_.player_total}**\n"
                            f"**Banker** {show(round_.banker)} = **{round_.banker_total}**\n\n"
                            f"**{outcome}**{' (natural)' if round_.natural else ''}. You bet **{on.name}**.\n{result}",
-                           0x57F287 if net > 0 else 0xED4245 if net < 0 else 0x99AAB5, interaction.user)
+                           Colors.SUCCESS if net > 0 else Colors.LOSS if net < 0 else Colors.GAMBLING, interaction.user)
             embed.set_footer(text=f"Wallet: {wallet:,}")
             await interaction.edit_original_response(embed=embed)
 
@@ -365,13 +365,13 @@ class GamblingCog(ServiceCog):
             dice = lambda d: f"{DICE_EMOJIS[d[0]]}{DICE_EMOJIS[d[1]]} **{sum(d)}**"
             await interaction.response.send_message(embed=_plain(f"🎲 Come-out roll...\n{dice(r.rolls[0])}"
                                                                  + (f"\nPoint is **{r.point}**" if r.point else ""),
-                                                                 0x99AAB5, interaction.user))
+                                                                 Colors.GAMBLING, interaction.user))
             if r.point:
                 for shown in range(2, len(r.rolls) + 1, max(1, (len(r.rolls) - 1) // 3 or 1)):
                     await asyncio.sleep(1.2)
                     history = " · ".join(str(sum(d)) for d in r.rolls[1:shown])
                     await interaction.edit_original_response(embed=_plain(
-                        f"🎲 Point **{r.point}**\nRolls: {history}\n{dice(r.rolls[shown - 1])}", 0x99AAB5, interaction.user))
+                        f"🎲 Point **{r.point}**\nRolls: {history}\n{dice(r.rolls[shown - 1])}", Colors.GAMBLING, interaction.user))
             await asyncio.sleep(1.2)
             wallet = self._settle(interaction.user.id, net)
             rolls = " · ".join(str(sum(d)) for d in r.rolls)
@@ -379,6 +379,6 @@ class GamblingCog(ServiceCog):
                       else "↩️ Push: your bet is returned.")
             embed = _plain(f"🎲 {dice(r.rolls[-1])}\nRolls: {rolls}" + (f" (point {r.point})" if r.point else "")
                            + f"\nYou played **{play.name}**.\n{result}",
-                           0x57F287 if net > 0 else 0xED4245 if net < 0 else 0x99AAB5, interaction.user)
+                           Colors.SUCCESS if net > 0 else Colors.LOSS if net < 0 else Colors.GAMBLING, interaction.user)
             embed.set_footer(text=f"Wallet: {wallet:,}")
             await interaction.edit_original_response(embed=embed)

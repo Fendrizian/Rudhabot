@@ -7,7 +7,7 @@ from discord import app_commands
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import admin_only, not_in_game
 from rudhabot.ui.replies import error_embed
-from rudhabot.ui.theme import CURRENCY
+from rudhabot.ui.theme import CURRENCY, Colors
 
 LOCATION_CHOICES = [app_commands.Choice(name="Wallet", value="wallet"), app_commands.Choice(name="Bank", value="bank")]
 
@@ -30,7 +30,7 @@ class AdminCog(ServiceCog):
         channel = await guild.create_text_channel(name="new-temporary-bot-lab", overwrites=overwrite)
         # (the original never answered the interaction, so Discord showed "The application did not respond")
         await interaction.response.send_message(
-            embed=discord.Embed(description=f"✅ Created {getattr(channel, 'mention', '#new-temporary-bot-lab')}.", color=0x57F287),
+            embed=discord.Embed(description=f"✅ Created {getattr(channel, 'mention', '#new-temporary-bot-lab')}.", color=Colors.SUCCESS),
             ephemeral=True)
 
     @app_commands.command(name="add-money", description="Add money to a user's wallet or bank")
@@ -48,7 +48,7 @@ class AdminCog(ServiceCog):
         new_balance = account[location] + amount
         self.users.update(target.id, **{location: new_balance})
         embed = _with_author(discord.Embed(description=f"✅ Added {CURRENCY}{amount} to {target.mention}'s {location}.",
-                                           color=0x57F287), interaction.user)
+                                           color=Colors.SUCCESS), interaction.user)
         embed.set_footer(text=f"New {location} balance: {new_balance}ra")
         await interaction.response.send_message(embed=embed)
 
@@ -72,6 +72,6 @@ class AdminCog(ServiceCog):
             return
         self.users.update(target.id, **{location: current - amount})
         embed = _with_author(discord.Embed(description=f"✅ Removed {CURRENCY}{amount} from {target.mention}'s {location}.",
-                                           color=0x57F287), interaction.user)
+                                           color=Colors.SUCCESS), interaction.user)
         embed.set_footer(text=f"New {location} balance: {CURRENCY}{current - amount}")
         await interaction.response.send_message(embed=embed)

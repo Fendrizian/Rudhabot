@@ -13,7 +13,7 @@ def respond(interaction: discord.Interaction, embed: discord.Embed, ephemeral: b
     return interaction.response.send_message(embed=embed, ephemeral=ephemeral)
 
 
-def author_embed(user, description: str = None, color: int = Colors.NEUTRAL, **kwargs) -> discord.Embed:
+def author_embed(user, description: str = None, color: int = Colors.GAMBLING, **kwargs) -> discord.Embed:
     """An embed with the invoking user in the author slot, as most commands present themselves."""
     embed = discord.Embed(description=description, color=color, **kwargs)
     embed.set_author(name=user.name, icon_url=user.display_avatar.url)
@@ -21,7 +21,7 @@ def author_embed(user, description: str = None, color: int = Colors.NEUTRAL, **k
 
 
 def error_embed(message: str, user=None) -> discord.Embed:
-    embed = discord.Embed(description=message, color=Colors.ERROR)
+    embed = discord.Embed(description=message, color=Colors.FAIL)
     if user is not None:
         embed.set_author(name=user.name, icon_url=user.display_avatar.url)
     return embed

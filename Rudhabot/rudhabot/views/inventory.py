@@ -6,7 +6,7 @@ import math
 import discord
 from discord import ButtonStyle, Interaction
 
-from rudhabot.ui.theme import INVICON
+from rudhabot.ui.theme import Colors, INVICON
 from rudhabot.views.base import ServiceButton, ServiceView
 
 PAGE_SIZE = 7
@@ -17,7 +17,7 @@ def inventory_pages(inventory_items) -> int:
 
 
 def create_inventory_embed(catalog, inventory_items, user, page, total_pages):
-    embed = discord.Embed(title=f"{INVICON} {user.name}'s Inventory", color=0xA84300)
+    embed = discord.Embed(title=f"{INVICON} {user.name}'s Inventory", color=Colors.INVENTORY)
     if not inventory_items:
         embed.description = "Your inventory is empty."
     else:

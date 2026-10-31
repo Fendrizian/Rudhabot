@@ -8,7 +8,7 @@ import random
 import discord
 from discord import ButtonStyle, Interaction, ui
 
-from rudhabot.ui.theme import CURRENCY
+from rudhabot.ui.theme import CURRENCY, Colors
 from rudhabot.views.base import ServiceView
 
 log = logging.getLogger("rudhabot.crash")
@@ -23,7 +23,7 @@ def opening_embed(bet_amount: int, user) -> discord.Embed:
     return _authored(discord.Embed(
         title="🚀 Crash",
         description=f"Bet: {CURRENCY}{bet_amount}\n\nPress **Cash Out** before the multiplier crashes!",
-        color=0x99AAB5,
+        color=Colors.GAMBLING,
     ), user)
 
 
@@ -56,7 +56,7 @@ class CrashView(ServiceView):
             embed = discord.Embed(
                 title="🚀 Crash",
                 description=f"Multiplier: x{self.multiplier:.2f}\n\n🎉 You cashed out and won {CURRENCY}{winnings}",
-                color=0x57F287,
+                color=Colors.SUCCESS,
             )
             await i.response.edit_message(embed=_authored(embed, i.user), view=None)
             self.services.sessions.end(self.user_id)
@@ -76,7 +76,7 @@ class CrashView(ServiceView):
                         embed = discord.Embed(
                             title="🚀 Crash",
                             description=f"Multiplier crashed at x{self.multiplier:.2f}!\n\n💸 You lose {CURRENCY}{self.bet_amount}",
-                            color=0xED4245,
+                            color=Colors.LOSS,
                         )
                         await self.interaction.edit_original_response(embed=_authored(embed, self.interaction.user), view=None)
                         self.services.sessions.end(self.user_id)
@@ -85,7 +85,7 @@ class CrashView(ServiceView):
                         title="🚀 Crash",
                         description=f"Bet: {CURRENCY}{self.bet_amount}\nMultiplier: x{self.multiplier:.2f}\n\n"
                                     f"Press **Cash Out** before the multiplier crashes!",
-                        color=0x99AAB5,
+                        color=Colors.GAMBLING,
                     )
                     await self.interaction.edit_original_response(embed=_authored(embed, self.interaction.user), view=self)
         except Exception:
@@ -98,7 +98,7 @@ class CrashView(ServiceView):
             embed = discord.Embed(
                 title="🚀 Crash - TIMEOUT",
                 description=f"⏰ **Game timed out!**\n💰 **Refunded:** {CURRENCY}{self.bet_amount}",
-                color=0x979C9F,
+                color=Colors.COOLDOWN,
             )
             await self.interaction.edit_original_response(embed=embed, view=None)
             self.services.sessions.end(self.user_id)

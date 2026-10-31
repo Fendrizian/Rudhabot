@@ -11,12 +11,12 @@ from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import not_in_game
 from rudhabot.services.loans import AutoPaid, LoanRefused
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY
+from rudhabot.ui.theme import CURRENCY, Colors
 
 log = logging.getLogger("rudhabot.loans")
 
 
-def _embed(user, message: str, color: int = 0x992D22) -> discord.Embed:
+def _embed(user, message: str, color: int = Colors.FAIL) -> discord.Embed:
     embed = discord.Embed(description=message, color=color)
     embed.set_author(name=user.name, icon_url=user.display_avatar.url)
     return embed
@@ -51,13 +51,13 @@ class LoansCog(ServiceCog):
             elif refusal.code == "banned":
                 until, remaining = refusal.data["until"], refusal.data["days_remaining"]
                 await respond(interaction, _embed(interaction.user, 
-                    f"🚫 You're banned from taking loans until **{until.strftime('%d %B %Y')}** ({remaining} days remaining)", 0x546E7A))
+                    f"🚫 You're banned from taking loans until **{until.strftime('%d %B %Y')}** ({remaining} days remaining)", Colors.UNAVAILABLE))
             else:
                 await respond(interaction, _embed(interaction.user, 
                     f"Invalid loan parameters. \nAmount must be between {terms.min_amount} and {terms.max_amount}, "
                     f"days between {terms.min_days} and {terms.max_days}."), ephemeral=True)
             return
-        embed = discord.Embed(title="<:loan_approved:1401355324103069867> Loan Approved", color=0x71368A)
+        embed = discord.Embed(title="<:loan_approved:1401355324103069867> Loan Approved", color=Colors.LOAN)
         embed.add_field(name="Amount Borrowed", value=f"{CURRENCY}{amount}", inline=True)
         embed.add_field(name="Due Date", value=f"<:loan_due:1401358370191183902>{opened.due.strftime('%d %B %Y')}", inline=True)
         embed.add_field(name="Interest Rate",
@@ -84,7 +84,7 @@ class LoansCog(ServiceCog):
             await respond(interaction, _embed(interaction.user, message), ephemeral=True)
             return
         await respond(interaction, _embed(interaction.user, 
-            f"🗓️ Your loan has been extended by {extended.days} day(s) for a fee of {CURRENCY}{extended.fee}.\n", 0x9B59B6))
+            f"🗓️ Your loan has been extended by {extended.days} day(s) for a fee of {CURRENCY}{extended.fee}.\n", Colors.EXTEND))
 
     @app_commands.command(name="loaninfo", description="Check your current loan status and remaining debt.")
     async def loaninfo(self, interaction: discord.Interaction):
@@ -92,7 +92,7 @@ class LoansCog(ServiceCog):
         if not loan:
             await respond(interaction, _embed(interaction.user, "❌ You have no active loan."), ephemeral=True)
             return
-        embed = discord.Embed(title="<:loan_info:1401356490031497216> Loan Status", color=0xE74C3C)
+        embed = discord.Embed(title="<:loan_info:1401356490031497216> Loan Status", color=Colors.LOAN_STATUS)
         embed.add_field(name="Borrowed", value=f"{CURRENCY}{loan.principal}", inline=True)
         embed.add_field(name="Duration", value=f"{loan.interest_days} days", inline=True)
         embed.add_field(name="Days Accrued", value=f"{loan.accrued_days()}", inline=True)
@@ -119,10 +119,10 @@ class LoansCog(ServiceCog):
                 await respond(interaction, _embed(interaction.user, "❌ You don't have enough money in your wallet."))
             return
         if repayment.cleared:
-            await respond(interaction, _embed(interaction.user, "✅ You have fully repaid your loan!", 0x57F287))
+            await respond(interaction, _embed(interaction.user, "✅ You have fully repaid your loan!", Colors.SUCCESS))
         else:
             await respond(interaction, _embed(interaction.user, 
-                f"You paid {CURRENCY}{repayment.paid} towards your loan.\nRemaining debt: {CURRENCY}{repayment.remaining}", 0x2ECC71))
+                f"You paid {CURRENCY}{repayment.paid} towards your loan.\nRemaining debt: {CURRENCY}{repayment.remaining}", Colors.LOAN_PARTIAL))
 
     # ----------------------------------------------------------- background jobs
     def _notification_channel(self):

@@ -14,6 +14,7 @@ from rudhabot.cogs.base import ServiceCog
 from rudhabot.domain.birthday import BirthdayError
 from rudhabot.ui import birthday_embeds
 from rudhabot.ui.replies import author_embed, error_embed, respond
+from rudhabot.ui.theme import Colors
 
 log = logging.getLogger("rudhabot.birthdays")
 
@@ -58,7 +59,7 @@ class BirthdayCog(ServiceCog, commands.GroupCog, group_name="birthday", group_de
     @app_commands.command(name="remove", description="Remove your registered birthday")
     async def remove_birthday(self, interaction: discord.Interaction):
         if self.services.birthdays.remove_birthday(interaction.user.id):
-            await respond(interaction, author_embed(interaction.user, "✅ Your birthday has been removed.", 0x57F287))
+            await respond(interaction, author_embed(interaction.user, "✅ Your birthday has been removed.", Colors.SUCCESS))
         else:
             await respond(interaction, error_embed("❌ You haven't set a birthday.", interaction.user), ephemeral=True)
 

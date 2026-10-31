@@ -10,9 +10,10 @@ from rudhabot.tcg import engine as E
 from rudhabot.tcg.cards import CARD_BY_ID, CHARACTER, PROTOCOL_BY_LEVEL, Card
 from rudhabot.tcg.decks import ARCHETYPES
 from rudhabot.tcg.state import Game
+from rudhabot.ui.theme import Colors
 
-CLOUD = 0x6C8EBF
-CORRUPT = 0x2C2F33
+CLOUD = Colors.TCG_BLUE        # the open sky: boards, cards, collection
+CORRUPT = Colors.TCG_DEEP      # Fallen cards and a board at Threat Level 6+
 GRADE_SHADES = {1: "▪️", 2: "◽", 3: "⬜", 4: "🤍", 5: "✨"}
 
 
@@ -115,7 +116,7 @@ def hand_embed(g: Game, seat: int) -> discord.Embed:
     p = g.players[seat]
     playable = {a.data["cid"] for a in E.legal_actions(g) if a.key.startswith("c:")} if E.decider(g) == seat else set()
     lines = [("▶ " if cid in playable else "· ") + card_line(CARD_BY_ID[cid]) for cid in p.hand]
-    embed = discord.Embed(title=f"Your hand ({len(p.hand)})", description="\n".join(lines) or "*empty*", color=CLOUD)
+    embed = discord.Embed(title=f"Your hand ({len(p.hand)})", description="\n".join(lines) or "*empty*", color=Colors.TCG_SKY)
     embed.set_footer(text="▶ = playable right now · only you can see this")
     return embed
 
@@ -143,7 +144,7 @@ def deck_embed(name: str, cards: list[str], problems: list[str] = ()) -> discord
     for cid, n in sorted(counts.items(), key=lambda kv: (CARD_BY_ID[kv[0]].kind, CARD_BY_ID[kv[0]].cost)):
         card = CARD_BY_ID[cid]
         sections.setdefault(card.kind, []).append(f"{n}× {card.name} ({card.cost})")
-    embed = discord.Embed(title=f"Deck: {name} ({len(cards)} cards)", color=0xE74C3C if problems else CLOUD)
+    embed = discord.Embed(title=f"Deck: {name} ({len(cards)} cards)", color=Colors.FAIL if problems else CLOUD)
     for kind, items in sections.items():
         embed.add_field(name=f"{kind} ({sum(int(i.split('×')[0]) for i in items)})", value="\n".join(items)[:1024], inline=True)
     if problems:
@@ -152,7 +153,7 @@ def deck_embed(name: str, cards: list[str], problems: list[str] = ()) -> discord
 
 
 def doctor_embed(name: str, report: dict, swaps: list) -> discord.Embed:
-    embed = discord.Embed(title=f"🔮 Deck Doctor: {name}", color=CLOUD,
+    embed = discord.Embed(title=f"🔮 Deck Doctor: {name}", color=Colors.CLAIRVOYANCE,
                           description="The Clairvoyance piloted your deck against each archetype (seat-swapped). Small samples, so "
                                       "treat these as a rough guide, not a verdict.")
     rows = []

@@ -5,7 +5,7 @@ import discord
 from discord import ButtonStyle, Interaction, ui
 
 from rudhabot.domain.blackjack import HandOutcome, HandResult
-from rudhabot.ui.theme import CURRENCY
+from rudhabot.ui.theme import CURRENCY, Colors
 from rudhabot.views.base import ServiceView
 
 _RESULT_TEXT = {
@@ -58,7 +58,7 @@ class BlackjackView(ServiceView):
     
     async def hit_callback(self, interaction: Interaction):
         if interaction.user.id != self.game.user_id:
-            embed = discord.Embed(description="This isn't your game!", color=0x546e7a)
+            embed = discord.Embed(description="This isn't your game!", color=Colors.UNAVAILABLE)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
@@ -78,7 +78,7 @@ class BlackjackView(ServiceView):
 
     async def stand_callback(self, interaction: Interaction):
         if interaction.user.id != self.game.user_id:
-            embed = discord.Embed(description="This isn't your game!", color=0x546e7a)
+            embed = discord.Embed(description="This isn't your game!", color=Colors.UNAVAILABLE)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
@@ -98,13 +98,13 @@ class BlackjackView(ServiceView):
 
     async def double_callback(self, interaction: Interaction):
         if interaction.user.id != self.game.user_id:
-            embed = discord.Embed(description="This isn't your game!", color=0x546e7a)
+            embed = discord.Embed(description="This isn't your game!", color=Colors.UNAVAILABLE)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
         user_data = self.services.users.get(interaction.user.id)
         if user_data["wallet"] < self.game.bet_amount:
-            embed = discord.Embed(description=f"❌ You need {CURRENCY}{self.game.bet_amount} more to double down!", color=0x992d22)
+            embed = discord.Embed(description=f"❌ You need {CURRENCY}{self.game.bet_amount} more to double down!", color=Colors.FAIL)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
@@ -128,13 +128,13 @@ class BlackjackView(ServiceView):
         
     async def split_callback(self, interaction: Interaction):
         if interaction.user.id != self.game.user_id:
-            embed = discord.Embed(description="This isn't your game!", color=0x546e7a)
+            embed = discord.Embed(description="This isn't your game!", color=Colors.UNAVAILABLE)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
         user_data = self.services.users.get(interaction.user.id)
         if user_data["wallet"] < self.game.bet_amount:
-            embed = discord.Embed(description=f"❌ You need {CURRENCY}{self.game.bet_amount} more to split!", color=0x992d22)
+            embed = discord.Embed(description=f"❌ You need {CURRENCY}{self.game.bet_amount} more to split!", color=Colors.FAIL)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
@@ -157,7 +157,7 @@ class BlackjackView(ServiceView):
         await interaction.response.edit_message(embed=embed, view=self)
     
     def create_game_embed(self):
-        embed = discord.Embed(title="<:blackjack:1401208756041289758> BLACKJACK", color=0x99aab5)
+        embed = discord.Embed(title="<:blackjack:1401208756041289758> BLACKJACK", color=Colors.GAMBLING)
         
         # Dealer's hand
         if self.game.game_over:
@@ -212,13 +212,13 @@ class BlackjackView(ServiceView):
             
             if net_result > 0:
                 result_text += f"\n\n**⏫️ Net Income: {CURRENCY}{net_result}**"
-                embed.color = 0x57f287
+                embed.color = Colors.SUCCESS
             elif net_result < 0:
                 result_text += f"\n\n**⏬️ Net Loss: {CURRENCY}{abs(net_result)}**"
-                embed.color = 0xed4245
+                embed.color = Colors.LOSS
             else:
                 result_text += f"\n\n**⏺️ Net Result: {CURRENCY}0**"
-                embed.color = 0x99aab5
+                embed.color = Colors.GAMBLING
             
             embed.add_field(name="🃏 Results", value=result_text, inline=False)
         else:
@@ -256,7 +256,7 @@ class BlackjackView(ServiceView):
             timeout_embed = discord.Embed(
                 title="<:blackjack:1401208756041289758> BLACKJACK - TIMEOUT",
                 description=f"⏰ **Game timed out!**\n\n💰 **Refunded:** {CURRENCY}{total_bet_amount}\n\nYour bet has been returned to your wallet.",
-                color=0x979c9f
+                color=Colors.COOLDOWN
             )
             timeout_embed.set_footer(text=f"Final wallet: {user_data['wallet']}ra")
             

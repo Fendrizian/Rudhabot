@@ -26,13 +26,13 @@ def birthday_card(user, birthday: BirthdayDate, today: date, own: bool) -> disco
     turning = birthday.turning(today)
     if turning is not None:
         lines.append(f"Turning **{turning}**")
-    embed = discord.Embed(title=f"{user.name}'s Birthday", description="\n".join(lines), color=Colors.PARTY)
+    embed = discord.Embed(title=f"{user.name}'s Birthday", description="\n".join(lines), color=Colors.BIRTHDAY)
     embed.set_thumbnail(url=user.display_avatar.url)
     return embed
 
 
 def upcoming_list(rows: list[Upcoming]) -> discord.Embed:
-    embed = discord.Embed(title="🎂 Upcoming birthdays", color=Colors.PARTY)
+    embed = discord.Embed(title="🎂 Upcoming birthdays", color=Colors.BIRTHDAY)
     if not rows:
         embed.description = "No birthdays registered yet. Use `/birthday set` to add yours!"
         return embed
@@ -50,12 +50,12 @@ def greeting(event: Greeting) -> discord.Embed:
         title="🎂 Happy Birthday!",
         description=f"Everyone wish <@{event.user_id}> a happy birthday!{age}\n"
                     f"As a gift, **{CURRENCY}{event.gift}** has been added to their wallet.",
-        color=Colors.PARTY,
+        color=Colors.BIRTHDAY,
     )
 
 
 def cake_celebration(cake_emoji: str, message: str, sender_name: str) -> discord.Embed:
     embed = discord.Embed(title="🎊 Happy Birthday!", description=f"{cake_emoji} {message}\n\n- From {sender_name}",
-                          color=Colors.BLURPLE)
+                          color=Colors.BIRTHDAY)
     embed.set_footer(text="Sent by Rudhabot • Enjoy your special day!")
     return embed

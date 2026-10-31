@@ -35,14 +35,14 @@ class RudhaTree(app_commands.CommandTree):
             name = getattr(interaction.command, "qualified_name", "?")
             reviews.on_failure(interaction.user.id, f"/{name}: {type(cause).__name__}")
         if isinstance(cause, AlreadyInGame):
-            await self._tell(interaction, MSG_ONGAME, Colors.ERROR)
+            await self._tell(interaction, MSG_ONGAME, Colors.FAIL)
         elif isinstance(cause, NotAuthorized):
-            await self._tell(interaction, MSG_NOPERMISSION, Colors.NOTICE)
+            await self._tell(interaction, MSG_NOPERMISSION, Colors.UNAVAILABLE)
         elif isinstance(error, app_commands.CheckFailure):
             log.info("check failed for /%s: %s", getattr(interaction.command, "name", "?"), error)
         else:
             log.error("unhandled error in /%s", getattr(interaction.command, "name", "?"), exc_info=error)
-            await self._tell(interaction, "❌ Something went wrong. Please try again.", Colors.ERROR)
+            await self._tell(interaction, "❌ Something went wrong. Please try again.", Colors.FAIL)
 
     @staticmethod
     async def _tell(interaction: discord.Interaction, message: str, color: int) -> None:

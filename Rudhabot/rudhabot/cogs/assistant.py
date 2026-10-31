@@ -22,9 +22,10 @@ from rudhabot.cogs.base import ServiceCog
 from rudhabot.ml.intent import IntentRouter
 from rudhabot.ml.intent_data import INTENTS
 from rudhabot.services.audit import set_context
+from rudhabot.ui.theme import Colors
 
 log = logging.getLogger("rudhabot.assistant")
-ASK_COLOR = 0x5865F2
+ASK_COLOR = Colors.CLAIRVOYANCE
 EXTRA_ARGS = {"games": {"section": app_commands.Choice(name="Gambling games", value="games")}}
 MENTION = re.compile(r"<@!?\d+>")
 

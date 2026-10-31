@@ -14,10 +14,10 @@ from typing import Optional
 import discord
 from discord import ButtonStyle, Interaction, ui
 
-from rudhabot.ui.theme import BOTICON
+from rudhabot.ui.theme import BOTICON, Colors
 
 PER_PAGE = 6
-COLOR = 0x607D8B
+COLOR = Colors.HELP
 ABOUT = ("**Rudhabot** is a bot specialized for the Rudharta Discord server, with features tuned for the community's "
          "needs. **Rudhabot** is developed by the Digital Research Institute, and as such is the property of the Kingdom "
          "of Rudharta created by ``fendrizian``. Copyright 2026.")

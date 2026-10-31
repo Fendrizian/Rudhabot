@@ -13,7 +13,7 @@ from rudhabot.services.lottery import TicketRefused
 from rudhabot.services.shop import ShopRefused
 from rudhabot.ui import lottery_embeds
 from rudhabot.ui.replies import author_embed, error_embed, respond
-from rudhabot.ui.theme import BOXICON, CAFEICON, CURRENCY
+from rudhabot.ui.theme import BOXICON, CAFEICON, CURRENCY, Colors
 from rudhabot.views.birthday import BirthdayCakeModal
 from rudhabot.views.cafe import CafeBuyView, special_fields
 from rudhabot.views.inventory import InventoryView, create_inventory_embed, inventory_pages
@@ -32,7 +32,7 @@ class ShopCog(ServiceCog):
             title=f"{CAFEICON} JOOT CAFE",
             description=f"Welcome to Joot Cafe! The oldest running business in Rudharta that is full of history.\n"
                         f"Here are the special items for {s.menu.month_name}!",
-            color=0xE67E22,
+            color=Colors.CAFE,
         )
         embed.set_author(name=interaction.user.name, icon_url=interaction.user.display_avatar.url)
         embed.set_footer(text=f"Wallet: {account.get('wallet', 0)}ra • Special items: 1 per person per month")
@@ -85,7 +85,7 @@ class ShopCog(ServiceCog):
             await respond(interaction, error_embed(message, user), ephemeral=ephemeral)
             return
         paid = " on your credit card 💳" if pay_with and pay_with.value == "card" else ""
-        await respond(interaction, author_embed(user, f"✅ You bought **{quantity} {emoji}{title}** for {CURRENCY}{purchase.total}{paid}", 0x57F287))
+        await respond(interaction, author_embed(user, f"✅ You bought **{quantity} {emoji}{title}** for {CURRENCY}{purchase.total}{paid}", Colors.SUCCESS))
 
     @app_commands.command(name="sell", description="Sell shop items for half their price.")
     @app_commands.describe(item="Name of the item to sell", quantity="Quantity to sell (default 1)")
@@ -104,7 +104,7 @@ class ShopCog(ServiceCog):
                        "not_enough_items": f"❌ You don't have enough **{emoji}{title}** to sell."}[refusal.code]
             await respond(interaction, error_embed(message, user), ephemeral=True)
             return
-        await respond(interaction, author_embed(user, f"✅ You sold **{quantity} {emoji}{title}** for {CURRENCY}{sale.total}.", 0x57F287))
+        await respond(interaction, author_embed(user, f"✅ You sold **{quantity} {emoji}{title}** for {CURRENCY}{sale.total}.", Colors.SUCCESS))
 
     @app_commands.command(name="inventory", description="Show all items you own and their quantity.")
     @not_in_game()
@@ -145,7 +145,7 @@ class ShopCog(ServiceCog):
                 await self._read_fortunes(interaction, emoji, quantity)
                 return
             verb = "drank" if s.catalog.is_beverage(item) else "ate"
-            await respond(interaction, author_embed(user, f"✅ You {verb} **{quantity} {emoji}{item.title()}**!", 0x57F287))
+            await respond(interaction, author_embed(user, f"✅ You {verb} **{quantity} {emoji}{item.title()}**!", Colors.SUCCESS))
         elif item in s.catalog.shop_items:
             await respond(interaction, error_embed(f"❌ You can't use **{emoji}{item.title()}**. This item is not usable.", user))
         else:
@@ -159,7 +159,7 @@ class ShopCog(ServiceCog):
         if len(fortunes) > len(shown):
             lines.append(f"…and {len(fortunes) - len(shown)} more crumbs of wisdom.")
         title = f"{emoji} Your fortune" + ("s" if quantity > 1 else "")
-        await respond(interaction, author_embed(interaction.user, "\n".join(lines), 0xE67E22, title=title))
+        await respond(interaction, author_embed(interaction.user, "\n".join(lines), Colors.CAFE, title=title))
 
     async def _open_mystery_boxes(self, interaction, inventory: dict, quantity: int):
         s, user, catalog = self.services, interaction.user, self.services.catalog
@@ -183,7 +183,7 @@ class ShopCog(ServiceCog):
             inventory[reward] = inventory.get(reward, 0) + qty
         wallet = self.users.get(user.id)["wallet"] + money_total
         self.users.update(user.id, inventory=inventory, wallet=wallet)
-        embed = author_embed(user, "\n".join(results), 0x7289DA, title=f"{BOXICON} Mystery Box Results")
+        embed = author_embed(user, "\n".join(results), Colors.MYSTERY_BOX, title=f"{BOXICON} Mystery Box Results")
         summary = []
         if item_rewards:
             summary.append("**Items received:** " + ", ".join(f"{catalog.emoji(k)} {k.title()} x{v}" for k, v in item_rewards.items()))

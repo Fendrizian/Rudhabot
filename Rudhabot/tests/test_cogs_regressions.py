@@ -28,7 +28,7 @@ class SlotsCommandTests(CogTestCase):
         self.assertIn("Payouts", [f.name for f in frames[0].fields])             # paytable while the first reel spins up
         self.assertIn("Spinning reel 2 of 3", frames[1].description)
         self.assertIn("Two matching", frames[2].description)                     # suspense: first two reels equal
-        self.assertEqual(frames[2].color.value, 0xE67E22)
+        self.assertEqual(frames[2].color.value, Colors.GAMBLING)
         final = frames[3]
         self.assertIn("A PAIR OF CHERRIES", final.description)
         self.assertIn("You win!", final.description)
@@ -40,7 +40,7 @@ class SlotsCommandTests(CogTestCase):
         final = it.last_embed
         self.assertIn("JACKPOT", final.description)
         self.assertIn("(x50)", final.description)
-        self.assertEqual(final.color.value, Colors.GOLD)
+        self.assertEqual(final.color.value, Colors.INCOME)
 
     async def test_a_miss_loses_the_bet(self):
         it = await self.play([CHERRY, LEMON, ORANGE], bet="250")

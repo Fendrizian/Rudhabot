@@ -39,11 +39,11 @@ def _single(user, result: LotteryResult, emoji: str) -> discord.Embed:
     amount = batch.total_won
     if batch.jackpots:
         embed = author_embed(user, f"🎰 **JACKPOT!**\n\nYou won **{CURRENCY}{amount}**!!!\n"
-                                   f"The odds were {odds(spec, len(spec.table.tiers) - 1)}.", Colors.GOLD)
+                                   f"The odds were {odds(spec, len(spec.table.tiers) - 1)}.", Colors.INCOME)
     elif amount:
         embed = author_embed(user, f"🎉 **You won {CURRENCY}{amount}!**", Colors.SUCCESS)
     else:
-        embed = author_embed(user, "😶 **Zonk!** This ticket won nothing.", Colors.NEUTRAL)
+        embed = author_embed(user, "😶 **Zonk!** This ticket won nothing.", Colors.GAMBLING)
     embed.title = f"{emoji} {spec.label} Lottery Ticket"
     embed.set_footer(text=f"{result.tickets_left} {spec.label.lower()} ticket(s) left")
     embed.add_field(name="Balance", value=f"{CURRENCY}{result.wallet_after}", inline=True)
@@ -63,7 +63,7 @@ def _batch(user, result: LotteryResult, emoji: str) -> discord.Embed:
     if batch.zonks:
         lines.append(f"😶 Zonk × {batch.zonks}")
 
-    color = Colors.GOLD if batch.jackpots else Colors.SUCCESS if batch.total_won else Colors.NEUTRAL
+    color = Colors.INCOME if batch.jackpots else Colors.SUCCESS if batch.total_won else Colors.GAMBLING
     embed = author_embed(user, "\n".join(lines), color)
     embed.title = f"{emoji} {spec.label} Lottery — {batch.tickets} tickets"
     embed.add_field(name="Won", value=f"{CURRENCY}{batch.total_won}", inline=True)
@@ -80,7 +80,7 @@ def lottery_info(specs, catalog: ItemCatalog, inventory: dict, recent: list[dict
         title="🎟️ Lottery",
         description="Buy tickets from the shop (`/buy`) and draw them with `/use`. Prizes are paid instantly."
                     + (f"\nJackpot winners are announced in <#{channel_id}>." if channel_id else ""),
-        color=Colors.GOLD,
+        color=Colors.INCOME,
     )
     for spec in specs:
         table = spec.table

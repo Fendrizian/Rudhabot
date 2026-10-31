@@ -12,7 +12,7 @@ from rudhabot.cogs.checks import not_in_game
 from rudhabot.domain.stocks import LISTINGS
 from rudhabot.services.stocks import TradeRefused
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY, STOCKSICON
+from rudhabot.ui.theme import CURRENCY, Colors, STOCKSICON
 
 STOCKS = STOCKSICON
 SYMBOLS = [app_commands.Choice(name=f"{l.symbol} · {l.name}", value=l.symbol) for l in LISTINGS.values()]
@@ -41,11 +41,11 @@ class StocksCog(ServiceCog, commands.GroupCog, group_name="stocks", group_descri
         return self.services.stocks
 
     async def _refuse(self, interaction, error: TradeRefused) -> None:
-        await respond(interaction, discord.Embed(description=str(error), color=0x992D22), ephemeral=True)
+        await respond(interaction, discord.Embed(description=str(error), color=Colors.FAIL), ephemeral=True)
 
     @app_commands.command(name="market", description="Prices of every listed company")
     async def market(self, interaction: discord.Interaction):
-        e = discord.Embed(title=f"{STOCKS} Rudharta Exchange", color=0x2ECC71,
+        e = discord.Embed(title=f"{STOCKS} Rudharta Exchange", color=Colors.STOCK_MARKET,
                           description="Prices follow what the whole server buys at the shop (NAS) and the café (JOOT), "
                                       "plus normal market noise. Each person's purchases count fully up to 2,000 a day.")
         for symbol in LISTINGS:
@@ -58,7 +58,7 @@ class StocksCog(ServiceCog, commands.GroupCog, group_name="stocks", group_descri
     @app_commands.choices(symbol=SYMBOLS)
     async def quote(self, interaction: discord.Interaction, symbol: app_commands.Choice[str]):
         q = self.exchange.quote(symbol.value)
-        e = discord.Embed(title=f"{STOCKS} {q['symbol']} · {q['name']}", description=_quote_line(q), color=0x2ECC71)
+        e = discord.Embed(title=f"{STOCKS} {q['symbol']} · {q['name']}", description=_quote_line(q), color=Colors.STOCK_MARKET)
         e.add_field(name="Market cap", value=f"{CURRENCY}{q['market_cap']:,.0f}")
         e.add_field(name="Revenue rate", value=f"{CURRENCY}{q['revenue_rate']:,.0f}/day")
         await respond(interaction, e)
@@ -71,7 +71,7 @@ class StocksCog(ServiceCog, commands.GroupCog, group_name="stocks", group_descri
             t = self.exchange.buy(interaction.user.id, symbol.value, shares)
         except TradeRefused as error:
             return await self._refuse(interaction, error)
-        e = discord.Embed(title=f"{STOCKS} Bought {t.shares:,} {t.symbol}", color=0x57F287,
+        e = discord.Embed(title=f"{STOCKS} Bought {t.shares:,} {t.symbol}", color=Colors.SUCCESS,
                           description=f"Paid {CURRENCY}{t.total:,} (avg {t.gross / t.shares:,.2f} + fee {t.fee:,}).\n"
                                       f"Price moved {t.price_before:,.2f} → {t.price_after:,.2f}.")
         await respond(interaction, e)
@@ -86,7 +86,7 @@ class StocksCog(ServiceCog, commands.GroupCog, group_name="stocks", group_descri
             t = self.exchange.sell(interaction.user.id, symbol.value, shares)
         except TradeRefused as error:
             return await self._refuse(interaction, error)
-        e = discord.Embed(title=f"{STOCKS} Sold {t.shares:,} {t.symbol}", color=0x57F287,
+        e = discord.Embed(title=f"{STOCKS} Sold {t.shares:,} {t.symbol}", color=Colors.SUCCESS,
                           description=f"Received {CURRENCY}{t.total:,} (avg {t.gross / t.shares:,.2f} − fee {t.fee:,}).\n"
                                       f"Price moved {t.price_before:,.2f} → {t.price_after:,.2f}.")
         await respond(interaction, e)

@@ -7,6 +7,7 @@ from discord.ext import commands
 
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import admin_only
+from rudhabot.ui.theme import Colors
 
 
 class ClairvoyanceCog(ServiceCog, commands.GroupCog, group_name="clairvoyance", group_description="Rudhabot's in-house ML model"):
@@ -15,7 +16,7 @@ class ClairvoyanceCog(ServiceCog, commands.GroupCog, group_name="clairvoyance", 
     async def status(self, interaction: discord.Interaction):
         clairvoyance = self.services.clairvoyance
         st = clairvoyance.status()
-        embed = discord.Embed(title="🔮 Clairvoyance status", color=0x57F287 if st["ready"] else 0xE67E22)
+        embed = discord.Embed(title="🔮 Clairvoyance status", color=Colors.CLAIRVOYANCE if st["ready"] else Colors.FAIL)
         embed.add_field(name="Model", value=f"`{st['model']}`" + ("" if st["ready"] else f"\n⚠️ {st['load_error']}"), inline=False)
         if st.get("params"):
             embed.add_field(name="Size", value=f"{st['params']:,} parameters", inline=True)

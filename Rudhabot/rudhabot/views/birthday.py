@@ -6,6 +6,7 @@ from discord import Interaction, ui
 
 from rudhabot.domain.birthday import BirthdayError
 from rudhabot.ui.replies import error_embed
+from rudhabot.ui.theme import Colors
 from rudhabot.views.base import ServiceModal
 
 
@@ -45,7 +46,7 @@ class BirthdayCakeModal(ServiceModal):
         embed = discord.Embed(
             description=f"{cake} Birthday celebration scheduled for {recipient.mention} on {self.date.value} "
                         f"at {scheduled.local_time} Rudhanese Time (GMT+8)!\nMessage: {message}",
-            color=0x57F287,
+            color=Colors.SUCCESS,
         )
         embed.set_author(name=interaction.user.name, icon_url=interaction.user.display_avatar.url)
         await interaction.response.send_message(embed=embed)

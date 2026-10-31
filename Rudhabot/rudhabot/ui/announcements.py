@@ -26,7 +26,7 @@ class Announcer:
                         f"{f' {count} times' if count > 1 else ''}!\n\n"
                         f"**{CURRENCY}{spec.jackpot * count}**\n\n"
                         f"The odds were {odds(spec, len(spec.table.tiers) - 1)} per ticket.",
-            color=Colors.GOLD,
+            color=Colors.INCOME,
         )
         thumbnail = _emoji_url(self._catalog.emoji(spec.item))
         if thumbnail:

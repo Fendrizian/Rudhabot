@@ -6,7 +6,7 @@ from discord import ButtonStyle, Interaction, ui
 
 from rudhabot.services.shop import ShopRefused
 from rudhabot.ui.replies import author_embed, error_embed
-from rudhabot.ui.theme import CAFEICON, CURRENCY
+from rudhabot.ui.theme import CAFEICON, CURRENCY, Colors
 from rudhabot.views.base import ServiceButton, ServiceModal, ServiceSelect, ServiceView
 
 WELCOME = "Welcome to Joot Cafe! The oldest running business in Rudharta that is full of history.\n"
@@ -60,7 +60,7 @@ class MenuSwitchButton(ServiceButton):
             description = f"{WELCOME}Here are some delicious food items from Joot Cafe!"
         else:
             description = f"{WELCOME}Here are some refreshing beverages from Joot Cafe!"
-        embed = discord.Embed(title=f"{CAFEICON} JOOT CAFE", description=description, color=0xE67E22)
+        embed = discord.Embed(title=f"{CAFEICON} JOOT CAFE", description=description, color=Colors.CAFE)
         embed.set_author(name=interaction.user.name, icon_url=interaction.user.display_avatar.url)
         embed.set_footer(text=f"Wallet: {wallet}ra")
         if self.menu_type == "specials":
@@ -112,5 +112,5 @@ class CafeQuantityModal(ServiceModal):
                 raise
             await interaction.response.send_message(embed=error_embed(message, user), ephemeral=True)
             return
-        embed = author_embed(user, f"✅ You bought **{quantity} {emoji}{title}** for {CURRENCY}{purchase.total}", 0x57F287)
+        embed = author_embed(user, f"✅ You bought **{quantity} {emoji}{title}** for {CURRENCY}{purchase.total}", Colors.SUCCESS)
         await interaction.response.send_message(embed=embed)

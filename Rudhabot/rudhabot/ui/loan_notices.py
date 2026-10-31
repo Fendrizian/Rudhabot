@@ -7,9 +7,9 @@ import discord
 
 from rudhabot.services.loans import AutoPaid, Bankruptcy, DueSoon
 from rudhabot.ui.messenger import Messenger
-from rudhabot.ui.theme import CURRENCY
+from rudhabot.ui.theme import CURRENCY, Colors
 
-GREY = 0x95A5A6
+GREY = Colors.NOTIFICATIONS
 
 
 class LoanNotifier:

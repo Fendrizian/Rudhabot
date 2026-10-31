@@ -23,7 +23,7 @@ from rudhabot.ui.theme import CURRENCY, Colors
 
 EMPTY = "⬛"
 SPINNING = "🌀"
-SUSPENSE_COLOR = 0xE67E22
+SUSPENSE_COLOR = Colors.GAMBLING
 JACKPOT_THRESHOLD = 15            # triples paying at least this much get the gold treatment
 
 
@@ -46,7 +46,7 @@ def spinning_frame(user, stopped: Sequence[SlotSymbol], bet: int) -> discord.Emb
     if len(stopped) == 2 and stopped[0] == stopped[1]:
         status, color = "😮 **Two matching!** One reel left...", SUSPENSE_COLOR
     else:
-        status, color = f"Spinning reel {len(stopped) + 1} of 3...", Colors.NEUTRAL
+        status, color = f"Spinning reel {len(stopped) + 1} of 3...", Colors.GAMBLING
 
     embed = author_embed(user, f"{_row(cells)}\n\n{status}", color)
     embed.add_field(name="Bet", value=f"{CURRENCY}{bet}", inline=True)
@@ -70,7 +70,7 @@ def result_frame(user, reels: Sequence[SlotSymbol], outcome: SlotOutcome, bet: i
     if outcome.won:
         verdict = f"🎉 You win! {CURRENCY}{winnings} (x{outcome.multiplier})"
         big = outcome.kind is SlotKind.TRIPLE and outcome.multiplier >= JACKPOT_THRESHOLD
-        color = Colors.GOLD if big else Colors.SUCCESS
+        color = Colors.INCOME if big else Colors.SUCCESS
         change = f"+{CURRENCY}{outcome.net(bet)}"
     else:
         verdict = f"💸 You lose! {CURRENCY}{bet}"

@@ -11,14 +11,14 @@ from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import not_in_game
 from rudhabot.services.crypto_market import TradeRefused
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY, STOCKSICON
+from rudhabot.ui.theme import CURRENCY, Colors, STOCKSICON
 
 log = logging.getLogger("rudhabot.crypto")
 
 COIN_CHOICES = [app_commands.Choice(name=symbol, value=symbol) for symbol in ("SCAY", "RDC", "LICH", "WNC")]
 
 
-def _embed(user, message: str, color: int = 0x992D22) -> discord.Embed:
+def _embed(user, message: str, color: int = Colors.FAIL) -> discord.Embed:
     embed = discord.Embed(description=message, color=color)
     embed.set_author(name=user.name, icon_url=user.display_avatar.url)
     return embed
@@ -51,7 +51,7 @@ class CryptoCog(ServiceCog):
             title="<:crypto:1401378589491859598> Crypto Market",
             description=f"Here, you can buy available cryptocurrencies legalized by the government. Prices change every minute. \n"
                         f"You have {CURRENCY}{account.get('wallet', 0)} in your wallet.",
-            color=0xFEE75C,
+            color=Colors.CRYPTO_MARKET,
         )
         embed.set_footer(text="Use /buycoin to buy cryptocurrencies")
         for coin, price in market.prices.items():
@@ -72,7 +72,7 @@ class CryptoCog(ServiceCog):
                 "insufficient_wallet": "❌ You don't have enough money in your wallet.",
             }[refusal.code]), ephemeral=True)
             return
-        await respond(interaction, _embed(interaction.user, f"✅ You bought {trade.quantity:.4f} {trade.coin} for {CURRENCY}{amount}.", 0x57F287))
+        await respond(interaction, _embed(interaction.user, f"✅ You bought {trade.quantity:.4f} {trade.coin} for {CURRENCY}{amount}.", Colors.SUCCESS))
 
     @app_commands.command(name="sellcoin", description="Sell a cryptocurrency.")
     @app_commands.describe(coin="SCAY, RDC, LICH, or WNC", amount="Amount of the coin to sell or 'all'")
@@ -89,7 +89,7 @@ class CryptoCog(ServiceCog):
                 "insufficient_coins": f"❌ You don't have enough {refusal.data.get('coin')} to sell.",
             }[refusal.code]), ephemeral=True)
             return
-        await respond(interaction, _embed(interaction.user, f"✅ You sold {trade.quantity:.4f} {trade.coin} for {CURRENCY}{trade.value}.", 0x57F287))
+        await respond(interaction, _embed(interaction.user, f"✅ You sold {trade.quantity:.4f} {trade.coin} for {CURRENCY}{trade.value}.", Colors.SUCCESS))
 
     @app_commands.command(name="portfolio", description="Your investments: crypto and stocks, with their total value")
     @not_in_game()
@@ -97,7 +97,7 @@ class CryptoCog(ServiceCog):
         """Crypto holdings and Rudharta Exchange shares in one view."""
         coins = self.services.crypto.portfolio(self.users.get(interaction.user.id))
         shares = self.services.stocks.portfolio(interaction.user.id)
-        embed = discord.Embed(title=f"📊 {interaction.user.name}'s Portfolio", color=0x11806A)
+        embed = discord.Embed(title=f"📊 {interaction.user.name}'s Portfolio", color=Colors.PORTFOLIO)
         if not coins and not shares:
             embed.description = "Your portfolio is empty. Buy coins with `/buycoin` or shares with `/stocks buy`."
             await respond(interaction, embed)

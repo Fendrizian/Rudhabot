@@ -12,14 +12,14 @@ from rudhabot.cogs.checks import not_in_game
 from rudhabot.domain.amounts import AmountError, parse_amount
 from rudhabot.domain.cooldown import CRIME, DAILY, ROB, WORK, Cooldown, format_remaining
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY
+from rudhabot.ui.theme import CURRENCY, Colors
 from rudhabot.views.leaderboard import LeaderboardView, create_leaderboard_embed
 
 INVALID_AMOUNT = "❌ Invalid amount format. Use a number or 'all'."
 NOT_POSITIVE = "❌ Amount must be positive."
 
 
-def _plain(user, message: str, color: int = 0x992D22) -> discord.Embed:
+def _plain(user, message: str, color: int = Colors.FAIL) -> discord.Embed:
     embed = discord.Embed(description=message, color=color)
     embed.set_author(name=user.name, icon_url=user.display_avatar.url)
     return embed
@@ -50,7 +50,7 @@ class EconomyCog(ServiceCog):
         tier = bank.tier_of(profile)
         account = self.users.get(target.id)              # re-read: account() may have folded old savings in
         wallet, banked = account.get("wallet", 0), account.get("bank", 0)
-        embed = discord.Embed(title=f"<:balance:1399370324734246952> {target.name}'s Balance", color=0xAD1457)
+        embed = discord.Embed(title=f"<:balance:1399370324734246952> {target.name}'s Balance", color=Colors.BALANCE)
         embed.add_field(name="Wallet", value=f"{CURRENCY}{wallet:,}")
         embed.add_field(name="Bank", value=f"{CURRENCY}{banked:,}\n+{tier.daily_interest * 100:.2f}% a day")
         embed.add_field(name="Total Balance", value=f"{CURRENCY}{wallet + banked:,}", inline=False)
@@ -72,14 +72,14 @@ class EconomyCog(ServiceCog):
             tips = insights_for(self.services, target.id, profile, banked)
             if tips:
                 await interaction.followup.send(embed=discord.Embed(title="💡 Clairvoyance", description="\n".join(tips),
-                                                                    color=0x206694), ephemeral=True)
+                                                                    color=Colors.CLAIRVOYANCE), ephemeral=True)
 
     # ------------------------------------------------------------------ earning
     async def _on_cooldown(self, interaction, cooldown: Cooldown, account: dict, now, text: str, **fmt) -> bool:
         remaining = cooldown.remaining(account, now)
         if remaining is None:
             return False
-        await respond(interaction, _plain(interaction.user, f"⏳ You need to wait **{format_remaining(remaining, **fmt)}** {text}", 0x979C9F))
+        await respond(interaction, _plain(interaction.user, f"⏳ You need to wait **{format_remaining(remaining, **fmt)}** {text}", Colors.COOLDOWN))
         return True
 
     @app_commands.command(name="work", description="Work and earn some money!")
@@ -90,7 +90,7 @@ class EconomyCog(ServiceCog):
             return
         earnings = self.rng.randint(10, 30)
         self.users.update(interaction.user.id, wallet=account["wallet"] + earnings, last_work=Cooldown.stamp(now))
-        await respond(interaction, _plain(interaction.user, f"💼 You worked hard and earned **{CURRENCY}{earnings}**!", 0xF1C40F))
+        await respond(interaction, _plain(interaction.user, f"💼 You worked hard and earned **{CURRENCY}{earnings}**!", Colors.INCOME))
 
     @app_commands.command(name="daily", description="Claim your daily reward of 50ra")
     @not_in_game()
@@ -99,7 +99,7 @@ class EconomyCog(ServiceCog):
         if await self._on_cooldown(interaction, DAILY, account, now, "before claiming daily again.", hours=True):
             return
         self.users.update(interaction.user.id, wallet=account["wallet"] + 50, last_daily=Cooldown.stamp(now))
-        await respond(interaction, _plain(interaction.user, f"📅 You claimed your daily reward of **{CURRENCY}50**!", 0xF1C40F))
+        await respond(interaction, _plain(interaction.user, f"📅 You claimed your daily reward of **{CURRENCY}50**!", Colors.INCOME))
 
     @app_commands.command(name="crime", description="Commit a crime and try to earn money")
     @not_in_game()
@@ -110,16 +110,16 @@ class EconomyCog(ServiceCog):
         if self.rng.randint(1, 100) <= 70:
             earnings = self.rng.randint(30, 50)
             self.users.update(interaction.user.id, wallet=account["wallet"] + earnings, last_crime=Cooldown.stamp(now))
-            await respond(interaction, _plain(interaction.user, f"🚬 You committed a crime and earned {CURRENCY}{earnings}", 0xF1C40F))
+            await respond(interaction, _plain(interaction.user, f"🚬 You committed a crime and earned {CURRENCY}{earnings}", Colors.INCOME))
             return
         total_balance = account["wallet"] + account["bank"]
         fine = max(int(total_balance * self.rng.randint(5, 20) / 100), 1)
         if total_balance < 1:
             await respond(interaction, _plain(interaction.user, "You were caught while trying to commit a crime!\n"
-                                              "You're too poor to even be fined, you broke bandit.", 0xED4245))
+                                              "You're too poor to even be fined, you broke bandit.", Colors.LOSS))
             return
         self.users.update(interaction.user.id, wallet=account["wallet"] - fine, last_crime=Cooldown.stamp(now))
-        await respond(interaction, _plain(interaction.user, f"You got caught while trying to commit a crime!\nYou were fined {CURRENCY}{fine}", 0xED4245))
+        await respond(interaction, _plain(interaction.user, f"You got caught while trying to commit a crime!\nYou were fined {CURRENCY}{fine}", Colors.LOSS))
 
     @app_commands.command(name="rob", description="Try to rob another user!")
     @app_commands.describe(target="The user you want to rob")
@@ -133,7 +133,7 @@ class EconomyCog(ServiceCog):
         remaining = ROB.remaining(attacker, now)
         if remaining is not None:
             await respond(interaction, _plain(interaction.user, 
-                f"⏳ You need to wait **{format_remaining(remaining, always_minutes=True)}** before you can rob someone again.", 0x979C9F))
+                f"⏳ You need to wait **{format_remaining(remaining, always_minutes=True)}** before you can rob someone again.", Colors.COOLDOWN))
             return
         if self.rng.choice([True, False]):
             if victim["wallet"] < 50:
@@ -143,17 +143,17 @@ class EconomyCog(ServiceCog):
             self.users.update(interaction.user.id, wallet=attacker["wallet"] + stolen, last_rob=Cooldown.stamp(now))
             self.users.update(target.id, wallet=victim["wallet"] - stolen)
             await respond(interaction, _plain(interaction.user, f"You successfully robbed {target.mention}!\n"
-                                              f"You stole **{CURRENCY}{stolen}** from {target.mention}", 0x57F287))
+                                              f"You stole **{CURRENCY}{stolen}** from {target.mention}", Colors.SUCCESS))
             return
         total_balance = attacker["wallet"] + attacker.get("bank", 0)
         fine = max(1, int((self.rng.randint(10, 25) / 100) * total_balance))
         if total_balance < 1:
             await respond(interaction, _plain(interaction.user, f"You were caught trying to rob {target.mention}!\n"
-                                              f"You're too poor to even be fined, you broke bandit.", 0xED4245))
+                                              f"You're too poor to even be fined, you broke bandit.", Colors.LOSS))
             return
         self.users.update(interaction.user.id, wallet=attacker["wallet"] - fine, last_rob=Cooldown.stamp(now))
         await respond(interaction, _plain(interaction.user, f"You were caught trying to rob {target.mention}!\n"
-                                          f"You were fined **{CURRENCY}{fine}**.", 0xED4245))
+                                          f"You were fined **{CURRENCY}{fine}**.", Colors.LOSS))
 
     # ------------------------------------------------------------------ banking
     async def _bank_transfer(self, interaction, amount_text: str, source: str, destination: str,
@@ -194,13 +194,13 @@ class EconomyCog(ServiceCog):
     @app_commands.describe(amount="Amount to deposit or 'all'")
     @not_in_game()
     async def deposit(self, interaction: discord.Interaction, amount: str):
-        await self._bank_move(interaction, amount, "deposit", "🏦 You deposited **{c}{n}** to your bank.", 0x206694)
+        await self._bank_move(interaction, amount, "deposit", "🏦 You deposited **{c}{n}** to your bank.", Colors.DEPOSIT)
 
     @app_commands.command(name="withdraw", description="Withdraw money from your bank (monthly limit depends on your card tier)")
     @app_commands.describe(amount="Amount to withdraw or 'all'")
     @not_in_game()
     async def withdraw(self, interaction: discord.Interaction, amount: str):
-        await self._bank_move(interaction, amount, "withdraw", "🏦 You withdrew **{c}{n}** to your wallet.", 0x3498DB)
+        await self._bank_move(interaction, amount, "withdraw", "🏦 You withdrew **{c}{n}** to your wallet.", Colors.WITHDRAW)
 
     @app_commands.command(name="send", description="Give money from your wallet to another user")
     @app_commands.describe(target="The user to give money to", amount="Amount of money to give or 'all'")
@@ -221,7 +221,7 @@ class EconomyCog(ServiceCog):
         receiver = self.users.get(target.id)
         self.users.update(interaction.user.id, wallet=sender["wallet"] - give)
         self.users.update(target.id, wallet=receiver["wallet"] + give)
-        embed = _plain(interaction.user, f"💸 You gave {CURRENCY}{give} to {target.mention}!", 0x57F287)
+        embed = _plain(interaction.user, f"💸 You gave {CURRENCY}{give} to {target.mention}!", Colors.SUCCESS)
         embed.add_field(name="Your New Balance", value=f"{CURRENCY}{sender['wallet'] - give}", inline=True)
         embed.add_field(name=f"{target.name}'s New Balance", value=f"{CURRENCY}{receiver['wallet'] + give}", inline=True)
         await respond(interaction, embed)

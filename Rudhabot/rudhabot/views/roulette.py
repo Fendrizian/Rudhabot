@@ -8,7 +8,7 @@ import discord
 from discord import ButtonStyle, Interaction, ui
 
 from rudhabot.ui.messages import MSG_INVALIDBET, MSG_NONPOS
-from rudhabot.ui.theme import CURRENCY
+from rudhabot.ui.theme import CURRENCY, Colors, ROULETTE_BLACK, ROULETTE_GREEN, ROULETTE_RED
 from rudhabot.views.base import ServiceButton, ServiceModal, ServiceView
 
 
@@ -62,7 +62,7 @@ class RouletteView(ServiceView):
             timeout_embed = discord.Embed(
                 title="<a:roulette_wheel:1400109956761522206> ROULETTE - TIMEOUT",
                 description=f"⏰ **Game timed out!**\n\n💰 **Refunded:** {CURRENCY}{self.total_bet}\n\nAll your bets have been returned to your wallet.",
-                color=0x979c9f
+                color=Colors.COOLDOWN
             )
             timeout_embed.set_footer(text=f"Final wallet: {user_data['wallet']}ra")
             
@@ -108,12 +108,12 @@ class BetAmountModal(ServiceModal):
         try:
             bet_amount = int(self.amount_input.value)
         except ValueError:
-            embed = discord.Embed(description=MSG_INVALIDBET, color=0x992d22)
+            embed = discord.Embed(description=MSG_INVALIDBET, color=Colors.FAIL)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
         if bet_amount <= 0:
-            embed = discord.Embed(description=MSG_NONPOS, color=0x992d22)
+            embed = discord.Embed(description=MSG_NONPOS, color=Colors.FAIL)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
@@ -124,7 +124,7 @@ class BetAmountModal(ServiceModal):
         if bet_amount > current_wallet:
             embed = discord.Embed(
                 description=f"❌ You don't have enough money! You have {CURRENCY}{current_wallet} but need {CURRENCY}{bet_amount}.",
-                color=0x992d22
+                color=Colors.FAIL
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
@@ -148,7 +148,7 @@ class BetAmountModal(ServiceModal):
         embed = discord.Embed(
             title="<a:roulette_wheel:1400109956761522206> ROULETTE",
             description=f"**Total Bet:** {CURRENCY}{view.total_bet}\n**Current Bets:**\n" + "\n".join(bet_descriptions) + "\n\nPlace more bets or **SPIN** to play!",
-            color=0x99aab5
+            color=Colors.GAMBLING
         )
         embed.set_author(name=interaction.user.name, icon_url=interaction.user.display_avatar.url)
         embed.add_field(name="Wallet", value=f"{CURRENCY}{user_data['wallet']}")
@@ -187,19 +187,19 @@ class CustomNumberBetModal(ServiceModal):
             if num < 0 or num > 36:
                 raise ValueError("Invalid number")
         except ValueError:
-            embed = discord.Embed(description="❌ Please enter a valid number between 0 and 36.", color=0x992d22)
+            embed = discord.Embed(description="❌ Please enter a valid number between 0 and 36.", color=Colors.FAIL)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
         try:
             bet_amount = int(self.amount.value)
         except ValueError:
-            embed = discord.Embed(description=MSG_INVALIDBET, color=0x992d22)
+            embed = discord.Embed(description=MSG_INVALIDBET, color=Colors.FAIL)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
         if bet_amount <= 0:
-            embed = discord.Embed(description=MSG_NONPOS, color=0x992d22)
+            embed = discord.Embed(description=MSG_NONPOS, color=Colors.FAIL)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
@@ -210,7 +210,7 @@ class CustomNumberBetModal(ServiceModal):
         if bet_amount > current_wallet:
             embed = discord.Embed(
                 description=f"❌ You don't have enough money! You have {CURRENCY}{current_wallet} but need {CURRENCY}{bet_amount}.",
-                color=0x992d22
+                color=Colors.FAIL
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
@@ -235,7 +235,7 @@ class CustomNumberBetModal(ServiceModal):
         embed = discord.Embed(
             title="<a:roulette_wheel:1400109956761522206> ROULETTE",
             description=f"**Total Bet:** {CURRENCY}{view.total_bet}\n**Current Bets:**\n" + "\n".join(bet_descriptions) + "\n\nPlace more bets or **SPIN** to play!",
-            color=0x99aab5
+            color=Colors.GAMBLING
         )
         embed.set_author(name=interaction.user.name, icon_url=interaction.user.display_avatar.url)
         embed.add_field(name="Wallet", value=f"{CURRENCY}{user_data['wallet']}")
@@ -251,7 +251,7 @@ class SpinButton(ServiceButton):
         view: RouletteView = self.view
         
         if not view.bets:
-            embed = discord.Embed(description="❌ You must place at least one bet before spinning!", color=0x992d22)
+            embed = discord.Embed(description="❌ You must place at least one bet before spinning!", color=Colors.FAIL)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
@@ -262,7 +262,7 @@ class SpinButton(ServiceButton):
         spinning_embed = discord.Embed(
             title="<a:roulette_wheel:1400109956761522206> ROULETTE",
             description="The ball is spinning around the wheel...",
-            color=0x99aab5
+            color=Colors.GAMBLING
         )
         spinning_embed.set_author(name=interaction.user.name, icon_url=interaction.user.display_avatar.url)
         
@@ -339,15 +339,15 @@ class SpinButton(ServiceButton):
         if winning_number in red_numbers:
             color_emoji = "🔴"
             color_name = "Red"
-            embed_color = 0xdc143c
+            embed_color = ROULETTE_RED
         elif winning_number in black_numbers:
             color_emoji = "⚫"
             color_name = "Black"
-            embed_color = 0x2c2c2c
+            embed_color = ROULETTE_BLACK
         else:
             color_emoji = "🟢"
             color_name = "Green"
-            embed_color = 0x00ff00
+            embed_color = ROULETTE_GREEN
 
         result_embed = discord.Embed(
             title="<a:roulette_wheel:1400109956761522206> ROULETTE RESULT",
@@ -380,21 +380,21 @@ class SpinButton(ServiceButton):
                 value=f"{CURRENCY}{net_result}",
                 inline=True
             )
-            result_embed.color = 0x57f287
+            result_embed.color = Colors.SUCCESS
         elif net_result < 0:
             result_embed.add_field(
                 name="⏬️ Net Loss",
                 value=f"{CURRENCY}{abs(net_result)}",
                 inline=True
             )
-            result_embed.color = 0xed4245
+            result_embed.color = Colors.LOSS
         else:
             result_embed.add_field(
                 name="⏺️ Break Even",
                 value=f"{CURRENCY}0",
                 inline=True
             )
-            result_embed.color = 0x99aab5
+            result_embed.color = Colors.GAMBLING
 
         result_embed.set_footer(text=f"Final wallet: {user_data['wallet']}ra")
 

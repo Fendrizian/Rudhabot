@@ -10,6 +10,9 @@
   It is uploaded as `attachment://dri.png`. Section pages and the full list have no image, and navigation sets the
   message's attachments explicitly (`_show` in `views/help.py`).
 
+- **Embed colours come only from `Colors` in `rudhabot/ui/theme.py`** (the house palette; TCG shades run darkest to
+  brightest). No hex literals elsewhere: `tests/test_colors.py` enforces it.
+
 ## Checks
 - Run the tests from `Rudhabot/` (offline, no Discord or OpenAI calls):
 

@@ -17,6 +17,7 @@ from discord.ext import commands, tasks
 
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import admin_only
+from rudhabot.ui.theme import Colors
 
 log = logging.getLogger("rudhabot.audit")
 ACCOUNT_ICONS = {"wallet": "👛", "bank": "🏦", "savings": "🐷", "credit": "💳", "shards": "◇", "dust": "✨"}
@@ -63,7 +64,7 @@ class AuditCog(ServiceCog):
             if not batch:
                 break
             embed = discord.Embed(title="🧾 Economy audit log", description="\n".join(entry_line(e) for e in batch)[:4096],
-                                  color=0x2C3E50)
+                                  color=Colors.NOTIFICATIONS)
             embed.set_footer(text=f"{len(batch)} change(s) · full history in ledger.jsonl")
             await self.services.messenger.post(channels.audit, embed=embed, allowed_mentions=discord.AllowedMentions.none())
         while self.reviews.pending:
@@ -88,7 +89,7 @@ class AuditCog(ServiceCog):
     @admin_only()
     async def audit_cmd(self, interaction: discord.Interaction, user: Optional[discord.User] = None):
         entries = self.audit.recent(20, user.id if user else None)
-        embed = discord.Embed(title="🧾 Audit log" + (f" · {user.display_name}" if user else ""), color=0x2C3E50,
+        embed = discord.Embed(title="🧾 Audit log" + (f" · {user.display_name}" if user else ""), color=Colors.NOTIFICATIONS,
                               description="\n".join(entry_line(e) for e in reversed(entries))[:4096] or "No entries.")
         await interaction.response.send_message(embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
@@ -100,7 +101,7 @@ class AuditCog(ServiceCog):
     async def review_list(self, interaction: discord.Interaction, status: Optional[app_commands.Choice[str]] = None):
         value = status.value if status else "open"
         items = self.reviews.signals(None if value == "all" else value)
-        embed = discord.Embed(title=f"🔍 Review signals ({value})", color=0xE67E22,
+        embed = discord.Embed(title=f"🔍 Review signals ({value})", color=Colors.CLAIRVOYANCE,
                               description="\n\n".join(_signal_text(s) for s in items)[:4096] or "Nothing to review.")
         embed.set_footer(text="Signals are for human review only: nothing is changed automatically.")
         await interaction.response.send_message(embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
@@ -124,6 +125,6 @@ def _signal_text(s: dict) -> str:
 
 
 def review_embed(signal: dict) -> discord.Embed:
-    embed = discord.Embed(title="🔍 Clairvoyance review signal", description=_signal_text(signal), color=0xE67E22)
+    embed = discord.Embed(title="🔍 Clairvoyance review signal", description=_signal_text(signal), color=Colors.CLAIRVOYANCE)
     embed.set_footer(text="Unusual activity worth a look. Nothing was changed. Resolve with /review resolve.")
     return embed

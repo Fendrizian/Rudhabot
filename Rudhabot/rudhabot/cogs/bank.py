@@ -13,9 +13,9 @@ from rudhabot.cogs.checks import not_in_game
 from rudhabot.domain.bank import TIERS, next_tier
 from rudhabot.services.bank import BankRefused
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY
+from rudhabot.ui.theme import CURRENCY, Colors
 
-BANK_BLUE = 0x206694
+BANK_GREEN = Colors.BANK
 
 
 def _amount(text: Optional[str]) -> Optional[int]:
@@ -31,7 +31,7 @@ def _amount(text: Optional[str]) -> Optional[int]:
     return value
 
 
-def _embed(user, title: str, description: str = "", color: int = BANK_BLUE) -> discord.Embed:
+def _embed(user, title: str, description: str = "", color: int = BANK_GREEN) -> discord.Embed:
     embed = discord.Embed(title=title, description=description, color=color)
     embed.set_author(name=user.name, icon_url=user.display_avatar.url)
     return embed
@@ -64,11 +64,11 @@ class BankCog(ServiceCog, commands.GroupCog, group_name="bank", group_descriptio
         return insights_for(self.services, user_id, profile, bank_balance)
 
     async def _refuse(self, interaction, error: BankRefused) -> None:
-        await respond(interaction, _embed(interaction.user, "🏦 Bank", str(error), 0x992D22), ephemeral=True)
+        await respond(interaction, _embed(interaction.user, "🏦 Bank", str(error), Colors.FAIL), ephemeral=True)
 
     @app_commands.command(name="tiers", description="Compare the card tiers")
     async def tiers(self, interaction: discord.Interaction):
-        e = discord.Embed(title="💳 Rudharta Bank card tiers", color=BANK_BLUE)
+        e = discord.Embed(title="💳 Rudharta Bank card tiers", color=BANK_GREEN)
         for t in TIERS:
             e.add_field(name=f"{t.emoji} {t.name}", inline=False,
                         value=f"Bank interest **{t.daily_interest * 100:.2f}%/day** (on up to {t.interest_cap:,}) · "
@@ -85,7 +85,7 @@ class BankCog(ServiceCog, commands.GroupCog, group_name="bank", group_descriptio
         except BankRefused as error:
             return await self._refuse(interaction, error)
         await respond(interaction, _embed(interaction.user, "🎉 Card upgraded", f"Welcome to {tier.emoji} **{tier.name}**!",
-                                          0x57F287))
+                                          Colors.SUCCESS))
 
     @app_commands.command(name="history", description="Your recent money movements (from the audit log)")
     async def history(self, interaction: discord.Interaction):
@@ -126,4 +126,4 @@ class BankCog(ServiceCog, commands.GroupCog, group_name="bank", group_descriptio
             return await self._refuse(interaction, error)
         left = self.bank.account(interaction.user.id)["credit"]["balance"]
         await respond(interaction, _embed(interaction.user, "💳 Card payment", f"Paid {CURRENCY}{paid:,}. Still owed: {CURRENCY}{left:,}.",
-                                          0x57F287))
+                                          Colors.SUCCESS))

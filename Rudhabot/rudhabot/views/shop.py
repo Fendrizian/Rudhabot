@@ -7,7 +7,7 @@ import discord
 from discord import ButtonStyle, Interaction
 
 from rudhabot.services.shop import ShopRefused
-from rudhabot.ui.theme import CURRENCY, SHOPICON
+from rudhabot.ui.theme import CURRENCY, Colors, SHOPICON
 from rudhabot.views.base import ServiceButton, ServiceView
 
 
@@ -21,7 +21,7 @@ def shop_page(services, page: int, wallet: int):
         title=f"{SHOPICON} NATIONAL ONLINE SHOP",
         description=f"Welcome to the National Online Shop! Commissioned by the monarchy. \n"
                     f"You have {CURRENCY}{wallet} in your wallet.",
-        color=0xEB459E,
+        color=Colors.SHOP,
     )
     for item, price in current:
         embed.add_field(name=f"{catalog.emoji(item)} {item.title()}",
@@ -43,7 +43,7 @@ class ItemRow(ServiceView):
 
     async def interaction_check(self, interaction: Interaction):
         if interaction.user.id != self.user_id:
-            embed = discord.Embed(description="You can't use this menu!", color=0x546E7A)
+            embed = discord.Embed(description="You can't use this menu!", color=Colors.UNAVAILABLE)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return False
         return True
@@ -64,12 +64,12 @@ class BuyButton(ServiceButton):
                 raise
             embed = discord.Embed(
                 description=f"❌ You don't have enough money in your wallet to buy {emoji} **{self.item_name}**.",
-                color=0x992D22)
+                color=Colors.FAIL)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         embed = discord.Embed(
             description=f"✅ You bought **1 {emoji} {self.item_name.title()}** for {CURRENCY}{purchase.total}",
-            color=0x57F287)
+            color=Colors.SUCCESS)
         await interaction.response.send_message(embed=embed)
 
 

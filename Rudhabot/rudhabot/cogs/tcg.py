@@ -20,6 +20,7 @@ from rudhabot.tcg.decks import ARCHETYPES
 from rudhabot.tcg.rules_text import RULES
 from rudhabot.ui.tcg_embeds import (CLOUD, board_embed, card_embed, card_line, collection_embed, deck_embed,
                                     doctor_embed, hand_embed)
+from rudhabot.ui.theme import Colors
 from rudhabot.views.tcg_match import (ChallengeView, DeckModal, MatchButton, MovePicker, PageButton, PickSelect,
                                      board_view)
 
@@ -68,7 +69,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         try:
             profile = self.tcg.claim_starter(interaction.user.id, deck.value)
         except TcgError as error:
-            return await _reply(interaction, _note(str(error), 0xE74C3C))
+            return await _reply(interaction, _note(str(error), Colors.FAIL))
         arche = ARCHETYPES[deck.value]
         embed = deck_embed(arche["name"], list(arche["cards"]))
         embed.description = (f"Welcome to Asgrelia! **{arche['name']}** is now your active deck.\n*{arche['plan']}*\n"
@@ -84,7 +85,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         try:
             pulled = self.tcg.open_pack(interaction.user.id)
         except TcgError as error:
-            return await _reply(interaction, _note(str(error), 0xE74C3C))
+            return await _reply(interaction, _note(str(error), Colors.FAIL))
         embed = discord.Embed(title="🎴 Cloudfall pack", color=CLOUD,
                               description="\n".join(card_line(CARD_BY_ID[c]) for c in pulled))
         embed.set_footer(text=f"Price {self.tcg.terms.pack_price} · pulls are random, drawn by Rudhabot")
@@ -126,7 +127,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         try:
             removed = self.tcg.forget_me(interaction.user.id)
         except TcgError as error:
-            return await _reply(interaction, _note(str(error), 0xE74C3C))
+            return await _reply(interaction, _note(str(error), Colors.FAIL))
         await _reply(interaction, _note("Your Cloudfall data was deleted." if removed else "You had no Cloudfall data."))
 
     # ================================================================== decks
@@ -160,7 +161,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         try:
             self.tcg.use_deck(interaction.user.id, name)
         except TcgError as error:
-            return await _reply(interaction, _note(str(error), 0xE74C3C))
+            return await _reply(interaction, _note(str(error), Colors.FAIL))
         await _reply(interaction, _note(f"**{name}** is now your active deck."))
 
     @deck_view.autocomplete("name")
@@ -174,7 +175,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         try:
             cards = self.tcg.active_deck(interaction.user.id)
         except TcgError as error:
-            return await _reply(interaction, _note(str(error), 0xE74C3C))
+            return await _reply(interaction, _note(str(error), Colors.FAIL))
         await interaction.response.defer(ephemeral=True, thinking=True)
         profile = self.tcg.profile(interaction.user.id)
         report = await self.clairvoyance.gauntlet(cards)
@@ -187,7 +188,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         try:
             return action()
         except GachaRefused as error:
-            await _reply(interaction, _note(str(error), 0xE74C3C))
+            await _reply(interaction, _note(str(error), Colors.FAIL))
             return None
 
     @wishes.command(name="banner", description="This week's featured banner, rates, your pity and shards")
@@ -197,7 +198,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         profile = self.tcg.profile(interaction.user.id)
         b = svc.banner("featured")
         pity = svc.pity(profile, "featured")
-        e = discord.Embed(title=f"🌠 {b.name}", color=0xF1C40F,
+        e = discord.Embed(title=f"🌠 {b.name}", color=Colors.TCG_BLUE,
                           description=f"Featured ★5: **{CARD_BY_ID[b.featured5].name}**\n"
                                       f"Featured ★4: {', '.join(CARD_BY_ID[c].name for c in b.featured4)}")
         e.add_field(name="Rates", inline=False,
@@ -231,7 +232,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         for pull, is_new in sorted(zip(pulls, new), key=lambda pn: -pn[0].stars):
             lines.append(f"{STARS[pull.stars]} {'✨ ' if pull.foil else ''}**{CARD_BY_ID[pull.card].name}**"
                          + (" · featured" if pull.featured else "") + (" · NEW" if is_new else ""))
-        color = {5: 0xF1C40F, 4: 0x9B59B6, 3: 0x3498DB}.get(best, 0x95A5A6)
+        color = {5: Colors.TCG_DEEP, 4: Colors.TCG_BLUE, 3: Colors.TCG_SKY}.get(best, Colors.TCG_MIST)
         e = discord.Embed(title=f"🌠 {'A star falls' if best >= 5 else 'The sky answers'} · {b.name}",
                           description="\n".join(lines), color=color)
         profile = self.tcg.profile(interaction.user.id)
@@ -282,7 +283,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
                                              difficulty.value if difficulty else "normal",
                                              opponent.value if opponent else None)
         except TcgError as error:
-            return await _reply(interaction, _note(str(error), 0xE74C3C))
+            return await _reply(interaction, _note(str(error), Colors.FAIL))
         await interaction.response.defer(thinking=True)
         try:
             await self.tcg.run_ai(match)
@@ -292,7 +293,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             raise
         if not posted:
             await interaction.followup.send(embed=_note("I couldn't show a match board here, so the match was cancelled. "
-                                                        "Try another channel.", 0xE74C3C), ephemeral=True)
+                                                        "Try another channel.", Colors.FAIL), ephemeral=True)
 
     @app_commands.command(name="challenge", description="Challenge another player to a Cloudfall duel")
     async def challenge(self, interaction: discord.Interaction, opponent: discord.Member, coaching: bool = False):
@@ -474,7 +475,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             await interaction.response.defer(ephemeral=True, thinking=True)
             hints = await self.clairvoyance.hints(match.game)
             text = "\n".join(f"**{h.label}** · win {round(h.win * 100)}% ({h.delta * 100:+.0f})" for h in hints) or "No hint."
-            embed = discord.Embed(title="🔮 Clairvoyance's top moves", description=text, color=CLOUD)
+            embed = discord.Embed(title="🔮 Clairvoyance's top moves", description=text, color=Colors.CLAIRVOYANCE)
             embed.set_footer(text=f"{self.clairvoyance.version} · estimates, not guarantees · only you can see this")
             return await interaction.followup.send(embed=embed, ephemeral=True)
         acts = E.legal_actions(match.game)
@@ -504,14 +505,14 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         match = self.tcg.get(match_id)
         if match is None or version != match.version:
             return await interaction.response.edit_message(
-                embed=_note("That menu is out of date. Press **Act** again for your current options.", 0xE74C3C), view=None)
+                embed=_note("That menu is out of date. Press **Act** again for your current options.", Colors.FAIL), view=None)
         await interaction.response.edit_message(view=MovePicker(self, match_id, version, E.legal_actions(match.game), page))
 
     async def on_move(self, interaction: discord.Interaction, match_id: str, key: str, label: str, version: int) -> None:
         try:
             result = await self.tcg.act(match_id, interaction.user.id, key, version)
         except TcgError as error:
-            return await interaction.response.edit_message(embed=_note(str(error), 0xE74C3C), view=None)
+            return await interaction.response.edit_message(embed=_note(str(error), Colors.FAIL), view=None)
         match = result.match
         if result.finished is None and match.decider_is_ai:
             await interaction.response.edit_message(embed=_note(f"✅ {label}\n🔮 The Clairvoyance is thinking…"), view=None)
