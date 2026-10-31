@@ -1,64 +1,173 @@
-"""Help command data, embed builder, and paginated help views."""
+"""/help: a sectioned overview, one page per section, and the full paginated list.
+
+Navigation uses DynamicItems with fixed custom ids ("help:..."), so the menus never time out and keep working after a
+restart. When someone other than the person who ran /help clicks, they get their own private copy instead of changing
+the shared message.
+"""
 from __future__ import annotations
 
 import math
+import re
+from typing import Optional
 
 import discord
 from discord import ButtonStyle, Interaction, ui
 
 from rudhabot.ui.theme import BOTICON
 
+PER_PAGE = 6
+COLOR = 0x607D8B
+ABOUT = ("**Rudhabot** is a bot specialized for the Rudharta Discord server, with features tuned for the community's "
+         "needs. **Rudhabot** is developed by the Digital Research Institute, and as such is the property of the Kingdom "
+         "of Rudharta created by ``fendrizian``. Copyright 2025.")
+THUMBNAIL = "https://micronations.wiki/images/en/images/images/6/6a/Flag_of_Rudharta.png"
 
-class HelpView(ui.View):
-    def __init__(self, commands_data, current_page=0):
-        super().__init__(timeout=60)
-        self.commands_data = commands_data
-        self.current_page = current_page
-        self.total_pages = math.ceil(len(commands_data) / 5)
-        
-        # Add navigation buttons
-        self.add_item(HelpPageButton("⬅ Previous", -1))
-        self.add_item(HelpPageButton("Next ⮕", 1))
+# (key, title, emoji, one-line summary, command names in display order)
+SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
+    ("start", "Getting started", "👋", "Help and the /ask assistant", ("help", "ask")),
+    ("economy", "Economy", "💰", "Earn, bank, send and compare money",
+     ("balance", "work", "daily", "crime", "deposit", "withdraw", "send", "rob", "leaderboard")),
+    ("shop", "Shop & Café", "🛍️", "Buy, sell and use items", ("shop", "cafe", "buy", "sell", "inventory", "use")),
+    ("loans", "Loans", "🏦", "Borrow from the bank and pay it back", ("loan", "loaninfo", "pay", "extend")),
+    ("crypto", "Crypto", "📈", "Trade Rudharta's coins", ("crypto", "buycoin", "sellcoin", "portfolio")),
+    ("games", "Gambling games", "🎰", "Bet on coins, dice, cards and more",
+     ("coinflip", "dice", "rps", "slots", "roulette", "highlow", "crash", "blackjack")),
+    ("tcg", "Cloudfall TCG", "⛅", "Asgrelia: Cloudfall, the trading card game",
+     ("tcg starter", "tcg practice", "tcg challenge", "tcg deck build | view | use | analyze",
+      "tcg card | rules | collection | pack | ladder", "tcg match | forfeit | forget-me")),
+    ("community", "Lottery & birthdays", "🎉", "Lottery odds and birthday celebrations",
+     ("lottery", "birthday set", "birthday view", "birthday remove", "birthday upcoming")),
+    ("admin", "Admin", "🛠️", "Server administrators only", ("add-money", "remove-money", "create", "oracle status | reload")),
+]
+SECTION_BY_KEY = {key: (title, emoji, summary, names) for key, title, emoji, summary, names in SECTIONS}
 
-    async def interaction_check(self, interaction: Interaction):
-        return True
 
-class HelpPageButton(ui.Button):
-    def __init__(self, label, direction):
-        super().__init__(label=label, style=ButtonStyle.primary)
-        self.direction = direction
+def _by_name() -> dict[str, dict]:
+    return {c["name"]: c for c in get_commands_data()}
 
-    async def callback(self, interaction: Interaction):
-        view: HelpView = self.view
-        new_page = (view.current_page + self.direction) % view.total_pages
-        embed = create_help_embed(view.commands_data, new_page, view.total_pages)
-        view.current_page = new_page
-        await interaction.response.edit_message(embed=embed, view=view)
+
+def _field(embed: discord.Embed, command: dict) -> None:
+    embed.add_field(name=f"/{command['name']} {command['args']}".strip(), value=command["description"], inline=False)
+
+
+# ------------------------------------------------------------------ embeds
+def overview_embed() -> discord.Embed:
+    embed = discord.Embed(title=f"{BOTICON} HELP", color=COLOR,
+                          description=ABOUT + "\n\nPick a section below, or press **Full list** to see every command. "
+                                              "Tip: `/ask` answers questions in plain words.")
+    embed.set_thumbnail(url=THUMBNAIL)
+    commands = _by_name()
+    for key, title, emoji, summary, names in SECTIONS:
+        sample = " ".join(f"`/{n.split(' |')[0]}`" for n in names[:4]) + (" …" if len(names) > 4 else "")
+        embed.add_field(name=f"{emoji} {title} ({sum(1 for n in names if n in commands)})", value=f"{summary}\n{sample}",
+                        inline=True)
+    embed.set_footer(text=f"{len(commands)} commands in {len(SECTIONS)} sections")
+    return embed
+
+
+def section_embed(key: str) -> discord.Embed:
+    title, emoji, summary, names = SECTION_BY_KEY[key]
+    commands = _by_name()
+    embed = discord.Embed(title=f"{emoji} {title}", description=summary, color=COLOR)
+    for name in names:
+        if name in commands:
+            _field(embed, commands[name])
+    position = [k for k, *_ in SECTIONS].index(key) + 1
+    embed.set_footer(text=f"Section {position}/{len(SECTIONS)} · use the menu to switch sections")
+    return embed
+
+
+def ordered_commands() -> list[dict]:
+    """Every command, grouped in section order (anything unsectioned last)."""
+    commands = _by_name()
+    order = [n for *_, names in SECTIONS for n in names if n in commands]
+    return [commands[n] for n in order] + [c for n, c in commands.items() if n not in order]
+
+
+def full_pages() -> int:
+    return math.ceil(len(get_commands_data()) / PER_PAGE)
+
 
 def create_help_embed(commands_data, page, total_pages):
-    embed = discord.Embed(
-        title=f"{BOTICON} HELP",
-        description="**Rudhabot** is a bot specialized for the Rudharta Discord server, with features tuned for the community's needs. **Rudhabot** is developed by the Digital Research Institute, and as such is the property of the Kingdom of Rudharta created by ``fendrizian``. Copyright 2025.",
-        color=0x607d8b
-    )
-    embed.set_thumbnail(url="https://micronations.wiki/images/en/images/images/6/6a/Flag_of_Rudharta.png")
-    
-    start = page * 5
-    end = start + 5
-    page_commands = commands_data[start:end]
-    
-    for command_info in page_commands:
-        name = command_info["name"]
-        args = command_info["args"]
-        description = command_info["description"]
-        embed.add_field(
-            name=f"/{name} {args}",
-            value=description,
-            inline=False
-        )
-    
+    """The full list, one page at a time (kept for the "Full list" view)."""
+    embed = discord.Embed(title=f"{BOTICON} HELP · all commands", description=ABOUT, color=COLOR)
+    embed.set_thumbnail(url=THUMBNAIL)
+    for command in commands_data[page * PER_PAGE:(page + 1) * PER_PAGE]:
+        _field(embed, command)
     embed.set_footer(text=f"Page {page + 1}/{total_pages}")
     return embed
+
+
+# ------------------------------------------------------------------ navigation (never expires)
+async def _show(interaction: Interaction, embed: discord.Embed, view: ui.View) -> None:
+    """Edit the help message for the person who opened it; give anyone else their own private copy."""
+    message = getattr(interaction, "message", None)
+    meta = getattr(message, "interaction_metadata", None) if message is not None else None
+    owner = getattr(getattr(meta, "user", None), "id", None)
+    if owner is None or owner == interaction.user.id or getattr(message, "flags", None) and message.flags.ephemeral:
+        await interaction.response.edit_message(embed=embed, view=view)
+    else:
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+class SectionSelect(ui.DynamicItem[ui.Select], template=r"help:menu"):
+    def __init__(self, current: Optional[str] = None):
+        options = [discord.SelectOption(label="Overview", value="home", emoji="🏠", default=current == "home")]
+        options += [discord.SelectOption(label=title, value=key, emoji=emoji, description=summary[:100], default=key == current)
+                    for key, title, emoji, summary, _ in SECTIONS]
+        options.append(discord.SelectOption(label="Full list (all commands)", value="full", emoji="📖", default=current == "full"))
+        super().__init__(ui.Select(custom_id="help:menu", placeholder="Jump to a section…", options=options))
+
+    @classmethod
+    async def from_custom_id(cls, interaction: Interaction, item: ui.Select, match: re.Match[str], /):
+        return cls()
+
+    async def callback(self, interaction: Interaction) -> None:
+        choice = interaction.data["values"][0]
+        embed, view = render(choice)
+        await _show(interaction, embed, view)
+
+
+class NavButton(ui.DynamicItem[ui.Button], template=r"help:(?P<target>home|full):(?P<page>\d+)"):
+    def __init__(self, target: str, page: int = 0, label: str = "", disabled: bool = False, emoji: Optional[str] = None):
+        super().__init__(ui.Button(label=label, emoji=emoji, disabled=disabled, style=ButtonStyle.primary
+                                   if target == "full" else ButtonStyle.secondary, custom_id=f"help:{target}:{page}"))
+        self.target, self.page = target, page
+
+    @classmethod
+    async def from_custom_id(cls, interaction: Interaction, item: ui.Button, match: re.Match[str], /):
+        return cls(match["target"], int(match["page"]))
+
+    async def callback(self, interaction: Interaction) -> None:
+        embed, view = render(self.target, self.page)
+        await _show(interaction, embed, view)
+
+
+def help_view(current: str = "home", page: int = 0) -> ui.View:
+    view = ui.View(timeout=None)
+    view.add_item(SectionSelect(current))
+    if current == "full":
+        pages = full_pages()
+        # custom ids must be unique within a message, so the prev/next ids differ even at the ends
+        view.add_item(NavButton("full", max(0, page - 1) if page > 0 else pages + 1, "◀ Previous", disabled=page == 0))
+        view.add_item(NavButton("full", page + 1 if page < pages - 1 else pages + 2, "Next ▶", disabled=page >= pages - 1))
+        view.add_item(NavButton("home", 0, "Overview", emoji="🏠"))
+    else:
+        view.add_item(NavButton("full", 0, "Full list", emoji="📖"))
+        if current != "home":
+            view.add_item(NavButton("home", 0, "Overview", emoji="🏠"))
+    return view
+
+
+def render(target: str, page: int = 0) -> tuple[discord.Embed, ui.View]:
+    if target == "full":
+        pages = full_pages()
+        page = max(0, min(page, pages - 1))
+        return create_help_embed(ordered_commands(), page, pages), help_view("full", page)
+    if target in SECTION_BY_KEY:
+        return section_embed(target), help_view(target)
+    return overview_embed(), help_view("home")
+
 
 def get_commands_data():
     """Returns a list of all commands with their info"""
@@ -159,6 +268,16 @@ def get_commands_data():
             "description": "Purchase items from shops or the cafe."
         },
         {
+            "name": "sell",
+            "args": "<item> [quantity]",
+            "description": "Sell shop items for half their price."
+        },
+        {
+            "name": "inventory",
+            "args": "",
+            "description": "Show all items you own and their quantity."
+        },
+        {
             "name": "use",
             "args": "<item>",
             "description": "Use an item from your inventory: draw lottery tickets, open mystery boxes, set up birthday cakes and more."
@@ -247,6 +366,11 @@ def get_commands_data():
             "name": "leaderboard",
             "args": "[wallet|bank|total]",
             "description": "View the server leaderboard for money rankings."
+        },
+        {
+            "name": "create",
+            "args": "",
+            "description": "Admin: create a temporary private bot-lab channel."
         },
         {
             "name": "add-money",
