@@ -189,3 +189,32 @@ class AssistantAndOracleCogTests(CogTestCase):
         self.assertIn("tcg practice", names)
         daily = next(c for c in get_commands_data() if c["name"] == "daily")
         self.assertIn("50ra", daily["description"])
+
+
+class ComponentPayloadTests(CogTestCase):
+    def test_board_button_emojis_are_standard_discord_emojis(self):
+        # Discord rejects the whole message (400 "Invalid emoji") if one button uses a character that isn't a standard
+        # emoji; 🂠 (playing card back) did exactly that. Keep button emojis to this vetted set.
+        from rudhabot.views.tcg_match import MatchButton, board_view
+        vetted = {"⚡", "🃏", "🔮", "📜"}
+        self.assertTrue({emoji for _, emoji, _ in MatchButton.LABELS.values()} <= vetted)
+        for item in board_view("0123456789", coach=True).children:
+            self.assertIn(str(item.item.emoji), vetted)
+
+    async def test_failed_thread_post_deletes_the_empty_thread(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        cog = self.bot.cogs["TcgCog"]
+        self.s.tcg.claim_starter(self.alice.id, "vanguard")
+        match = self.s.tcg.create_practice(self.alice.id, "alice")
+        bad = discord.HTTPException(SimpleNamespace(status=400, reason="Bad Request"), {"code": 50035, "message": "Invalid Form Body"})
+        thread = mock.AsyncMock()
+        thread.send.side_effect = bad
+        channel = mock.MagicMock(spec=discord.TextChannel)
+        channel.id = 777
+        channel.create_thread = mock.AsyncMock(return_value=thread)
+        channel.send = mock.AsyncMock(side_effect=bad)
+        it = FakeInteraction(self.bot, self.alice)
+        it.channel = channel
+        self.assertTrue(await cog._post_board(it, match, "title"))       # fell back to the reply
+        thread.delete.assert_awaited_once()

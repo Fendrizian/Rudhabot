@@ -265,12 +265,18 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         message, target, mode = None, None, None
         if thread_title and isinstance(channel, discord.TextChannel) and can(
                 "create_public_threads", "send_messages_in_threads", "embed_links"):
+            thread = None
             try:
                 thread = await channel.create_thread(name=thread_title[:90], type=discord.ChannelType.public_thread,
                                                      auto_archive_duration=1440)
                 message, target, mode = await thread.send(embed=embed, view=view, allowed_mentions=NO_MENTIONS), thread, "thread"
             except discord.HTTPException as error:
                 log.warning("match %s: no thread (%s %s); trying the channel", match.id, error.status, error.text)
+                if thread is not None:                 # don't leave an empty thread behind
+                    try:
+                        await thread.delete()
+                    except discord.HTTPException:
+                        pass
         if message is None and channel is not None and hasattr(channel, "send") and can("send_messages", "embed_links"):
             try:
                 message, target, mode = await channel.send(embed=embed, view=view, allowed_mentions=NO_MENTIONS), channel, "channel"
