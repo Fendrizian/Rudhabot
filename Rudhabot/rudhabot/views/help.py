@@ -32,7 +32,7 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
       "bank card info | pay", "loan", "loaninfo", "pay", "extend")),
     ("shop", "Shop & Café", "🛍️", "Buy, sell and use items", ("shop", "cafe", "buy", "sell", "inventory", "use")),
     ("markets", "Markets", "📈", "The stock exchange and crypto",
-     ("stocks market | quote", "stocks buy | sell | portfolio", "crypto", "buycoin", "sellcoin", "portfolio")),
+     ("portfolio", "stocks market | quote", "stocks buy | sell", "crypto", "buycoin", "sellcoin")),
     ("games", "Gambling games", "🎰", "Bet on coins, dice, cards and more",
      ("coinflip", "dice", "rps", "slots", "roulette", "highlow", "crash", "blackjack", "baccarat", "craps")),
     ("tcg", "Cloudfall TCG", "⛅", "Asgrelia: Cloudfall, the trading card game",
@@ -213,9 +213,9 @@ def get_commands_data():
             "description": "The Rudharta Exchange: NAS (National Shop) and JOOT (Joot Cafe), priced by what the server buys."
         },
         {
-            "name": "stocks buy | sell | portfolio",
+            "name": "stocks buy | sell",
             "args": "<symbol> <shares>",
-            "description": "Trade shares from your wallet (0.5% fee; big orders move the price) and track profit and loss."
+            "description": "Trade shares from your wallet (0.5% fee; big orders move the price). See them in /portfolio."
         },
         {
             "name": "baccarat",
@@ -385,7 +385,7 @@ def get_commands_data():
         {
             "name": "portfolio",
             "args": "",
-            "description": "View your investment portfolio and total value."
+            "description": "Your investments in one place: crypto holdings and stocks (with profit/loss), plus the total."
         },
         {
             "name": "coinflip",

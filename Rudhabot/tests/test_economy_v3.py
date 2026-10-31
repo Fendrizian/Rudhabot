@@ -271,3 +271,23 @@ class EconomyCommandTests(CogTestCase):
         await self.run_command("baccarat", self.alice, bet="100", on=choice)
         self.assertIn(self.account(self.alice)["wallet"], (1000, 1095, 900))
         self.assertNotIn(self.alice.id, self.s.sessions)
+
+
+class PortfolioCommandTests(CogTestCase):
+    async def test_portfolio_shows_crypto_and_stocks_with_a_combined_total(self):
+        self.fund(self.alice, 2_000_000)
+        with self.s.users.transaction() as data:
+            data[str(self.alice.id)]["crypto"]["SCAY"] = 2.0
+        self.s.stocks.buy(self.alice.id, "NAS", 100)
+        it = await self.run_command("portfolio", self.alice)
+        text = it.text()
+        self.assertIn("Crypto", text)
+        self.assertIn("Stocks", text)
+        self.assertIn("NAS", text)
+        self.assertIn("Total Investments", text)
+        self.assertIsNone(self.bot.tree.get_command("stocks").get_command("portfolio"))   # merged into /portfolio
+
+    async def test_empty_portfolio_points_to_both_markets(self):
+        it = await self.run_command("portfolio", self.bob)
+        self.assertIn("/buycoin", it.text())
+        self.assertIn("/stocks buy", it.text())

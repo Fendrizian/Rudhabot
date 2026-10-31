@@ -82,6 +82,8 @@ They are advisory and never change, limit or charge anything.
 
 ## Rudharta Exchange (`/stocks`)
 
+Your shares appear together with your crypto in `/portfolio`, with profit or loss against what you paid.
+
 Two listings: NAS (The National Shop, IPO 100) and JOOT (Joot Cafe, IPO 80). More can be added in `domain/stocks.py`.
 
 **Revenue:**

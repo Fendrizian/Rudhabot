@@ -11,7 +11,7 @@ from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import not_in_game
 from rudhabot.services.crypto_market import TradeRefused
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY
+from rudhabot.ui.theme import CURRENCY, STOCKSICON
 
 log = logging.getLogger("rudhabot.crypto")
 
@@ -91,19 +91,29 @@ class CryptoCog(ServiceCog):
             return
         await respond(interaction, _embed(interaction.user, f"✅ You sold {trade.quantity:.4f} {trade.coin} for {CURRENCY}{trade.value}.", 0x57F287))
 
-    @app_commands.command(name="portfolio", description="Check your cryptocurrency portfolio.")
+    @app_commands.command(name="portfolio", description="Your investments: crypto and stocks, with their total value")
     @not_in_game()
     async def portfolio(self, interaction: discord.Interaction):
-        holdings = self.services.crypto.portfolio(self.users.get(interaction.user.id))
+        """Crypto holdings and Rudharta Exchange shares in one view."""
+        coins = self.services.crypto.portfolio(self.users.get(interaction.user.id))
+        shares = self.services.stocks.portfolio(interaction.user.id)
         embed = discord.Embed(title=f"📊 {interaction.user.name}'s Portfolio", color=0x11806A)
-        if not holdings:
-            embed.description = "Your portfolio is empty. You have no holdings."
-        else:
-            total_value = 0
-            for holding in holdings:
-                total_value += holding.value
-                embed.add_field(name=f"{holding.coin} ({holding.name})",
-                                value=f"You own {holding.quantity:.4f}, Worth {CURRENCY}{holding.value}", inline=False)
-            embed.add_field(name="Total Crypto Value", value=f"{CURRENCY}{round(total_value, 2)}", inline=False)
-            embed.set_footer(text="Use /sellcoin to sell your holdings")
+        if not coins and not shares:
+            embed.description = "Your portfolio is empty. Buy coins with `/buycoin` or shares with `/stocks buy`."
+            await respond(interaction, embed)
+            return
+        crypto_total = sum(h.value for h in coins)
+        stock_total = sum(r["value"] for r in shares)
+        if coins:
+            lines = [f"**{h.coin}** ({h.name}): {h.quantity:.4f} · {CURRENCY}{h.value:,.0f}" for h in coins]
+            embed.add_field(name=f"🪙 Crypto · {CURRENCY}{crypto_total:,.0f}", value="\n".join(lines)[:1024], inline=False)
+        if shares:
+            lines = [f"**{r['symbol']}** × {r['shares']:,} @ {r['price']:,.2f} · {CURRENCY}{r['value']:,.0f} "
+                     f"({'🟢' if r['pnl'] >= 0 else '🔴'} {r['pnl']:+,.0f})" for r in shares]
+            cost = sum(r["cost"] for r in shares)
+            embed.add_field(name=f"{STOCKSICON} Stocks · {CURRENCY}{stock_total:,.0f}",
+                            value=("\n".join(lines) + f"\nProfit/loss vs cost {CURRENCY}{cost:,.0f}: "
+                                   f"{stock_total - cost:+,.0f}")[:1024], inline=False)
+        embed.add_field(name="Total Investments", value=f"{CURRENCY}{crypto_total + stock_total:,.0f}", inline=False)
+        embed.set_footer(text="Sell with /sellcoin or /stocks sell · prices: /crypto, /stocks market")
         await respond(interaction, embed)

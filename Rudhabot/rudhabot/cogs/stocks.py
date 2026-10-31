@@ -12,9 +12,9 @@ from rudhabot.cogs.checks import not_in_game
 from rudhabot.domain.stocks import LISTINGS
 from rudhabot.services.stocks import TradeRefused
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY
+from rudhabot.ui.theme import CURRENCY, STOCKSICON
 
-STOCKS = "<:stocks:1401378607368241273>"
+STOCKS = STOCKSICON
 SYMBOLS = [app_commands.Choice(name=f"{l.symbol} · {l.name}", value=l.symbol) for l in LISTINGS.values()]
 SPARK = "▁▂▃▄▅▆▇█"
 
@@ -51,7 +51,7 @@ class StocksCog(ServiceCog, commands.GroupCog, group_name="stocks", group_descri
         for symbol in LISTINGS:
             q = self.exchange.quote(symbol)
             e.add_field(name=f"{q['symbol']} · {q['name']}", value=_quote_line(q), inline=False)
-        e.set_footer(text="Trades move the price and pay a 0.5% fee · /stocks buy · /stocks sell · /stocks portfolio")
+        e.set_footer(text="Trades move the price and pay a 0.5% fee · /stocks buy · /stocks sell · /portfolio")
         await respond(interaction, e)
 
     @app_commands.command(name="quote", description="Price, trend and fundamentals for one company")
@@ -89,16 +89,4 @@ class StocksCog(ServiceCog, commands.GroupCog, group_name="stocks", group_descri
         e = discord.Embed(title=f"{STOCKS} Sold {t.shares:,} {t.symbol}", color=0x57F287,
                           description=f"Received {CURRENCY}{t.total:,} (avg {t.gross / t.shares:,.2f} − fee {t.fee:,}).\n"
                                       f"Price moved {t.price_before:,.2f} → {t.price_after:,.2f}.")
-        await respond(interaction, e)
-
-    @app_commands.command(name="portfolio", description="Your shares, their value and profit/loss")
-    async def portfolio(self, interaction: discord.Interaction):
-        rows = self.exchange.portfolio(interaction.user.id)
-        e = discord.Embed(title=f"{STOCKS} {interaction.user.display_name}'s portfolio", color=0x2ECC71)
-        for r in rows:
-            e.add_field(name=f"{r['symbol']} × {r['shares']:,}", inline=False,
-                        value=f"Value {CURRENCY}{r['value']:,.0f} · cost {CURRENCY}{r['cost']:,.0f} · "
-                              f"{'🟢' if r['pnl'] >= 0 else '🔴'} {r['pnl']:+,.0f}")
-        if not rows:
-            e.description = "No shares yet. See `/stocks market`."
         await respond(interaction, e)
