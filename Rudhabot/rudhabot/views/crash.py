@@ -8,7 +8,7 @@ import random
 import discord
 from discord import ButtonStyle, Interaction, ui
 
-from rudhabot.ui.theme import CURRENCY, Colors
+from rudhabot.ui.theme import CRASHICON, CURRENCY, Colors
 from rudhabot.views.base import ServiceView
 
 log = logging.getLogger("rudhabot.crash")
@@ -21,7 +21,7 @@ def _authored(embed: discord.Embed, user) -> discord.Embed:
 
 def opening_embed(bet_amount: int, user) -> discord.Embed:
     return _authored(discord.Embed(
-        title="🚀 Crash",
+        title=f"{CRASHICON} Crash",
         description=f"Bet: {CURRENCY}{bet_amount}\n\nPress **Cash Out** before the multiplier crashes!",
         color=Colors.GAMBLING,
     ), user)
@@ -54,7 +54,7 @@ class CrashView(ServiceView):
             winnings = int(self.bet_amount * self.multiplier)
             self.services.users.credit_wallet(self.user_id, winnings)
             embed = discord.Embed(
-                title="🚀 Crash",
+                title=f"{CRASHICON} Crash",
                 description=f"Multiplier: x{self.multiplier:.2f}\n\n🎉 You cashed out and won {CURRENCY}{winnings}",
                 color=Colors.SUCCESS,
             )
@@ -74,7 +74,7 @@ class CrashView(ServiceView):
                         self.crashed = True
                         self.running = False
                         embed = discord.Embed(
-                            title="🚀 Crash",
+                            title=f"{CRASHICON} Crash",
                             description=f"Multiplier crashed at x{self.multiplier:.2f}!\n\n💸 You lose {CURRENCY}{self.bet_amount}",
                             color=Colors.LOSS,
                         )
@@ -82,7 +82,7 @@ class CrashView(ServiceView):
                         self.services.sessions.end(self.user_id)
                         break
                     embed = discord.Embed(
-                        title="🚀 Crash",
+                        title=f"{CRASHICON} Crash",
                         description=f"Bet: {CURRENCY}{self.bet_amount}\nMultiplier: x{self.multiplier:.2f}\n\n"
                                     f"Press **Cash Out** before the multiplier crashes!",
                         color=Colors.GAMBLING,
@@ -96,7 +96,7 @@ class CrashView(ServiceView):
             self.running = False
             self.services.users.credit_wallet(self.user_id, self.bet_amount)       # refund
             embed = discord.Embed(
-                title="🚀 Crash - TIMEOUT",
+                title=f"{CRASHICON} Crash - TIMEOUT",
                 description=f"⏰ **Game timed out!**\n💰 **Refunded:** {CURRENCY}{self.bet_amount}",
                 color=Colors.COOLDOWN,
             )

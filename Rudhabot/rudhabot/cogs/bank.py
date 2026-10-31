@@ -13,7 +13,7 @@ from rudhabot.cogs.checks import not_in_game
 from rudhabot.domain.bank import TIERS, next_tier
 from rudhabot.services.bank import BankRefused
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY, Colors
+from rudhabot.ui.theme import BANKICON, CLAIRVOYANCEICON, CURRENCY, Colors
 
 BANK_GREEN = Colors.BANK
 
@@ -64,7 +64,7 @@ class BankCog(ServiceCog, commands.GroupCog, group_name="bank", group_descriptio
         return insights_for(self.services, user_id, profile, bank_balance)
 
     async def _refuse(self, interaction, error: BankRefused) -> None:
-        await respond(interaction, _embed(interaction.user, "🏦 Bank", str(error), Colors.FAIL), ephemeral=True)
+        await respond(interaction, _embed(interaction.user, f"{BANKICON} Bank", str(error), Colors.FAIL), ephemeral=True)
 
     @app_commands.command(name="tiers", description="Compare the card tiers")
     async def tiers(self, interaction: discord.Interaction):
@@ -109,7 +109,7 @@ class BankCog(ServiceCog, commands.GroupCog, group_name="bank", group_descriptio
         tips = [t for t in self._insights(interaction.user.id, profile, self.users.get(interaction.user.id)["bank"])
                 if "card" in t]
         if tips:
-            e.add_field(name="💡 Clairvoyance", value="\n".join(tips), inline=False)
+            e.add_field(name=f"{CLAIRVOYANCEICON} Clairvoyance", value="\n".join(tips), inline=False)
         e.set_footer(text="Pay with /buy pay_with:card or /tcg wish shards pay_with:card · statements close on the 1st, due the 11th, "
                           "5% interest if late")
         await respond(interaction, e, ephemeral=True)

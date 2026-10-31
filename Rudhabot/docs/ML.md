@@ -172,7 +172,7 @@ Up to two private observations, computed only from the person's own ledger and b
 - they're down on games of chance this week;
 
 These are deterministic personal-baseline statistics, not a trained model. They are shown only to that person, are
-labelled "💡 Clairvoyance", and change nothing.
+labelled with the Clairvoyance icon, and change nothing.
 
 ## Next steps
 1. **Play:** add a 2-ply search within your own turn, and more generations. v2's training curve was still improving its

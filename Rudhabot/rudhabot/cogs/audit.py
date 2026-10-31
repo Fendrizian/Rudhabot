@@ -17,10 +17,10 @@ from discord.ext import commands, tasks
 
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import admin_only
-from rudhabot.ui.theme import Colors
+from rudhabot.ui.theme import BANKICON, CLAIRVOYANCEICON, Colors
 
 log = logging.getLogger("rudhabot.audit")
-ACCOUNT_ICONS = {"wallet": "👛", "bank": "🏦", "savings": "🐷", "credit": "💳", "shards": "◇", "dust": "✨"}
+ACCOUNT_ICONS = {"wallet": "👛", "bank": BANKICON, "savings": "🐷", "credit": "💳", "shards": "◇", "dust": "✨"}
 
 
 def entry_line(e: dict) -> str:
@@ -101,7 +101,7 @@ class AuditCog(ServiceCog):
     async def review_list(self, interaction: discord.Interaction, status: Optional[app_commands.Choice[str]] = None):
         value = status.value if status else "open"
         items = self.reviews.signals(None if value == "all" else value)
-        embed = discord.Embed(title=f"🔍 Review signals ({value})", color=Colors.CLAIRVOYANCE,
+        embed = discord.Embed(title=f"{CLAIRVOYANCEICON} Review signals ({value})", color=Colors.CLAIRVOYANCE,
                               description="\n\n".join(_signal_text(s) for s in items)[:4096] or "Nothing to review.")
         embed.set_footer(text="Signals are for human review only: nothing is changed automatically.")
         await interaction.response.send_message(embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
@@ -125,6 +125,6 @@ def _signal_text(s: dict) -> str:
 
 
 def review_embed(signal: dict) -> discord.Embed:
-    embed = discord.Embed(title="🔍 Clairvoyance review signal", description=_signal_text(signal), color=Colors.CLAIRVOYANCE)
+    embed = discord.Embed(title=f"{CLAIRVOYANCEICON} Clairvoyance review signal", description=_signal_text(signal), color=Colors.CLAIRVOYANCE)
     embed.set_footer(text="Unusual activity worth a look. Nothing was changed. Resolve with /review resolve.")
     return embed

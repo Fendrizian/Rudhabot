@@ -4,6 +4,7 @@ import discord
 from rudhabot.tcg import engine as E
 from rudhabot.views.help import get_commands_data
 from rudhabot.views.tcg_match import MovePicker
+from rudhabot.ui.theme import CLAIRVOYANCEICON
 from tests.cog_case import CogTestCase
 from tests.fakes import FakeChannel, FakeInteraction
 
@@ -53,7 +54,7 @@ class TcgCogTests(TcgCogBase):
         board = self.channel.sent[0]
         embed = board.content["embed"]
         self.assertIn("Cloudfall", embed.title)
-        self.assertIn("🔮", embed.description)                                   # spectator-safe win bar
+        self.assertIn(CLAIRVOYANCEICON, embed.description)                                   # spectator-safe win bar
         cog = self.cog("TcgCog")
         match = self.s.tcg.match_for(self.alice.id)
         # a spectator can look but not act

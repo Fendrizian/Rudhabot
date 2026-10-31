@@ -8,7 +8,7 @@ import discord
 from discord import ButtonStyle, Interaction, ui
 
 from rudhabot.domain.cards import card_emojis
-from rudhabot.ui.theme import CURRENCY, Colors
+from rudhabot.ui.theme import CURRENCY, HIGHLOWICON, Colors
 from rudhabot.views.base import ServiceView
 
 RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']   # high-ace order
@@ -41,7 +41,7 @@ def draw_card(rng=random) -> tuple[str, str]:
 def opening_embed(first_rank: str, first_suit: str, user) -> discord.Embed:
     emoji = card_emojis.get(f"{first_rank}{first_suit}", "🎴")
     embed = discord.Embed(
-        title="↕️ HIGH-LOW",
+        title=f"{HIGHLOWICON} HIGH-LOW",
         description=f"Card shown: {emoji} **{first_rank}{first_suit}**\n\nWill the next card be **higher** or **lower**?",
         color=Colors.GAMBLING,
     )
@@ -98,7 +98,7 @@ class HighLowView(ServiceView):
             result_text += f"You guessed **{guess}** and were wrong.\n\n💸 You lose! {CURRENCY}{self.bet_amount}"
             color = Colors.LOSS
         self.game_over = True
-        result = discord.Embed(title="↕️ HIGH-LOW", description=result_text, color=color)
+        result = discord.Embed(title=f"{HIGHLOWICON} HIGH-LOW", description=result_text, color=color)
         result.set_author(name=i.user.name, icon_url=i.user.display_avatar.url)
         await i.response.edit_message(embed=result, view=None)
         self.services.sessions.end(self.user_id)
@@ -108,7 +108,7 @@ class HighLowView(ServiceView):
             return
         wallet = self.services.users.credit_wallet(self.user_id, self.bet_amount)      # refund the bet
         embed = discord.Embed(
-            title="↕️ HIGH-LOW - TIMEOUT",
+            title=f"{HIGHLOWICON} HIGH-LOW - TIMEOUT",
             description=f"⏰ **Game timed out!**\n💰 **Refunded:** {CURRENCY}{self.bet_amount}\n\n"
                         f"Your bet has been returned to your wallet.",
             color=Colors.COOLDOWN,

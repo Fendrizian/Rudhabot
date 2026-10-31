@@ -11,6 +11,42 @@ CAKEICON = "<:birthday_cake:1417887324754284656>"
 LOANDUEICON = "<:loan_due:1401358370191183902>"
 COINICON = "<:coinF_heads:1398951529955852328>"
 CARDBACKICON = "<:card_back:1413016849515417691>"
+BANKICON = "<:bank:1566106240495390750>"
+CLAIRVOYANCEICON = "<:Clairvoyance:1566097544558411916>"
+
+# game title icons (blackjack and roulette keep theirs inline)
+SLOTSICON = "<:roulette_table:1399759017932361809>"
+DICEICON = "<:dicegame:1566101279619416125>"
+HIGHLOWICON = "<:highlow:1566102265545101422>"
+CRASHICON = "<:crashgame:1566102590511521842>"
+BACCARATICON = "<:baccarat:1566102948193509406>"
+CRAPSICON = "<:craps:1566100945207693363>"
+
+
+class TCG:
+    """Asgrelia: Cloudfall iconography (game symbols only: cards have no illustrations)."""
+    LOGO = "<:Cloudfall:1566111702427238521>"
+    CARD_BACK = "<:TCG_cardback:1566112821970731128>"
+    PACK = "<:TCG_pack:1566111704364883998>"
+    VAPOR = "<:TCG_vapor:1566116502774616195>"
+    TAINTED = "<:TCG_tainted:1566117813603799091>"
+    CORRUPTED = "<:TCG_corrupted:1566117817055715399>"
+    THREAT = "<:TCG_threat:1566117811305054208>"
+    RESOLVE_HIGH = "<:TCG_resolvehigh:1566115222425440306>"
+    RESOLVE_MID = "<:TCG_resolvemid:1566115206503997510>"
+    RESOLVE_LOW = "<:TCG_resolvelow:1566115191601627206>"
+    RESOLVE_DEAD = "<:TCG_resolvedead:1566115174564499756>"
+
+    @classmethod
+    def resolve(cls, value: int) -> str:
+        """Resolve icon by how much is left: 21+ high, 11-20 mid, 1-10 low, 0 dead (the end-of-game board)."""
+        return (cls.RESOLVE_HIGH if value >= 21 else cls.RESOLVE_MID if value >= 11
+                else cls.RESOLVE_LOW if value >= 1 else cls.RESOLVE_DEAD)
+
+
+# Components (buttons, select options) keep Unicode emojis: Discord rejects the whole message with
+# "Invalid emoji" if a custom emoji there can't be resolved, while text just degrades to :name:.
+COMPONENT_FALLBACK = {TCG.LOGO: "⛅"}
 
 
 class Colors:

@@ -14,7 +14,7 @@ from typing import Optional
 import discord
 from discord import ButtonStyle, Interaction, ui
 
-from rudhabot.ui.theme import BOTICON, Colors
+from rudhabot.ui.theme import BOTICON, COMPONENT_FALLBACK, TCG, Colors
 
 PER_PAGE = 6
 COLOR = Colors.HELP
@@ -62,7 +62,7 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
      ("portfolio", "stocks market | quote", "stocks buy | sell", "crypto", "buycoin", "sellcoin")),
     ("games", "Gambling games", "🎰", "Bet on coins, dice, cards and more",
      ("coinflip", "dice", "rps", "slots", "roulette", "highlow", "crash", "blackjack", "baccarat", "craps")),
-    ("tcg", "Cloudfall TCG", "⛅", "Asgrelia: Cloudfall, the trading card game",
+    ("tcg", "Cloudfall TCG", TCG.LOGO, "Asgrelia: Cloudfall, the trading card game",
      ("tcg starter", "tcg practice", "tcg challenge", "tcg wish banner | pull", "tcg wish shards | daily | craft | convergence",
       "tcg deck build | view | use | analyze", "tcg card | rules | collection | pack | ladder",
       "tcg match | forfeit | forget-me")),
@@ -152,7 +152,7 @@ async def _show(interaction: Interaction, embed: discord.Embed, view: ui.View) -
 class SectionSelect(ui.DynamicItem[ui.Select], template=r"help:menu"):
     def __init__(self, current: Optional[str] = None):
         options = [discord.SelectOption(label="Overview", value="home", emoji="🏠", default=current == "home")]
-        options += [discord.SelectOption(label=title, value=key, emoji=emoji, description=summary[:100], default=key == current)
+        options += [discord.SelectOption(label=title, value=key, emoji=COMPONENT_FALLBACK.get(emoji, emoji), description=summary[:100], default=key == current)
                     for key, title, emoji, summary, _ in SECTIONS]
         options.append(discord.SelectOption(label="Full list (all commands)", value="full", emoji="📖", default=current == "full"))
         super().__init__(ui.Select(custom_id="help:menu", placeholder="Jump to a section…", options=options))

@@ -321,7 +321,7 @@ class BalanceCommandTests(CogTestCase):
         self.assertIn("Credit card", fields)
         self.assertFalse(it.log[0][1].get("ephemeral"))                                      # still a public /balance
         tips = [k for kind, k in it.log[1:] if kind == "followup"]
-        self.assertTrue(tips and tips[0]["ephemeral"] and tips[0]["embed"].title == "💡 Clairvoyance")
+        self.assertTrue(tips and tips[0]["ephemeral"] and tips[0]["embed"].title.endswith(" Clairvoyance"))
 
     async def test_someone_elses_balance_hides_their_private_details(self):
         self.fund(self.bob, 300)

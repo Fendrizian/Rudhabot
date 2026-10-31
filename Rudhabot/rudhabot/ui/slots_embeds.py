@@ -19,7 +19,7 @@ import discord
 
 from rudhabot.domain.slots import DEFAULT_SYMBOLS, PAIR_MULTIPLIER, SlotKind, SlotOutcome, SlotSymbol
 from rudhabot.ui.replies import author_embed
-from rudhabot.ui.theme import CURRENCY, Colors
+from rudhabot.ui.theme import CURRENCY, SLOTSICON, Colors
 
 EMPTY = "⬛"
 SPINNING = "🌀"
@@ -48,7 +48,7 @@ def spinning_frame(user, stopped: Sequence[SlotSymbol], bet: int) -> discord.Emb
     else:
         status, color = f"Spinning reel {len(stopped) + 1} of 3...", Colors.GAMBLING
 
-    embed = author_embed(user, f"{_row(cells)}\n\n{status}", color)
+    embed = author_embed(user, f"{_row(cells)}\n\n{status}", color, title=f"{SLOTSICON} SLOTS")
     embed.add_field(name="Bet", value=f"{CURRENCY}{bet}", inline=True)
     if not stopped:                                   # show the payouts while the first reel spins up
         embed.add_field(name="Payouts", value=paytable(), inline=False)
@@ -77,7 +77,7 @@ def result_frame(user, reels: Sequence[SlotSymbol], outcome: SlotOutcome, bet: i
         color = Colors.LOSS
         change = f"-{CURRENCY}{bet}"
 
-    embed = author_embed(user, f"**{headline(outcome)}**\n{_row([s.emoji for s in reels])}\n\n{verdict}", color)
+    embed = author_embed(user, f"**{headline(outcome)}**\n{_row([s.emoji for s in reels])}\n\n{verdict}", color, title=f"{SLOTSICON} SLOTS")
     embed.add_field(name="Bet", value=f"{CURRENCY}{bet}", inline=True)
     embed.add_field(name="Net", value=change, inline=True)
     embed.add_field(name="Balance", value=f"{CURRENCY}{wallet_after}", inline=True)

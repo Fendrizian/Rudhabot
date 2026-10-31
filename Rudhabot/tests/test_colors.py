@@ -27,3 +27,16 @@ class PaletteTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IconTests(unittest.TestCase):
+    def test_resolve_icon_tracks_how_much_is_left(self):
+        T = theme.TCG
+        self.assertEqual([T.resolve(v) for v in (35, 30, 21, 20, 11, 10, 1, 0, -3)],
+                         [T.RESOLVE_HIGH] * 3 + [T.RESOLVE_MID] * 2 + [T.RESOLVE_LOW] * 2 + [T.RESOLVE_DEAD] * 2)
+
+    def test_help_select_menu_keeps_unicode_emojis(self):
+        from rudhabot.views.help import SECTIONS, SectionSelect
+        self.assertIn(theme.TCG.LOGO, [emoji for _, _, emoji, _, _ in SECTIONS])        # the section itself shows the logo
+        for option in SectionSelect("home").item.options:
+            self.assertIsNone(option.emoji.id, option.label)                          # but components stay Unicode

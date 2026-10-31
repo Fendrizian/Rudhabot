@@ -20,7 +20,7 @@ from rudhabot.tcg.decks import ARCHETYPES
 from rudhabot.tcg.rules_text import RULES
 from rudhabot.ui.tcg_embeds import (CLOUD, board_embed, card_embed, card_line, collection_embed, deck_embed,
                                     doctor_embed, hand_embed)
-from rudhabot.ui.theme import Colors
+from rudhabot.ui.theme import CLAIRVOYANCEICON, TCG, Colors
 from rudhabot.views.tcg_match import (ChallengeView, DeckModal, MatchButton, MovePicker, PageButton, PickSelect,
                                      board_view)
 
@@ -86,7 +86,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             pulled = self.tcg.open_pack(interaction.user.id)
         except TcgError as error:
             return await _reply(interaction, _note(str(error), Colors.FAIL))
-        embed = discord.Embed(title="🎴 Cloudfall pack", color=CLOUD,
+        embed = discord.Embed(title=f"{TCG.PACK} Cloudfall pack", color=CLOUD,
                               description="\n".join(card_line(CARD_BY_ID[c]) for c in pulled))
         embed.set_footer(text=f"Price {self.tcg.terms.pack_price} · pulls are random, drawn by Rudhabot")
         await _reply(interaction, embed, ephemeral=False)
@@ -108,7 +108,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
     @app_commands.choices(topic=RULE_CHOICES)
     async def rules(self, interaction: discord.Interaction, topic: Optional[app_commands.Choice[str]] = None):
         if topic is None:
-            embed = discord.Embed(title="📖 Asgrelia: Cloudfall, quick rules", color=CLOUD,
+            embed = discord.Embed(title=f"{TCG.LOGO} Asgrelia: Cloudfall, quick rules", color=CLOUD,
                                   description=RULES["Overview"] + "\n\nPick a topic with `/tcg rules topic:` or ask `/ask`.")
             embed.add_field(name="Topics", value=", ".join(RULES), inline=False)
         else:
@@ -119,7 +119,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
     async def ladder(self, interaction: discord.Interaction):
         rows = self.tcg.ladder()
         lines = [f"**{i + 1}.** <@{uid}> · **{p['rating']}** · {p['wins']}W {p['losses']}L" for i, (uid, p) in enumerate(rows)]
-        await _reply(interaction, discord.Embed(title="🏆 Cloudfall ladder", description="\n".join(lines) or "No rated games yet.",
+        await _reply(interaction, discord.Embed(title=f"{TCG.LOGO} Cloudfall ladder", description="\n".join(lines) or "No rated games yet.",
                                                 color=CLOUD), ephemeral=False)
 
     @app_commands.command(name="forget-me", description="Delete your Cloudfall profile, collection and rating")
@@ -287,7 +287,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         await interaction.response.defer(thinking=True)
         try:
             await self.tcg.run_ai(match)
-            posted = await self._post_board(interaction, match, f"🔮 {interaction.user.display_name} vs the Clairvoyance")
+            posted = await self._post_board(interaction, match, f"{CLAIRVOYANCEICON} {interaction.user.display_name} vs the Clairvoyance")
         except Exception:
             self.tcg.cancel(match.id)                  # never leave the player stuck in a match they can't see
             raise
@@ -475,7 +475,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             await interaction.response.defer(ephemeral=True, thinking=True)
             hints = await self.clairvoyance.hints(match.game)
             text = "\n".join(f"**{h.label}** · win {round(h.win * 100)}% ({h.delta * 100:+.0f})" for h in hints) or "No hint."
-            embed = discord.Embed(title="🔮 Clairvoyance's top moves", description=text, color=Colors.TCG_SKY)
+            embed = discord.Embed(title=f"{CLAIRVOYANCEICON} Clairvoyance's top moves", description=text, color=Colors.TCG_SKY)
             embed.set_footer(text=f"{self.clairvoyance.version} · estimates, not guarantees · only you can see this")
             return await interaction.followup.send(embed=embed, ephemeral=True)
         acts = E.legal_actions(match.game)
@@ -515,7 +515,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             return await interaction.response.edit_message(embed=_note(str(error), Colors.FAIL), view=None)
         match = result.match
         if result.finished is None and match.decider_is_ai:
-            await interaction.response.edit_message(embed=_note(f"✅ {label}\n🔮 The Clairvoyance is thinking…"), view=None)
+            await interaction.response.edit_message(embed=_note(f"✅ {label}\n{CLAIRVOYANCEICON} The Clairvoyance is thinking…"), view=None)
             result = await self.tcg.run_ai(match)
         else:
             await interaction.response.edit_message(embed=_note(f"✅ {label}"), view=None)

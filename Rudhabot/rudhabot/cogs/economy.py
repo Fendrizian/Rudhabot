@@ -12,7 +12,7 @@ from rudhabot.cogs.checks import not_in_game
 from rudhabot.domain.amounts import AmountError, parse_amount
 from rudhabot.domain.cooldown import CRIME, DAILY, ROB, WORK, Cooldown, format_remaining
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY, Colors
+from rudhabot.ui.theme import BANKICON, CLAIRVOYANCEICON, CURRENCY, Colors
 from rudhabot.views.leaderboard import LeaderboardView, create_leaderboard_embed
 
 INVALID_AMOUNT = "❌ Invalid amount format. Use a number or 'all'."
@@ -71,7 +71,7 @@ class EconomyCog(ServiceCog):
         if own:                                   # personal tips stay private, even though the balance is public
             tips = insights_for(self.services, target.id, profile, banked)
             if tips:
-                await interaction.followup.send(embed=discord.Embed(title="💡 Clairvoyance", description="\n".join(tips),
+                await interaction.followup.send(embed=discord.Embed(title=f"{CLAIRVOYANCEICON} Clairvoyance", description="\n".join(tips),
                                                                     color=Colors.BALANCE), ephemeral=True)
 
     # ------------------------------------------------------------------ earning
@@ -194,13 +194,13 @@ class EconomyCog(ServiceCog):
     @app_commands.describe(amount="Amount to deposit or 'all'")
     @not_in_game()
     async def deposit(self, interaction: discord.Interaction, amount: str):
-        await self._bank_move(interaction, amount, "deposit", "🏦 You deposited **{c}{n}** to your bank.", Colors.DEPOSIT)
+        await self._bank_move(interaction, amount, "deposit", BANKICON + " You deposited **{c}{n}** to your bank.", Colors.DEPOSIT)
 
     @app_commands.command(name="withdraw", description="Withdraw money from your bank (monthly limit depends on your card tier)")
     @app_commands.describe(amount="Amount to withdraw or 'all'")
     @not_in_game()
     async def withdraw(self, interaction: discord.Interaction, amount: str):
-        await self._bank_move(interaction, amount, "withdraw", "🏦 You withdrew **{c}{n}** to your wallet.", Colors.WITHDRAW)
+        await self._bank_move(interaction, amount, "withdraw", BANKICON + " You withdrew **{c}{n}** to your wallet.", Colors.WITHDRAW)
 
     @app_commands.command(name="send", description="Give money from your wallet to another user")
     @app_commands.describe(target="The user to give money to", amount="Amount of money to give or 'all'")

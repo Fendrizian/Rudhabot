@@ -10,7 +10,7 @@ from rudhabot.tcg import engine as E
 from rudhabot.tcg.cards import CARD_BY_ID, CHARACTER, PROTOCOL_BY_LEVEL, Card
 from rudhabot.tcg.decks import ARCHETYPES
 from rudhabot.tcg.state import Game
-from rudhabot.ui.theme import Colors
+from rudhabot.ui.theme import CLAIRVOYANCEICON, TCG, Colors
 
 CLOUD = Colors.TCG_BLUE        # the open sky: boards, cards, collection
 CORRUPT = Colors.TCG_DEEP      # Fallen cards and a board at Threat Level 6+
@@ -27,13 +27,13 @@ def card_line(card: Card) -> str:
         tag = f"G{card.grade} {'/'.join(card.affiliations)} {card.attack}/{card.stamina}" + (" · Fallen" if card.fallen else "")
     else:
         tag = card.kind + (f" · {card.power}" if card.power else "") + (f" G{card.grade}" if card.grade else "")
-    return f"**{card.name}** `{card.id}` · {card.cost}💧 · {tag}" + (" ◆" if card.unique else "")
+    return f"**{card.name}** `{card.id}` · {card.cost}{TCG.VAPOR} · {tag}" + (" ◆" if card.unique else "")
 
 
 def card_embed(card: Card, similar: list[tuple[str, float]] = ()) -> discord.Embed:
     embed = discord.Embed(title=f"{card.name}  ({card.id})", description=card.text, color=CORRUPT if card.fallen else CLOUD)
     embed.add_field(name="Type", value=card.kind + (" · Reaction" if card.reaction else ""), inline=True)
-    embed.add_field(name="Cost", value=f"{card.cost} Vapor", inline=True)
+    embed.add_field(name="Cost", value=f"{TCG.VAPOR} {card.cost} Vapor", inline=True)
     if card.kind == CHARACTER:
         embed.add_field(name="Cloud Grade", value=f"{GRADE_SHADES[card.grade]} {card.grade}", inline=True)
         embed.add_field(name="Power / Stamina", value=f"{card.attack} / {card.stamina}", inline=True)
@@ -42,7 +42,7 @@ def card_embed(card: Card, similar: list[tuple[str, float]] = ()) -> discord.Emb
         embed.add_field(name="Power / Grade", value=f"{card.power or 'None'}" + (f", Grade {card.grade}" if card.grade else ""),
                         inline=True)
     if similar:
-        embed.add_field(name="🔮 Clairvoyance: plays a similar role to",
+        embed.add_field(name=f"{CLAIRVOYANCEICON} Clairvoyance: plays a similar role to",
                         value=", ".join(f"{CARD_BY_ID[c].name}" for c, _ in similar), inline=False)
     embed.set_footer(text="Asgrelia: Cloudfall · base set")
     return embed
@@ -55,9 +55,9 @@ def _unit_line(g: Game, slot: int, u) -> str:
             + (f" (of {E.stamina(g, u)})" if u.damage else "") + f" · G{E.grade(g, u)}"]
     status = []
     if u.corrupted:
-        status.append("☠️")
+        status.append(TCG.CORRUPTED)
     elif u.taint:
-        status.append("🌑" * u.taint)
+        status.append(TCG.TAINTED * u.taint)
     status.append("🟢" if u.ready else "💤")
     if u.frozen:
         status.append("❄️")
@@ -88,15 +88,16 @@ def waiting_text(g: Game) -> str:
 def board_embed(g: Game, record: dict, win_p0: Optional[float] = None, model: str = "") -> discord.Embed:
     level = E.protocol(g)
     proto = PROTOCOL_BY_LEVEL[level].name if level else "none"
-    lines = [f"**Round {g.round}** · Threat {bar(g.threat / 8, 8)} **{g.threat}** · Protocol **{proto}**"
+    lines = [f"**Round {g.round}** · {TCG.THREAT} Threat {bar(g.threat / 8, 8)} **{g.threat}** · Protocol **{proto}**"
              + (" *(Mandate)*" if g.mandate else ""),
              f"Sky: **{CARD_BY_ID[g.sky].name if g.sky else 'clear'}**"]
     if win_p0 is not None:
-        lines.append(f"🔮 {g.players[0].name} {bar(win_p0)} {round(win_p0 * 100)}% · {round((1 - win_p0) * 100)}% {g.players[1].name}")
-    embed = discord.Embed(title=f"⛅ Cloudfall · {g.players[0].name} vs {g.players[1].name}", description="\n".join(lines),
+        lines.append(f"{CLAIRVOYANCEICON} {g.players[0].name} {bar(win_p0)} {round(win_p0 * 100)}% · {round((1 - win_p0) * 100)}% {g.players[1].name}")
+    embed = discord.Embed(title=f"{TCG.LOGO} Cloudfall · {g.players[0].name} vs {g.players[1].name}", description="\n".join(lines),
                           color=CORRUPT if g.threat >= 6 else CLOUD)
     for p in g.players:
-        head = (f"❤️ {p.resolve} · 💧 {p.vapor}/{E.capacity(g, p.seat)} · ✋ {len(p.hand)} · 🂠 {len(p.deck)}"
+        head = (f"{TCG.resolve(p.resolve)} {p.resolve} · {TCG.VAPOR} {p.vapor}/{E.capacity(g, p.seat)} · ✋ {len(p.hand)} · "
+                f"{TCG.CARD_BACK} {len(p.deck)}"
                 + (f" · 🏛️ {CARD_BY_ID[p.landmark].name}" if p.landmark else ""))
         field = "\n".join([head] + [_unit_line(g, i, u) for i, u in enumerate(p.field)])
         marker = "▶ " if g.active == p.seat and not g.over else ""
@@ -124,7 +125,7 @@ def hand_embed(g: Game, seat: int) -> discord.Embed:
 def collection_embed(user, profile: dict) -> discord.Embed:
     counts = Counter(profile["collection"])
     total = sum(counts.values())
-    embed = discord.Embed(title=f"{user.display_name}'s Cloudfall collection",
+    embed = discord.Embed(title=f"{TCG.LOGO} {user.display_name}'s Cloudfall collection",
                           description=f"**{total}** cards · **{len(counts)}**/112 different · rating **{profile['rating']}** · "
                                       f"{profile['wins']}W {profile['losses']}L {profile['draws']}D", color=CLOUD)
     by_kind: dict[str, list[str]] = {}
@@ -153,7 +154,7 @@ def deck_embed(name: str, cards: list[str], problems: list[str] = ()) -> discord
 
 
 def doctor_embed(name: str, report: dict, swaps: list) -> discord.Embed:
-    embed = discord.Embed(title=f"🔮 Deck Doctor: {name}", color=Colors.TCG_SKY,
+    embed = discord.Embed(title=f"{CLAIRVOYANCEICON} Deck Doctor: {name}", color=Colors.TCG_SKY,
                           description="The Clairvoyance piloted your deck against each archetype (seat-swapped). Small samples, so "
                                       "treat these as a rough guide, not a verdict.")
     rows = []
