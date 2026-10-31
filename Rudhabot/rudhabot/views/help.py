@@ -69,6 +69,41 @@ def get_commands_data():
             "description": "Shows this help message with all available commands."
         },
         {
+            "name": "ask",
+            "args": "<question> [private]",
+            "description": "Ask Rudhabot how anything works. Answers come from Rudhabot's own docs (AI-written when OpenAI is configured)."
+        },
+        {
+            "name": "tcg starter",
+            "args": "<deck>",
+            "description": "Asgrelia: Cloudfall: claim a free starter deck (one of six archetypes)."
+        },
+        {
+            "name": "tcg practice",
+            "args": "[difficulty] [opponent]",
+            "description": "Play Cloudfall against the Oracle, Rudhabot's own trained AI, with coaching hints."
+        },
+        {
+            "name": "tcg challenge",
+            "args": "<opponent> [coaching]",
+            "description": "Challenge a player to a rated Cloudfall duel in its own thread, with a live win-chance bar."
+        },
+        {
+            "name": "tcg deck build | view | use | analyze",
+            "args": "",
+            "description": "Build decks from your collection; `analyze` runs the Oracle's Deck Doctor against every archetype."
+        },
+        {
+            "name": "tcg card | rules | collection | pack | ladder",
+            "args": "",
+            "description": "Look up cards (with the Oracle's similar cards), read the rules, open packs and see the rated ladder."
+        },
+        {
+            "name": "tcg match | forfeit | forget-me",
+            "args": "",
+            "description": "Re-post your match board, concede, or delete your Cloudfall data."
+        },
+        {
             "name": "balance",
             "args": "[user]",
             "description": "Check your wallet and bank balance, or view another user's balance."
@@ -81,7 +116,7 @@ def get_commands_data():
         {
             "name": "daily",
             "args": "",
-            "description": "Claim your daily reward of 200ra. Available once every 24 hours."
+            "description": "Claim your daily reward of 50ra. Available once every 24 hours."
         },
         {
             "name": "crime",
@@ -217,6 +252,11 @@ def get_commands_data():
             "name": "add-money",
             "args": "<user> <amount> [wallet|bank]",
             "description": "Add money to a user's account (Admin and Banker)."
+        },
+        {
+            "name": "oracle status | reload",
+            "args": "[version]",
+            "description": "Admin: the Oracle model's version, measured quality, latency and health; reload or roll back."
         },
         {
             "name": "remove-money",

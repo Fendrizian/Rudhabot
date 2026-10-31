@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Mapping
+from typing import Mapping, Optional
 
 from rudhabot.errors import MissingTokenError
 
 TOKEN_ENV_VAR = "DISCORD_TOKEN"
+OPENAI_KEY_ENV_VAR = "OPENAI_API_KEY"
+DEFAULT_MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
 
 
 @dataclass(frozen=True)
@@ -19,6 +21,8 @@ class Paths:
     birthday_log: str = "birthdays.json"
     birthday_registry: str = "birthday_registry.json"
     lottery: str = "lottery.json"
+    tcg: str = "tcg.json"
+    tcg_matches: str = "tcg_matches.json"
 
     @classmethod
     def in_directory(cls, directory: str) -> "Paths":
@@ -55,12 +59,57 @@ class BirthdayTerms:
     min_year: int = 1900
 
 
+def _flag(environ: Mapping[str, str], name: str, default: bool) -> bool:
+    value = environ.get(name)
+    return default if value is None else value.strip().lower() not in ("0", "false", "no", "off", "")
+
+
+@dataclass(frozen=True)
+class AISettings:
+    """The intelligence layer. Every value can be overridden by an environment variable (see .env.example).
+
+    The OpenAI key itself is never stored here; it is read from OPENAI_API_KEY only when the client is built.
+    """
+    oracle_enabled: bool = True
+    oracle_version: Optional[str] = None          # None = the manifest's `current` version
+    models_dir: str = DEFAULT_MODELS_DIR
+    llm_enabled: bool = True                      # only takes effect when OPENAI_API_KEY is set
+    llm_model: str = "gpt-5.4-mini"
+    llm_reasoning_effort: Optional[str] = None    # e.g. "low" for reasoning models; None = provider default
+    llm_timeout_s: float = 20.0
+    llm_max_output_tokens: int = 600
+    llm_per_user_per_hour: int = 12
+    llm_per_guild_per_hour: int = 120
+    llm_daily_budget: int = 800
+    chronicle_enabled: bool = True
+
+    @classmethod
+    def from_env(cls, environ: Mapping[str, str] = os.environ) -> "AISettings":
+        d = cls()
+        num = lambda name, default, kind: kind(environ[name]) if environ.get(name) else default
+        return cls(
+            oracle_enabled=_flag(environ, "ORACLE_ENABLED", d.oracle_enabled),
+            oracle_version=environ.get("ORACLE_VERSION") or None,
+            models_dir=environ.get("RUDHABOT_MODELS_DIR") or d.models_dir,
+            llm_enabled=_flag(environ, "RUDHABOT_LLM_ENABLED", d.llm_enabled),
+            llm_model=environ.get("RUDHABOT_LLM_MODEL") or d.llm_model,
+            llm_reasoning_effort=environ.get("RUDHABOT_LLM_REASONING_EFFORT") or None,
+            llm_timeout_s=num("RUDHABOT_LLM_TIMEOUT_S", d.llm_timeout_s, float),
+            llm_max_output_tokens=num("RUDHABOT_LLM_MAX_OUTPUT_TOKENS", d.llm_max_output_tokens, int),
+            llm_per_user_per_hour=num("RUDHABOT_LLM_PER_USER_PER_HOUR", d.llm_per_user_per_hour, int),
+            llm_per_guild_per_hour=num("RUDHABOT_LLM_PER_GUILD_PER_HOUR", d.llm_per_guild_per_hour, int),
+            llm_daily_budget=num("RUDHABOT_LLM_DAILY_BUDGET", d.llm_daily_budget, int),
+            chronicle_enabled=_flag(environ, "RUDHABOT_CHRONICLE_ENABLED", d.chronicle_enabled),
+        )
+
+
 @dataclass(frozen=True)
 class Settings:
     paths: Paths = field(default_factory=Paths)
     channels: Channels = field(default_factory=Channels)
     loans: LoanTerms = field(default_factory=LoanTerms)
     birthdays: BirthdayTerms = field(default_factory=BirthdayTerms)
+    ai: AISettings = field(default_factory=AISettings.from_env)
     page_size: int = 5
     admin_role_id: int = 1142722971606200460
 
