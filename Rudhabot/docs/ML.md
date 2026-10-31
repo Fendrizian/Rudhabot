@@ -1,140 +1,184 @@
-# The Cloudfall Clairvoyance: Rudhabot's in-house model
+# Clairvoyance: Rudhabot's in-house machine learning
 
-The Clairvoyance is a compact neural network that Rudhabot **trains and serves itself**. It learns to read Asgrelia: Cloudfall
-positions. It uses no hosted model and no pretrained weights. Its only training data is games the bot's own rules engine plays
-against itself.
+Clairvoyance (formerly "the Oracle") is the ML that Rudhabot trains and serves itself. It uses no hosted model and no
+pretrained weights. It has three tasks:
 
-## What it does (and what it may not do)
+| Task | Model | Trained on | Used for |
+|---|---|---|---|
+| **Cloudfall value network** | `clairvoyance-v2` slot-encoder network (175k params) | engine self-play only | AI opponent, coaching hints, live win bar, turning points, Deck Doctor, similar cards |
+| **Intent router** | `intent-v1` n-gram MLP (789k params, 1 MB) | developer-written phrases | `/ask` and @mentions: map plain words to an existing command, or ask a clarifying question |
+| **Anomaly monitor** | isolation forest + rules, fitted on this server's own ledger | the server's last 7 days of hourly activity windows | review signals for moderators (`/review`) |
 
-| Product | What the model provides | What trusted code decides |
-|---|---|---|
-| **AI opponent** (`/tcg practice`) | A score for the state each *legal* move leads to; the policy picks one | The engine generates the legal moves and `engine.apply` re-validates and resolves the chosen one |
-| **Coach** (🔮 button, coached/practice matches only) | Top 3 legal moves with calibrated win % and the change from now | Coaching is off in rated games; the hints are shown only to the player whose decision it is |
-| **Live win bar** (every board) | P(player 0 wins), averaged over both seats with **both hands hidden** | Nothing; it's purely informational |
-| **Turning points + Chronicle** | The moves with the largest swing in the public win estimate | The facts the recap is written from (winner, rounds, reason) come from the engine |
-| **Deck Doctor** (`/tcg deck analyze`) | It pilots your deck against all six archetypes; it also suggests swaps by learned card value | Swaps are only suggested if they keep the deck legal *and* you own the cards; nothing is changed for you |
-| **Similar cards** (`/tcg card`) | Nearest neighbours in the learned card-embedding space | Nothing |
+It also produces private **finance insights** in `/bank account` and `/bank card info`. These are derived from the person's
+own ledger.
 
-The model **never** mutates game state, balances, collections, ratings or rewards. It can only rank moves that the engine
-already deems legal. Fairness: before scoring, hidden information is **re-sampled (determinization)**. The searcher's own
-deck order and the opponent's hand and deck are shuffled from what that seat could know, so the AI gets no information that a
-human in its seat wouldn't have. `encode()` itself never reads the opponent's hand or either deck's order, and `test_ml`
-proves this by scrambling hidden zones.
+**Trust boundary (all tasks):** Clairvoyance only advises.
+- Game moves are applied by `engine.apply`, which re-validates them.
+- Commands run through their own permission checks.
+- Review signals never change balances or permissions.
+- Insights never change limits, interest or charges.
 
-## Model
+## 1. Cloudfall value network
 
-- **Input** (`rudhabot/ml/features.py`, schema hash `features.schema_hash()`):
-  - 235 dense features: Threat Level, Protocol, Sky, phase, both players' public counters, 8 field slots × 20 attributes,
-    and a 4-value Clash preview computed by the engine.
-  - Three card-count vectors over the 112 playable cards: own hand, own board, enemy board.
-- **Architecture** (`rudhabot/ml/nn.py`, pure numpy):
-  - A shared **learned card embedding** `E ∈ ℝ^{112×16}` pools each card-count vector.
-  - The pooled vectors and the dense features feed an MLP (235 + 48 → 128 → 64 → 1) with ReLU activations and a sigmoid output.
-  - **46,465 parameters**, a 173 KB artifact.
-- **Training:**
-  - Loss: binary cross-entropy (draws are 0.5 targets), plus L2 weight decay 1e-4.
-  - Optimiser: Adam with a cosine learning-rate schedule.
-  - Early stopping on validation loss restores the best epoch. One game's states are highly correlated, so the network
-    overfits after about 1–3 epochs.
-- **Calibration:** Platt scaling (a, b) = (0.781, −0.036), fitted on a **separate** set of calibration games, never the test set.
-- **Move policy served:** a 1-ply determinized afterstate search. Each candidate is scored by
-  `logit(P_net) + 0.5 · logit(P_heuristic)` (see "Playing strength"). Everything that is *displayed* as a probability uses
-  the calibrated network alone.
+### What it predicts
+P(win | state, perspective), from what that player can legitimately see. `encode()`/`encode_v2()` never read the
+opponent's hand or either deck's order, and the tests prove it by scrambling hidden zones.
 
-## Data and governance
+Before searching, the AI re-samples hidden information (determinization), so it gets no information that a human in its
+seat wouldn't have.
 
-- **Source:** engine self-play only, with no Discord messages and no user data. Each decision point is recorded with probability 0.12, from
-  both players' perspectives, and labelled with the eventual result.
-- **Policies used to generate data:**
-  - Generation 0: heuristic search (ε = 0.1).
-  - Generations 1–2: the previous network (ε = 0.1), mixed with heuristic and random seats for diversity (expert iteration).
-- **Leakage control:** train seeds (0…), calibration seeds (8,000,000…), test seeds (9,000,000…) and arena seeds
-  (5,000,000… and 6/7,000,000…) never overlap. The split is by game, never by state.
-- **Personalisation:** none. No user data is used to train or adapt the model. If owner-approved, opt-in human-match logging is
-  added later, it must be consented, anonymised and kept apart from the self-play set (see "Next steps").
+### Architectures
+- **v1 `ClairvoyanceNet`** (`oracle-v1`, kept for rollback):
+  - 235 dense features plus three card-count vectors, pooled through a 16-d learned card embedding.
+  - An MLP of 128 → 64 → 1. 46,465 parameters.
+- **v2 `ClairvoyanceSlotNet`** (`clairvoyance-v2`, current):
+  - **Slot encoder:** each of the 8 field slots is encoded by one shared encoder. Its input is the slot's 20 attributes,
+    the card embedding of the unit standing there, and its attachments pooled through the same embedding (24-d). The
+    encoder layer is 68 → 48 with ReLU.
+  - **Trunk:** the slot encodings stay positional, because adjacency matters for Taint spread and Thunderclap. Global
+    features and pooled hand/board embeddings join them in a 256 → 128 → 1 MLP.
+  - 175,217 parameters, about 3.8× v1. Pure numpy, with hand-written backprop that passed a numerical gradient check.
 
-## Measured results: oracle-v1
+### Training (`python -m rudhabot.ml.train --version clairvoyance-v2`)
+- **Self-play and expert iteration:** 3 generations × 6,000 games, from 18,000 training seeds.
+  - Generation 0 is played by ε-greedy heuristic search.
+  - Generations 1 and 2 are played by the previous network, mixed with heuristic and random seats.
+- **Deck diversity:** in 40% of games, each deck is a legal random mutation (3–10 swaps) of an archetype. That widens
+  the distribution beyond the six starter decks.
+- **TD(λ) targets:** from generation 1, targets are λ-returns with λ = 0.7. They blend the final result with the acting
+  network's afterstate estimates, which lowers label variance. Evaluation always uses the **true** results.
+- **Optimiser:** binary cross-entropy, L2 1e-4, Adam with a cosine schedule, and early stopping that restores the best
+  validation epoch. The bigger network overfits after 1–3 epochs.
+- **Calibration:** Platt scaling (a = 0.951, b = −0.088), fitted on separate calibration seeds.
+- **Build:** 66 min on 4 CPU cores.
+- **Disjoint seed ranges:** train 0…, calibration 8,000,000…, test 9,000,000…, arenas 5,500,000…, benchmark
+  7,700,000… and 7,800,000…
 
-All numbers come from `models/manifest.json`, produced by `python -m rudhabot.ml.train --version oracle-v1`. The build took
-425 s on 4 CPU cores.
+### Measured results
 
-**Win-probability quality**, on 11,240 held-out states from 500 test games:
-
-| | log-loss ↓ | Brier ↓ | ECE ↓ | AUC ↑ |
-|---|---|---|---|---|
-| **Clairvoyance (calibrated)** | **0.490** | **0.164** | **0.018** | **0.839** |
-| Clairvoyance (uncalibrated) | 0.493 | 0.164 | 0.022 | 0.839 |
-| Heuristic baseline | 0.626 | 0.205 | 0.066 | 0.757 |
-| Constant 0.5 | 0.693 | 0.250 | — | 0.500 |
-
-The Clairvoyance is clearly a better estimator than the hand-written baseline. Its AUC is +0.08 higher, and its calibration error
-is a quarter of the baseline's.
-
-**Playing strength.** Each arena plays every seed twice with seats swapped, and intervals are Wilson 95%:
+**Playing strength.** Each arena plays every seed twice with seats swapped. The intervals are Wilson 95%. The served
+policy is the "blend": logit(P_net) + 0.5·logit(P_heuristic) with 1-ply determinized search.
 
 | Matchup | Score | 95% CI | Games |
 |---|---|---|---|
-| Net-only search vs heuristic search | 48.7% | 43.1–54.3% | 300 |
-| Net-only vs random | 94.3% | 91.1–96.4% | 300 |
-| Heuristic vs random (reference) | 94.7% | 91.5–96.7% | 300 |
-| Blend (w=0.5) vs heuristic (selection seeds) | 57.0% | 51.3–62.5% | 300 |
-| **Blend (w=0.5) vs heuristic (fresh confirmation seeds)** | **52.3%** | 47.9–56.6% | 500 |
-| **Blend vs net-only (fresh seeds)** | **59.3%** | 53.7–64.7% | 300 |
-| Blend vs random (fresh seeds) | 98.0% | 95.0–99.2% | 200 |
+| **v2 blend vs heuristic** | **66.5%** | 61.7–70.9 | 400 |
+| v2 blend vs heuristic, mutated decks | 64.2% | 59.4–68.8 | 400 |
+| v2 net-only vs heuristic | 62.0% | 57.2–66.6 | 400 |
+| v2 net-only vs random | 96.8% | 94.5–98.1 | 400 |
+| v2 blend vs v1 blend (training arena) | 55.1% | 50.2–59.9 | 400 |
+| **v2 blend vs v1 blend (fresh confirmation seeds)** | **54.2%** | 50.2–58.1 | 600 |
+| *for reference:* v1 blend vs heuristic (fresh seeds) | 52.3% | 47.9–56.6 | 500 |
 
-The blend weight was picked from {0.5, 1.0} on the selection seeds, then confirmed on untouched seeds.
+v1 played at parity with the hand-tuned heuristic. v2 beats it clearly, including with decks it never trained on, and
+edges out v1 head-to-head.
 
-What this does and doesn't show:
-- The served blend is **reliably stronger than the network alone**.
-- On fresh seeds it is **statistically indistinguishable from the tuned heuristic baseline**.
-- I am not claiming that the model plays better than the baseline. The measured gain is in judging positions
-  (calibrated, discriminative win probability), which is what the coach, the win bar, turning points and Deck Doctor use.
+**Win-probability quality: apples-to-apples.** Both models are scored on the same 12,274 held-out states from 500
+heuristic-played games, half with archetype decks and half with mutated decks:
 
-**Latency** (one core, oracle-v1):
-- One network evaluation: p50 0.03 ms, p95 0.04 ms.
-- A full AI move (determinize, apply each legal move, batch-score): p50 0.6 ms, p95 1.8 ms, mean branching 4.2.
-- Deck Doctor (24 games): about 3 s.
-- Serving runs in `asyncio.to_thread` behind a semaphore (2) with a timeout of 4 s (60 s for Deck Doctor), so it never
-  blocks the Discord event loop.
+| | log-loss ↓ | Brier ↓ | ECE ↓ | AUC ↑ |
+|---|---|---|---|---|
+| v1 (oracle-v1) | **0.476** | **0.159** | 0.033 | **0.852** |
+| v2 (clairvoyance-v2) | 0.480 | 0.161 | **0.011** | 0.845 |
+| heuristic baseline | 0.520 | 0.174 | 0.019 | 0.817 |
+| v1 on mutated decks | 0.479 | 0.159 | 0.042 | 0.853 |
+| v2 on mutated decks | **0.464** | **0.154** | **0.022** | **0.858** |
+| v1 on archetype decks | **0.473** | **0.158** | 0.032 | **0.851** |
+| v2 on archetype decks | 0.496 | 0.167 | 0.022 | 0.832 |
 
-**Learned embeddings.** These are qualitative and unsupervised; the model was never told any synergies. Wahen Nirvana's
-nearest card is her twin and Bond partner Serena Nirvana, and May Selunara's nearest are the other Fallen (Tiber, Ilyra). Some
-neighbourhoods are noisy, so the UI words this as "plays a similar role" and treats it as advisory.
+What this means:
+- As a pure predictor, v2 is **not better than v1 overall**: v1's AUC is slightly higher.
+- v2 is about 3× better calibrated.
+- v2 is better on unfamiliar decks and slightly worse on the six starter decks.
+- Its gain shows in **move choice and robustness**, which is what the bigger, unit-aware network was for.
+- On its own harder test set (network-played, mutated decks: 13,224 states), v2 scored AUC 0.816 against the
+  heuristic's 0.798. That number isn't comparable with v1's earlier 0.839, which came from an easier distribution.
 
-## Lifecycle
+**Latency** (one core): network evaluation p50 0.34 ms. A full AI move p50 1.2 ms and p95 3.7 ms. Serving runs in a
+worker thread behind a semaphore and a timeout, with a heuristic fallback.
 
-```bash
-python -m rudhabot.ml.train --version clairvoyance-v2           # self-play → train → calibrate → evaluate → register
-```
+**Learned embeddings** are unsupervised. v1's were more interpretable: Wahen's nearest card was her twin Serena, and May's
+were the other Fallen. v2's are noisier, because v2 also sees each unit's identity through its slot. May's nearest cards
+are still Tiber and Ilyra, two other Fallen. "Similar role" is shown as an advisory hint only.
 
-```bash
-python -m rudhabot.ml.evaluate --games 150                # re-measure the current artifact
-```
+### Lifecycle and rollback
+- **Artifacts:** `models/<version>.npz` stores the architecture header, weights, calibration and metadata.
+  `models/manifest.json` stores, per version, the architecture, feature-schema hash, config, per-epoch history, metrics,
+  arenas, latency and learned card values.
+- **Safety on load:** a schema or architecture mismatch is refused, and the bot falls back to the heuristic.
+- **Rollback:** `CLAIRVOYANCE_VERSION=oracle-v1`, or `/clairvoyance reload version:oracle-v1`. `CLAIRVOYANCE_ENABLED=0`
+  turns the model off. The old `ORACLE_*` variable names still work.
+- **Monitoring:** `/clairvoyance status` shows the version, health, metrics, arena results, call and fallback counts,
+  latency, and the assistant's state.
 
-- **Artifacts:** `models/<version>.npz` holds the weights, calibration and metadata. `models/manifest.json` holds, per
-  version, the file, schema hash, config, data description, per-epoch history, metrics, strength, latency and learned card
-  values. The artifact is small (173 KB), so it is committed. It can also be rebuilt from seeds.
-- **Safety on load:** an artifact whose schema hash differs from the running feature code is refused, and the bot falls back
-  to the heuristic. A missing or corrupt file, an exception or a timeout all fall back too, and the fallback is counted.
-- **Rollback:**
-  - Set `CLAIRVOYANCE_VERSION=oracle-v1`, or run `/clairvoyance reload version:oracle-v1`.
-  - Or set `"current"` in the manifest.
-  - `CLAIRVOYANCE_ENABLED=0` disables the model entirely; the heuristic AI keeps every feature working.
-- **Monitoring:** `/clairvoyance status` (admin) shows the version, load errors, held-out metrics, arena results, per-task call
-  and fallback counts, and live p50/p95 latency. Logs record task, model version and latency, never message content.
+## 2. Intent router (`python -m rudhabot.ml.intent`)
 
-## Limitations
+- **Task:** map a message to one of 28 intents. Each intent is an existing capability (balance, inventory, shop, loans,
+  bank, stocks, each game, Cloudfall play/rules/collection, wishes, …) or "chat".
+  - "chat" goes to the OpenAI assistant, or to the local docs.
+  - A confident intent (≥ 60%) is offered as a button that runs the **real** command, with its own checks, for the
+    person who asked only.
+  - At 25–60% confidence, Rudhabot asks which of the top options was meant.
+  - Commands that need details (amounts, bets) are explained, not guessed.
+- **Model:** hashed character 2–5-grams plus word uni/bi-grams form an 8,192-d TF vector, then a 96-unit ReLU layer and a
+  softmax. Confidence is temperature-calibrated (T = 1.2, fitted on held-out seed phrases).
+- **Data:** developer-written phrases (`ml/intent_data.py`), augmented with politeness, casing and typo variants: 2,538
+  training examples. The **test set is 58 separately written phrasings**, never trained on or augmented.
+- **Held-out results:**
 
-- Play is 1-ply. The value net has to judge mid-turn states, which caps tactical depth. The AI plays at about baseline
-  strength.
-- The training distribution is the six archetype decks. Custom decks are out of distribution, so estimates for them are
-  rougher.
-- Deck Doctor's samples are small: 4 games per matchup in about 3 s. It's a direction, not a verdict, and the UI says so.
+  | Metric | Value |
+  |---|---|
+  | Accuracy | 81.0% |
+  | Macro-F1 | 0.797 |
+  | ECE | 0.091 |
+  | Answers at ≥ 60% confidence | 81% of messages, 91.5% accurate |
 
-## Next steps (highest value first)
+  The misses are listed in `models/intent-v1.json`. Examples: "what's in my backpack" → balance, and "i want to invest in
+  joot" → inventory.
 
-1. **TD(λ) or bootstrapped targets plus a 2-ply search inside your own turn.** This is the most likely route to beating the
-   heuristic in play.
-2. **More archetype variety in self-play,** by randomly mutating the six decks. This would cover custom decks.
-3. **Opt-in human data.** It needs an owner decision and consent text: log anonymised states from rated matches whose players
-   opted in, keep retention short, and keep it separate from the self-play set.
+  I deliberately did **not** add training phrases for those exact misses, so the test set stays a fair estimate. The
+  honest next step is real, consented usage data.
+
+## 3. Anomaly monitor (`ml/anomaly.py`, `services/review.py`)
+
+- **Features:** per-user hourly windows built from the audit ledger and the failed-interaction log:
+  - entries;
+  - money in and money out;
+  - largest single change;
+  - net change;
+  - distinct sources;
+  - gambling wins;
+  - transfers received from other people;
+  - failed interactions.
+- **Model:** an isolation forest (numpy, 100 trees × 256 samples), refitted on the server's own last 7 days at startup and
+  every 6 h, so "unusual" means unusual *for this server*. Each flag lists the features that deviate most from the
+  population (robust z-scores).
+- **Rules:** hard rules also apply during cold start, before 120 windows exist: 15+ failures in an hour, a single change
+  of 1,000,000 or more, or 12+ transfers in from other people.
+- **Rate limits:** each user's current hour is re-judged at most once a minute, and only one open signal per user is
+  allowed per 6 h.
+- **Output:** a signal is stored in `reviews.json` and posted to the review channel. A moderator dismisses or confirms it
+  with `/review resolve`. **Nothing else happens.**
+- **Synthetic benchmark** (`python -m rudhabot.ml.anomaly`): ordinary simulated players plus 30 injected anomalies of four
+  kinds (money mule, implausible win streak, failure storm, one huge movement), over 5 seeds of about 3,770 windows each.
+  Results: precision 0.957, recall 0.873. This is synthetic data. Real-server precision has to be judged from moderators'
+  `/review resolve` outcomes.
+
+## 4. Finance insights (`services/insights.py`)
+
+Up to two private observations, computed only from the person's own ledger and bank profile:
+- the card statement is due soon;
+- the card is 70%+ used;
+- this week's spending is more than 2× their usual (median of the previous 4 weeks);
+- they're down on games of chance this week;
+- idle bank money could be earning savings interest.
+
+These are deterministic personal-baseline statistics, not a trained model. They are shown only to that person, are
+labelled "💡 Clairvoyance", and change nothing.
+
+## Next steps
+1. **Play:** add a 2-ply search within your own turn, and more generations. v2's training curve was still improving its
+   play.
+2. **Prediction:** add an ensemble or v1-style pooled features to v2 to recover v1's edge on archetype decks.
+3. **Intent:** collect consented real phrasings (for example, log `/ask` texts that users approve) to retrain and
+   evaluate the router.
+4. **Anomaly:** tune the threshold from moderators' dismiss/confirm outcomes once real signals exist.

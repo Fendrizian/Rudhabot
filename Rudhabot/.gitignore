@@ -17,3 +17,4 @@ __pycache__/
 # training scratch
 models/.*.gen.npz
 review-bundle/
+clairvoyance-review-bundle.zip
