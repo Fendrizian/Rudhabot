@@ -221,6 +221,34 @@ class ComponentPayloadTests(CogTestCase):
         thread.delete.assert_awaited_once()
 
 
+class ThreadNameTests(TcgCogBase):
+    def test_thread_names_never_carry_custom_emojis(self):
+        from rudhabot.cogs.tcg import thread_name
+        self.assertEqual(thread_name(f"{CLAIRVOYANCEICON} alice vs the Clairvoyance"), "alice vs the Clairvoyance")
+        self.assertEqual(thread_name("🔮 alice vs the Clairvoyance"), "🔮 alice vs the Clairvoyance")
+        self.assertEqual(thread_name("<a:spin:123>"), "Cloudfall match")
+        self.assertLessEqual(len(thread_name("x" * 200)), 90)
+
+    async def test_practice_thread_is_named_with_a_unicode_emoji(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        cog = self.bot.cogs["TcgCog"]
+        self.s.tcg.claim_starter(self.alice.id, "vanguard")
+        match = self.s.tcg.create_practice(self.alice.id, "alice")
+        bad = discord.HTTPException(SimpleNamespace(status=400, reason="Bad Request"), {"code": 50035, "message": "x"})
+        thread = mock.AsyncMock()
+        thread.send.side_effect = bad                      # only the name matters here; the post falls back
+        channel = mock.MagicMock(spec=discord.TextChannel)
+        channel.id = 777
+        channel.create_thread = mock.AsyncMock(return_value=thread)
+        channel.send = mock.AsyncMock(side_effect=bad)
+        it = FakeInteraction(self.bot, self.alice)
+        it.channel = channel
+        await cog._post_board(it, match, f"{CLAIRVOYANCEICON} alice vs the Clairvoyance")
+        name = channel.create_thread.await_args.kwargs["name"]
+        self.assertNotIn("<:", name)
+
+
 class MenuLifetimeTests(TcgCogBase):
     """The move menu used to stop responding after 3 minutes (and on every restart)."""
 

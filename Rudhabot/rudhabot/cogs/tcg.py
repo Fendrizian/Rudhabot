@@ -6,6 +6,7 @@ Clairvoyance's spectator-safe win estimate; players act through an ephemeral men
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 import discord
@@ -40,6 +41,11 @@ async def _reply(interaction: discord.Interaction, embed: discord.Embed, ephemer
         await interaction.followup.send(embed=embed, ephemeral=ephemeral, allowed_mentions=NO_MENTIONS, **kw)
     else:
         await interaction.response.send_message(embed=embed, ephemeral=ephemeral, allowed_mentions=NO_MENTIONS, **kw)
+
+
+def thread_name(title: str) -> str:
+    """Channel and thread names are plain text: Discord shows a custom emoji there as raw `<:name:id>`, so drop any."""
+    return re.sub(r"\s{2,}", " ", re.sub(r"<a?:\w+:\d+>", "", title)).strip()[:90] or "Cloudfall match"
 
 
 class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description="Asgrelia: Cloudfall trading card game"):
@@ -288,7 +294,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         await interaction.response.defer(thinking=True)
         try:
             await self.tcg.run_ai(match)
-            posted = await self._post_board(interaction, match, f"{CLAIRVOYANCEICON} {interaction.user.display_name} vs the Clairvoyance")
+            posted = await self._post_board(interaction, match, f"🔮 {interaction.user.display_name} vs the Clairvoyance")
         except Exception:
             self.tcg.cancel(match.id)                  # never leave the player stuck in a match they can't see
             raise
@@ -362,7 +368,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
                 "create_public_threads", "send_messages_in_threads", "embed_links"):
             thread = None
             try:
-                thread = await channel.create_thread(name=thread_title[:90], type=discord.ChannelType.public_thread,
+                thread = await channel.create_thread(name=thread_name(thread_title), type=discord.ChannelType.public_thread,
                                                      auto_archive_duration=1440)
                 message, target, mode = await thread.send(embed=embed, view=view, allowed_mentions=NO_MENTIONS), thread, "thread"
             except discord.HTTPException as error:
