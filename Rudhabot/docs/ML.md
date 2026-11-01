@@ -74,7 +74,7 @@ paired 95% intervals come from a bootstrap that resamples whole games. Lower log
 | Served AI vs heuristic (600 games) | 56.7% (52.7–60.6) | 60.3% (56.4–64.2) | **63.7% (59.7–67.4)** |
 | … with mutated (unfamiliar) decks | 57.2% | 63.7% | **65.8%** |
 | vs random play | 97.1% | 96.7% | **98.2%** |
-| One evaluation / one AI move (p50, one thread) | 0.026 / 0.43 ms | 0.056 / 0.64 ms | 0.054 / 0.58 ms |
+| One evaluation / one AI move (p50, one thread) | 0.019 / 0.38 ms | 0.061 / 0.61 ms | 0.057 / 0.60 ms |
 
 Head to head: v3 beats v2 53.1% and v1 54.0% (600 games each); v2 beats v1 54.2%.
 
@@ -124,7 +124,21 @@ measured 66.5% vs the heuristic on its own arena seeds and 60.3% here. The bench
   phrases, written and frozen *before* v2's training data was changed), plus grouped 5-fold cross-validation over the
   training phrases. The confident threshold is the lowest whose cross-validated precision reaches 90%.
 
-INTENT_RESULTS_TABLE
+| | intent-v1 | **intent-v2** |
+|---|---|---|
+| Intents | 28 | 30 |
+| Training phrases (before augmentation) | ~280 | 520 |
+| Accuracy, `TEST` (58 phrases) | 81.0% | **81.0%** |
+| Accuracy, `TEST_2` | 84.8% (the 125 phrases it can route) | **87.4%** (135 phrases) |
+| Grouped 5-fold cross-validated accuracy | n/a | 78.8% |
+| Confident threshold / coverage / precision on `TEST_2` | 0.60 / 84.8% / 90.6% | 0.72 / 76.3% / **99.0%** |
+| Small talk confidently offered as a command (`TEST_2`) | 25.0% | **12.5%** |
+| A task sent to chat instead (`TEST_2`) | 0.9% | 3.9% |
+| Calibration error (`TEST_2`) | n/a | 0.050 |
+
+Every misrouted test phrase is listed in `models/intent-v2.json`. Fixes beyond accuracy: the `card` intent pointed at
+`/card info`, which doesn't exist (it is `/bank card info`); `bank` still described the removed savings account (it now
+opens `/bank tiers`); the trainer's first epoch saw the data sorted by intent.
 
 ## 3. Anomaly monitor (`ml/anomaly.py`, `services/review.py`)
 

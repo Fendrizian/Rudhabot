@@ -25,3 +25,4 @@ __pycache__/
 models/.*.gen.npz
 review-bundle/
 clairvoyance-review-bundle.zip
+clairvoyance-training-results.zip

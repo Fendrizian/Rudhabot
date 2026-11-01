@@ -14,8 +14,14 @@ def main() -> None:
     logging.basicConfig(level=getattr(logging, level, logging.INFO), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if loaded:
         logging.getLogger("rudhabot").info("loaded from .env: %s", ", ".join(sorted(set(loaded))))
+    from rudhabot.errors import MissingTokenError
+    try:
+        token = read_token()                       # before anything is built: no data files for a bot that can't start
+    except MissingTokenError as error:
+        logging.getLogger("rudhabot").error("%s", error)
+        raise SystemExit(1) from None
     from rudhabot.app import RudhaBot             # imported after .env so settings see those variables
-    RudhaBot().run(read_token(), log_handler=None)
+    RudhaBot().run(token, log_handler=None)
 
 
 if __name__ == "__main__":

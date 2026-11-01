@@ -6,8 +6,8 @@
   "hidden": 96,
   "epochs": 40,
   "temperature": 1.4500000000000002,
-  "confident_threshold": 0.95,
-  "target_precision": 0.95,
+  "confident_threshold": 0.72,
+  "target_precision": 0.9,
   "cross_validation": {
     "n": 520,
     "accuracy": 0.7884615384615384,
@@ -15,9 +15,9 @@
     "macro_f1": 0.7882233341197159,
     "ece": 0.07958543214660424,
     "confident": {
-      "threshold": 0.95,
-      "coverage": 0.6019230769230769,
-      "precision": 0.9456869009584664
+      "threshold": 0.72,
+      "coverage": 0.7807692307692308,
+      "precision": 0.9014778325123153
     },
     "chat_offered_as_command": 0.014705882352941176,
     "task_sent_to_chat": 0.03982300884955752,
@@ -181,9 +181,9 @@
     "macro_f1": 0.8195970695970696,
     "ece": 0.07353815950196363,
     "confident": {
-      "threshold": 0.95,
-      "coverage": 0.4827586206896552,
-      "precision": 1.0
+      "threshold": 0.72,
+      "coverage": 0.7931034482758621,
+      "precision": 0.9347826086956522
     },
     "chat_offered_as_command": 0.0,
     "task_sent_to_chat": 0.09259259259259259,
@@ -405,11 +405,11 @@
     "macro_f1": 0.8763997113997115,
     "ece": 0.04950337685920572,
     "confident": {
-      "threshold": 0.95,
-      "coverage": 0.5851851851851851,
-      "precision": 1.0
+      "threshold": 0.72,
+      "coverage": 0.762962962962963,
+      "precision": 0.9902912621359223
     },
-    "chat_offered_as_command": 0.0,
+    "chat_offered_as_command": 0.125,
     "task_sent_to_chat": 0.03937007874015748,
     "per_intent": {
       "help": {
