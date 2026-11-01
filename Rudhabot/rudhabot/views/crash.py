@@ -58,8 +58,8 @@ class CrashView(ServiceView):
                 description=f"Multiplier: x{self.multiplier:.2f}\n\n🎉 You cashed out and won {CURRENCY}{winnings}",
                 color=Colors.SUCCESS,
             )
+            self.services.sessions.end(self.user_id)      # before any Discord call: a failed edit must not lock them out
             await i.response.edit_message(embed=_authored(embed, i.user), view=None)
-            self.services.sessions.end(self.user_id)
 
     async def run_crash(self):
         try:
@@ -78,8 +78,12 @@ class CrashView(ServiceView):
                             description=f"Multiplier crashed at x{self.multiplier:.2f}!\n\n💸 You lose {CURRENCY}{self.bet_amount}",
                             color=Colors.LOSS,
                         )
-                        await self.interaction.edit_original_response(embed=_authored(embed, self.interaction.user), view=None)
                         self.services.sessions.end(self.user_id)
+                        self.stop()
+                        try:
+                            await self.interaction.edit_original_response(embed=_authored(embed, self.interaction.user), view=None)
+                        except discord.HTTPException:
+                            pass                                 # the result stands even if the message is gone
                         break
                     embed = discord.Embed(
                         title=f"{CRASHICON} Crash",
@@ -89,16 +93,27 @@ class CrashView(ServiceView):
                     )
                     await self.interaction.edit_original_response(embed=_authored(embed, self.interaction.user), view=self)
         except Exception:
+            # e.g. the message was deleted: refund rather than leave the bet (and the player lock) hanging
             log.exception("crash loop failed for user %s", self.user_id)
+            async with self.lock:
+                if not self.cashed_out and not self.crashed:
+                    self.running = False
+                    self.crashed = True                          # settled: on_timeout must not refund again
+                    self.services.users.credit_wallet(self.user_id, self.bet_amount)
+                    self.services.sessions.end(self.user_id)
+                    self.stop()
 
     async def on_timeout(self):
         if not self.cashed_out and not self.crashed:
             self.running = False
             self.services.users.credit_wallet(self.user_id, self.bet_amount)       # refund
+            self.services.sessions.end(self.user_id)
             embed = discord.Embed(
                 title=f"{CRASHICON} Crash - TIMEOUT",
                 description=f"⏰ **Game timed out!**\n💰 **Refunded:** {CURRENCY}{self.bet_amount}",
                 color=Colors.COOLDOWN,
             )
-            await self.interaction.edit_original_response(embed=embed, view=None)
-            self.services.sessions.end(self.user_id)
+            try:
+                await self.interaction.edit_original_response(embed=embed, view=None)
+            except discord.HTTPException:
+                pass

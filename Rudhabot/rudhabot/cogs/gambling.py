@@ -13,6 +13,7 @@ import discord
 from discord import app_commands
 
 from rudhabot.cogs.base import ServiceCog
+from rudhabot.domain.amounts import normalise_number
 from rudhabot.domain.blackjack import BlackjackGame
 from rudhabot.domain.cards import card_emojis
 from rudhabot.domain.casino import baccarat_payout, craps_payout, deal_baccarat, play_craps
@@ -60,10 +61,10 @@ class GamblingCog(ServiceCog):
     @staticmethod
     def _bet_amount(account: dict, text: str) -> int:
         """Format check only ('all' or an integer). Each game then applies the remaining checks in its own order."""
-        if text.lower() == "all":
+        if text.strip().lower() == "all":
             return account["wallet"]
         try:
-            return int(text)
+            return int(normalise_number(text))
         except (TypeError, ValueError):
             raise BetRefused(MSG_INVALIDBET) from None
 
@@ -236,9 +237,15 @@ class GamblingCog(ServiceCog):
         embed.set_author(name=interaction.user.name, icon_url=interaction.user.display_avatar.url)
         embed.add_field(name="Wallet", value=f"{CURRENCY}{account['wallet']}")
         embed.set_footer(text="Each bet is deducted immediately.")
-        view = RouletteView(interaction.user.id, self.services)
+        view = RouletteView(interaction.user.id, self.services)       # takes the player lock
         view.original_interaction = interaction
-        await interaction.response.send_message(embed=embed, view=view)
+        try:
+            await interaction.response.send_message(embed=embed, view=view)
+        except Exception:
+            # an unsent view never times out, so its lock would never be released (no bet is taken until a button)
+            view.stop()
+            self.sessions.end(interaction.user.id)
+            raise
 
     # ------------------------------------------------------------ interactive games
     async def _take_bet(self, interaction, bet: str):

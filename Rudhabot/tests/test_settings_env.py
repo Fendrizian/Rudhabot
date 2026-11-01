@@ -23,6 +23,7 @@ class SettingsFromEnvTests(unittest.TestCase):
         self.assertEqual(Channels.from_env({"RUDHABOT_REVIEW_CHANNEL_ID": "9"}).reviews, 9)
         d = Channels.from_env({})
         self.assertEqual((d.audit, d.reviews, d.notifications), (1215240269377830943, 1215240269377830943, 1215241240539431033))
+        self.assertEqual(d.birthdays, 1566283840350191646)
 
     def test_bad_id_fails_loudly(self):
         with self.assertRaisesRegex(ValueError, "RUDHABOT_LOTTERY_CHANNEL_ID"):
@@ -39,3 +40,24 @@ class SettingsFromEnvTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ColdStartTests(unittest.IsolatedAsyncioTestCase):
+    async def test_a_fresh_data_dir_is_a_completely_empty_economy(self):
+        from rudhabot.app import RudhaBot
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {"RUDHABOT_DATA_DIR": os.path.join(tmp, "data")}):
+                settings = Settings()
+            bot = RudhaBot(settings)
+            await bot._async_setup_hook()
+            await bot.setup_hook()
+            try:
+                s = bot.services
+                self.assertEqual(list(s.audit.ledger.read()), [])           # no audit history
+                self.assertEqual(s.users.get(1)["wallet"], 0)              # a new member starts at zero
+                self.assertEqual(list(s.audit.ledger.read()), [])          # looking someone up writes nothing
+                self.assertTrue(all(p.startswith(os.path.join(tmp, "data")) for p in vars(settings.paths).values()))
+            finally:
+                for cog in list(bot.cogs.values()):
+                    await cog.cog_unload()
+                await bot.close()

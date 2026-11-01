@@ -9,7 +9,8 @@ from rudhabot.errors import MissingTokenError
 
 TOKEN_ENV_VAR = "DISCORD_TOKEN"
 OPENAI_KEY_ENV_VAR = "OPENAI_API_KEY"
-DEFAULT_MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
+BOT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))     # the folder holding main.py
+DEFAULT_MODELS_DIR = os.path.join(BOT_ROOT, "models")
 
 
 def _id(name: str, default: int, environ: Optional[Mapping[str, str]] = None) -> int:
@@ -50,10 +51,13 @@ class Paths:
 
     @classmethod
     def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "Paths":
-        """RUDHABOT_DATA_DIR keeps every data file in one folder (created if missing); unset = the working directory."""
+        """RUDHABOT_DATA_DIR keeps every data file (economy, audit ledger, TCG, ...) in one folder, created if missing.
+        A relative path is resolved against the bot's folder (where main.py is), so the working directory the bot is
+        started from doesn't matter. Unset = the working directory, as before."""
         directory = ((os.environ if environ is None else environ).get("RUDHABOT_DATA_DIR") or "").strip()
         if not directory:
             return cls()
+        directory = os.path.join(BOT_ROOT, os.path.expanduser(directory))     # an absolute path is kept as-is
         os.makedirs(directory, exist_ok=True)
         return cls.in_directory(directory)
 
@@ -62,7 +66,7 @@ class Paths:
 class Channels:
     notifications: int = 1215241240539431033      # loan notices
     lottery: int = 1419303864326295608            # jackpot announcements
-    birthdays: int = 1215241240539431033          # greetings and cake deliveries
+    birthdays: int = 1566283840350191646          # greetings and cake deliveries
     audit: int = 1215240269377830943              # the economy audit log (every money change)
     reviews: int = 1215240269377830943            # Clairvoyance review signals
 

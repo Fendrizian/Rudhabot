@@ -24,7 +24,7 @@ import itertools
 import logging
 import os
 import sys
-from collections import deque
+from collections import defaultdict, deque
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable, Iterator, Optional
@@ -85,6 +85,10 @@ def _caller_location() -> str:
     return fallback or "unknown"
 
 
+RECENT_PER_USER = 400          # what /bank history and the finance insights look at
+RECENT_GLOBAL = 1000           # what /audit looks at
+
+
 class AuditService:
     def __init__(self, ledger: Ledger, clock: Clock, channel_id: Optional[int] = None, post_to_channel: bool = True):
         self.ledger, self.clock = ledger, clock
@@ -93,6 +97,11 @@ class AuditService:
         self.listeners: list[Callable[[dict], None]] = []
         self._ids = itertools.count(1)
         self.dropped = 0
+        # recent entries in memory, so /balance and /bank history don't re-read the whole ledger file (which grows to
+        # 50 MB before it rotates). Filled from the ledger once, on first use; kept current by record().
+        self._recent_all: deque = deque(maxlen=RECENT_GLOBAL)
+        self._recent_by_user: dict[str, deque] = defaultdict(lambda: deque(maxlen=RECENT_PER_USER))
+        self._indexed = False
 
     def record(self, user_id, account: str, delta: int | float, balance_after: int | float,
                reason: Optional[str] = None, meta: Optional[dict] = None) -> Optional[dict]:
@@ -117,6 +126,8 @@ class AuditService:
             self.ledger.append(entry)
         except OSError:
             log.exception("AUDIT LEDGER WRITE FAILED for %s", entry)
+        if self._indexed:                                 # otherwise the first recent() reads it from the file
+            self._index(entry)
         if self.channel_id:
             if len(self.pending) == self.pending.maxlen:
                 self.dropped += 1
@@ -134,5 +145,16 @@ class AuditService:
             out.append(self.pending.popleft())
         return out
 
+    def _index(self, entry: dict) -> None:
+        self._recent_all.append(entry)
+        self._recent_by_user[entry.get("user")].append(entry)
+
     def recent(self, n: int = 20, user_id=None) -> list[dict]:
-        return self.ledger.tail(n, None if user_id is None else str(user_id))
+        """The last `n` entries (oldest first), for one member or for everyone; at most RECENT_PER_USER /
+        RECENT_GLOBAL are kept in memory, the full history stays in the ledger file."""
+        if not self._indexed:
+            for entry in self.ledger.read():
+                self._index(entry)
+            self._indexed = True
+        source = self._recent_all if user_id is None else self._recent_by_user.get(str(user_id), ())
+        return list(source)[-n:] if n > 0 else []

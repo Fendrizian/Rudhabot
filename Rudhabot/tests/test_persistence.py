@@ -41,11 +41,30 @@ class JsonStoreTests(EnvTestCase):
 
 
 class UserRepositoryTests(EnvTestCase):
-    def test_get_creates_a_standard_account(self):
+    def test_get_returns_a_standard_account_without_creating_data(self):
         account = self.env.users.get(42)
         self.assertEqual((account["wallet"], account["bank"], account["inventory"], account["loan"]), (0, 0, {}, None))
         self.assertEqual(set(account["crypto"]), {"SCAY", "RDC", "LICH", "WNC"})
-        self.assertIn("42", self.env.users.all())
+        self.assertNotIn("42", self.env.users.all())                 # looking someone up writes nothing
+        self.env.users.update(42, wallet=5)
+        self.assertEqual(self.env.users.all()["42"]["wallet"], 5)      # the first change creates the account
+
+    def test_returned_accounts_are_copies_and_hand_edits_are_picked_up(self):
+        import json
+        self.env.users.update(7, wallet=10, inventory={"cap": 1})
+        account = self.env.users.get(7)
+        account["inventory"]["cap"] = 99                                  # mutating a returned copy changes nothing
+        inventory = {"cap": 2}
+        self.env.users.update(7, inventory=inventory)
+        inventory["cap"] = 500                                            # nor does mutating what was passed in
+        self.assertEqual(self.env.users.get(7)["inventory"], {"cap": 2})
+        path = self.env.settings.paths.data
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["7"]["wallet"] = 1234                                        # an admin edits data.json by hand
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2)
+        self.assertEqual(self.env.users.get(7)["wallet"], 1234)
 
     def test_update_only_changes_the_fields_you_pass(self):
         self.env.users.update(1, wallet=500, loan={"principal": 100})

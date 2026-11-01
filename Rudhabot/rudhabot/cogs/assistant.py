@@ -82,7 +82,7 @@ def suggestion(router: IntentRouter, user_id: int, text: str):
     route = router.route(text)
     if route is None or route.intent == "chat":
         return None
-    if route.confidence >= IntentRouter.CONFIDENT:
+    if route.confidence >= router.confident:
         description, path, _ = INTENTS[route.intent]
         embed = discord.Embed(description=f"It looks like you want to **{description}**.", color=ASK_COLOR)
         view = ui.View(timeout=None)

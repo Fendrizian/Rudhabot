@@ -71,38 +71,36 @@ class CryptoMarket:
             raise TradeRefused("invalid_coin")
         if amount <= 0:                                  # a negative amount used to *credit* the wallet
             raise TradeRefused("not_positive")
-        self._users.get(user_id)                         # make sure the account exists / is normalised
-        with self._users.transaction() as accounts:
-            account = accounts[str(user_id)]
-            if amount > round(float(account["wallet"]), 2):
-                raise TradeRefused("insufficient_wallet")
-            bought = round(amount / round(float(self._prices[coin]), 2), 4)
-            account["wallet"] = int(round(float(account["wallet"]) - amount, 2))
-            account["crypto"][coin] = round(float(account["crypto"].get(coin, 0.0)) + bought, 4)
+        account = self._users.get(user_id)               # one member's account: no whole-file transaction needed
+        if amount > round(float(account["wallet"]), 2):
+            raise TradeRefused("insufficient_wallet")
+        bought = round(amount / round(float(self._prices[coin]), 2), 4)
+        crypto = dict(account.get("crypto", {}))
+        crypto[coin] = round(float(crypto.get(coin, 0.0)) + bought, 4)
+        self._users.update(user_id, wallet=int(round(float(account["wallet"]) - amount, 2)), crypto=crypto)
         return Trade(coin, bought, amount)
 
     def sell(self, user_id: int | str, coin: str, amount_text: str) -> Trade:
         coin = coin.upper()
         if coin not in self.coins:
             raise TradeRefused("invalid_coin")
-        self._users.get(user_id)
-        with self._users.transaction() as accounts:
-            account = accounts[str(user_id)]
-            owned = round(float(account["crypto"].get(coin, 0.0)), 4)
-            if amount_text.lower() == "all":
-                quantity = owned
-            else:
-                try:
-                    quantity = round(float(amount_text), 4)
-                except ValueError:
-                    raise TradeRefused("invalid_amount") from None
-            if quantity <= 0:
-                raise TradeRefused("not_positive")
-            if quantity > owned:
-                raise TradeRefused("insufficient_coins", coin=coin)
-            value = round(quantity * round(float(self._prices[coin]), 2), 2)
-            account["wallet"] = int(round(float(account["wallet"]) + value, 2))
-            account["crypto"][coin] = round(owned - quantity, 4)
+        account = self._users.get(user_id)
+        owned = round(float(account.get("crypto", {}).get(coin, 0.0)), 4)
+        if amount_text.lower() == "all":
+            quantity = owned
+        else:
+            try:
+                quantity = round(float(amount_text), 4)
+            except ValueError:
+                raise TradeRefused("invalid_amount") from None
+        if not quantity > 0:                             # also refuses "nan"
+            raise TradeRefused("not_positive")
+        if quantity > owned:
+            raise TradeRefused("insufficient_coins", coin=coin)
+        value = round(quantity * round(float(self._prices[coin]), 2), 2)
+        crypto = dict(account.get("crypto", {}))
+        crypto[coin] = round(owned - quantity, 4)
+        self._users.update(user_id, wallet=int(round(float(account["wallet"]) + value, 2)), crypto=crypto)
         return Trade(coin, quantity, value)
 
     def portfolio(self, account: dict) -> list[Holding]:

@@ -23,6 +23,23 @@ def _sigmoid(z: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-np.clip(z, -30, 30)))
 
 
+_TINY = np.finfo(np.float32).tiny
+
+
+def flush_subnormals(a: np.ndarray) -> np.ndarray:
+    """Set subnormal floats (|x| < 1.2e-38) to exactly 0.
+
+    L2 weight decay shrinks weights that never receive a data gradient (inputs that are always zero) towards zero, and
+    they end up subnormal. CPUs multiply subnormals ~100x slower, which made one v2 forward pass take 0.8 ms instead of
+    0.03 ms. Zeroing them changes every prediction by far less than float32 precision."""
+    a = np.asarray(a, dtype=np.float32)
+    small = (a != 0) & (np.abs(a) < _TINY)
+    if small.any():
+        a = a.copy()
+        a[small] = 0.0
+    return a
+
+
 class _Net:
     ARCH = "base"
     PARAMS: tuple[str, ...] = ()
@@ -53,15 +70,22 @@ class _Net:
         return float(-np.mean(y * np.log(p + 1e-7) + (1 - y) * np.log(1 - p + 1e-7)))
 
     def fit(self, inputs: Sequence[np.ndarray], y, *, epochs=8, batch=512, lr=2e-3, l2=1e-4, seed=0, val=None,
-            patience=2, log=print) -> list[dict]:
-        """Mini-batch Adam with a cosine learning-rate schedule. With `val=(inputs, y)`, keeps the weights of the best
-        validation epoch and stops after `patience` epochs without improvement (states from one game are highly
-        correlated, so these networks overfit quickly)."""
+            patience=2, ema: float = 0.0, augment=None, log=print) -> list[dict]:
+        """Mini-batch Adam with a cosine learning-rate schedule.
+
+        val       (inputs, y): keep the weights of the best validation epoch and stop after `patience` epochs without
+                  improvement (states from one game are highly correlated, so these networks overfit quickly).
+        ema       > 0: also keep an exponential moving average of the weights (Polyak averaging, e.g. 0.999); the
+                  averaged weights are the ones validated and kept. Smoother, better-generalising weights at no
+                  inference cost.
+        augment   f(batch_inputs, rng) -> batch_inputs, applied to every training mini-batch (never to validation).
+        Inputs may be stored in compact dtypes (float16 / uint8 / int16); each batch is cast when it is used."""
         rng = np.random.default_rng(seed)
         y = np.asarray(y, dtype=np.float32)
         if self._adam is None:
             self._adam = {k: [np.zeros_like(getattr(self, k)), np.zeros_like(getattr(self, k))] for k in self.PARAMS}
             self._adam["t"] = 0
+        shadow = {k: getattr(self, k).copy() for k in self.PARAMS} if ema else None
         history, best, best_params, stale = [], float("inf"), None, 0
         b1, b2, eps = 0.9, 0.999, 1e-8
         for epoch in range(epochs):
@@ -69,8 +93,11 @@ class _Net:
             losses = []
             step_lr = lr * (0.5 * (1 + np.cos(np.pi * epoch / max(1, epochs))))
             for start in range(0, len(y), batch):
-                idx = order[start:start + batch]
-                loss, grads = self._grads([x[idx] for x in inputs], y[idx], l2)
+                idx = np.sort(order[start:start + batch])       # sorted: faster gathers from large arrays
+                batch_inputs = [x[idx] for x in inputs]
+                if augment is not None:
+                    batch_inputs = augment(batch_inputs, rng)
+                loss, grads = self._grads(batch_inputs, y[idx], l2)
                 losses.append(loss)
                 self._adam["t"] += 1
                 t = self._adam["t"]
@@ -80,15 +107,25 @@ class _Net:
                     v *= b2; v += (1 - b2) * grads[k] ** 2
                     setattr(self, k, (getattr(self, k) - step_lr * (m / (1 - b1 ** t)) / (np.sqrt(v / (1 - b2 ** t)) + eps))
                             .astype(np.float32))
+                    if shadow is not None:
+                        shadow[k] *= ema; shadow[k] += (1 - ema) * getattr(self, k)
+                if t % 50 == 0:                  # keep training fast: subnormals creep in through weight decay
+                    self._flush()
             row = {"epoch": epoch + 1, "train_loss": float(np.mean(losses))}
             if val is not None:
+                live = {k: getattr(self, k) for k in self.PARAMS}
+                if shadow is not None:                       # validate the averaged weights
+                    for k in self.PARAMS:
+                        setattr(self, k, shadow[k].copy())
                 row["val_loss"] = self._bce(self.predict(*val[0]), np.asarray(val[1], dtype=np.float32))
+                candidate = {k: getattr(self, k).copy() for k in self.PARAMS}
+                for k, value in live.items():               # keep training from the live weights
+                    setattr(self, k, value)
             history.append(row)
             log(f"  epoch {row['epoch']}: " + ", ".join(f"{k}={v:.4f}" for k, v in row.items() if k != "epoch"))
             if val is not None:
                 if row["val_loss"] < best - 1e-4:
-                    best, stale = row["val_loss"], 0
-                    best_params = {k: getattr(self, k).copy() for k in self.PARAMS}
+                    best, stale, best_params = row["val_loss"], 0, candidate
                 else:
                     stale += 1
                     if stale >= patience:
@@ -97,6 +134,10 @@ class _Net:
             for k, value in best_params.items():
                 setattr(self, k, value)
             history.append({"restored_best_val_loss": best})
+        elif shadow is not None:
+            for k, value in shadow.items():
+                setattr(self, k, value)
+        self._flush()
         return history
 
     def calibrate(self, inputs: Sequence[np.ndarray], y: np.ndarray, iters: int = 50) -> tuple[float, float]:
@@ -119,6 +160,13 @@ class _Net:
         self.calibration = (float(a), float(b))
         return self.calibration
 
+    def _flush(self) -> None:
+        for k in self.PARAMS:
+            setattr(self, k, flush_subnormals(getattr(self, k)))
+        if self._adam is not None:
+            for k in self.PARAMS:
+                self._adam[k] = [flush_subnormals(m) for m in self._adam[k]]
+
     def card_embeddings(self) -> np.ndarray:
         norms = np.linalg.norm(self.E, axis=1, keepdims=True)
         return self.E / np.maximum(norms, 1e-8)
@@ -127,6 +175,7 @@ class _Net:
         return int(sum(getattr(self, k).size for k in self.PARAMS))
 
     def save(self, path: str) -> None:
+        self._flush()
         arrays = {k: getattr(self, k) for k in self.PARAMS}
         header = {"arch": self.ARCH, "dims": self._dims()}
         np.savez_compressed(path, header=np.frombuffer(json.dumps(header).encode(), dtype=np.uint8),
@@ -157,7 +206,7 @@ class ClairvoyanceNet(_Net):
                 "h1": self.W1.shape[1], "h2": self.W2.shape[1]}
 
     def _forward(self, dense, bags):
-        pooled = np.einsum("bkc,ce->bke", bags, self.E).reshape(len(dense), -1)
+        pooled = (bags @ self.E).reshape(len(dense), -1)
         x = np.concatenate([dense, pooled], axis=1)
         h1 = np.maximum(x @ self.W1 + self.b1, 0)
         h2 = np.maximum(h1 @ self.W2 + self.b2, 0)
@@ -213,14 +262,14 @@ class ClairvoyanceSlotNet(_Net):
                 "slot_hidden": self.slot_hidden, "h1": self.W1.shape[1], "h2": self.W2.shape[1]}
 
     def _unit_emb(self, cids):
-        padded = np.vstack([self.E, np.zeros((1, self.embed), np.float32)])
-        return padded[np.where(cids >= 0, cids, self.n_cards)]
+        """E[cid] for each slot, a zero vector for empty slots (cid -1)."""
+        return self.E[np.maximum(cids, 0)] * (cids >= 0)[..., None]
 
     def _forward(self, glob, slots, cids, att, bags):
         n = len(glob)
         xs = np.concatenate([slots, self._unit_emb(cids), att @ self.E], axis=2)          # [B, 8, s_in]
         hs = np.maximum(xs @ self.Ws + self.bs, 0)                                          # [B, 8, H]
-        pooled = np.einsum("bkc,ce->bke", bags, self.E).reshape(n, -1)
+        pooled = (bags @ self.E).reshape(n, -1)
         x = np.concatenate([glob, hs.reshape(n, -1), pooled], axis=1)
         h1 = np.maximum(x @ self.W1 + self.b1, 0)
         h2 = np.maximum(h1 @ self.W2 + self.b2, 0)
@@ -258,9 +307,11 @@ class ClairvoyanceSlotNet(_Net):
         d_unit = dxs[:, :, self.slot_dim:self.slot_dim + e]
         d_att = dxs[:, :, self.slot_dim + e:]
         dE = np.einsum("bkc,bke->ce", bags, dpooled) + np.einsum("bkc,bke->ce", att, d_att)
-        dE_pad = np.zeros((self.n_cards + 1, e), np.float32)
-        np.add.at(dE_pad, np.where(cids >= 0, cids, self.n_cards).reshape(-1), d_unit.reshape(-1, e))
-        g["E"] = dE + dE_pad[:-1]
+        flat = cids.reshape(-1)
+        rows = np.flatnonzero(flat >= 0)                         # empty slots (-1) contribute nothing
+        onehot = np.zeros((self.n_cards, len(rows)), np.float32)
+        onehot[flat[rows], np.arange(len(rows))] = 1.0
+        g["E"] = dE + onehot @ d_unit.reshape(-1, e)[rows]       # scatter-add as one matmul (np.add.at is slow)
         for name in ("W1", "W2", "w3", "E", "Ws"):
             g[name] = g[name] + l2 * getattr(self, name)
         return loss, g
@@ -282,7 +333,7 @@ def load_net(path_or_bytes):
                                 "h1": data["W1"].shape[1], "h2": data["W2"].shape[1]}
         net = ARCHES[arch](**dims)
         for k in net.PARAMS:
-            setattr(net, k, data[k].astype(np.float32))
+            setattr(net, k, flush_subnormals(data[k]))
         net.meta = json.loads(bytes(data["meta"]).decode()) if data["meta"].size else {}
         if "calibration" in data:
             net.calibration = tuple(float(v) for v in data["calibration"])

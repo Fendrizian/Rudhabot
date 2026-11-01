@@ -163,6 +163,8 @@ def generate(seeds, spec_for_seed, rec: RecordSpec, processes: int = 0, log=prin
     `targets` are the training labels (λ-returns); `outcomes` are the true final results, used for every evaluation."""
     jobs = [(s, spec_for_seed(s), rec) for s in seeds]
     processes = processes or max(1, mp.cpu_count())
+    if not jobs:
+        raise ValueError("generate() needs at least one seed")
     chunks, results = [], []
     with mp.get_context("fork").Pool(processes) as pool:
         for i, (winner, rounds, data) in enumerate(pool.imap(_worker, jobs, chunksize=4)):
@@ -172,8 +174,8 @@ def generate(seeds, spec_for_seed, rec: RecordSpec, processes: int = 0, log=prin
             if (i + 1) % max(1, len(jobs) // 5) == 0:
                 log(f"  {i + 1}/{len(jobs)} games")
     n_arrays = len(chunks[0][0])
+    # kept in their compact recording dtypes (float16 / int16 / uint8): ~4x less memory; networks cast per batch
     inputs = tuple(np.concatenate([c[0][i] for c in chunks]) for i in range(n_arrays))
-    inputs = tuple(x.astype(np.int64) if x.dtype == np.int16 else x.astype(np.float32) for x in inputs)
     cat = lambda k: np.concatenate([c[k] for c in chunks])
     return (inputs, cat(1), cat(2), cat(3), cat(4)), results
 

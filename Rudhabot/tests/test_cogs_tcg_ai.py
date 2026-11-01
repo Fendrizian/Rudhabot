@@ -182,7 +182,7 @@ class AssistantAndClairvoyanceCogTests(CogTestCase):
         admin.command = command
         await command._check_can_run(admin)
         await command.callback(command.binding, admin)
-        self.assertIn("oracle-v1", admin.text())
+        self.assertIn(self.s.clairvoyance.version, admin.text())                 # the served model is named
 
     def test_help_lists_the_new_features_and_the_true_daily_amount(self):
         names = [c["name"] for c in get_commands_data()]

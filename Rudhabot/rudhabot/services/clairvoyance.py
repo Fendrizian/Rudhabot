@@ -53,6 +53,7 @@ class ClairvoyanceService:
         self._sem = asyncio.Semaphore(concurrency)
         self.heuristic = HeuristicEvaluator()
         self.net: Optional[_Net] = None
+        self._blend_weight = 0.5
         self.load_error: Optional[str] = None
         self.stats = Counter()
         self.latency_ms: deque = deque(maxlen=500)
@@ -67,6 +68,7 @@ class ClairvoyanceService:
         try:
             self.net = self.store.load_current(version)
             self.load_error = None
+            self._blend_weight = self.blend_weight
             log.info("clairvoyance model %s loaded (%d params)", self.version, self.net.n_params())
             return True
         except (ArtifactError, OSError, ValueError, KeyError) as error:
@@ -85,10 +87,18 @@ class ClairvoyanceService:
         return NetEvaluator(self.net) if self.net is not None else self.heuristic
 
     @property
+    def blend_weight(self) -> float:
+        """The heuristic prior's weight in the AI's move choice, as measured for this version (manifest `serving`)."""
+        entry = self.store.manifest().get("versions", {}).get(self.version, {}) if self.net else {}
+        return float(entry.get("serving", {}).get("blend_weight", 0.5))
+
+    @property
     def move_evaluator(self):
         """Move choice for the AI opponent: the network blended with the heuristic prior (best measured policy, see
-        models/manifest.json `serving`)."""
-        return BlendEvaluator(self.net, 0.5) if self.net is not None else self.heuristic
+        models/manifest.json `serving`). Weight 0 means the network alone."""
+        if self.net is None:
+            return self.heuristic
+        return BlendEvaluator(self.net, self._blend_weight) if self._blend_weight > 0 else NetEvaluator(self.net)
 
     @property
     def ready(self) -> bool:
@@ -133,14 +143,13 @@ class ClairvoyanceService:
             return terminal_value(g, seat)
         if self.net is None:
             return float(self.heuristic.values([g], seat)[0])
-        views = []
-        for persp in (seat, g.other(seat)):
-            arrays = list(encoder_for(self.net.ARCH)[0](g, persp))
-            arrays[-1] = arrays[-1].copy()
-            arrays[-1][0, :] = 0                           # bags are last for every architecture: hide the hand
-            p = float(self.net.predict(*[a[None] for a in arrays])[0])
-            views.append(p if persp == seat else 1 - p)
-        return float(np.mean(views))
+        encode = encoder_for(self.net.ARCH)[0]
+        pair = [encode(g, persp) for persp in (seat, g.other(seat))]
+        batch = [np.stack([view[i] for view in pair]) for i in range(len(pair[0]))]
+        batch[-1] = batch[-1].copy()
+        batch[-1][:, 0, :] = 0                             # bags are last for every architecture: hide both hands
+        mine, theirs = self.net.predict(*batch)             # both views in one pass
+        return float((mine + (1 - theirs)) / 2)
 
     async def public_win_probability(self, g: Game, seat: int = 0) -> float:
         snapshot = g.clone()

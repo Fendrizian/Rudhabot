@@ -8,12 +8,12 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Any, Iterable, Iterator, Mapping, Optional
 
-from rudhabot.persistence.json_store import JsonStore
+from rudhabot.persistence.json_store import JsonStore, OwnedJson, json_copy
 
 #: Fields `update()` may set. Anything else is a programming error.
 ACCOUNT_FIELDS = frozenset({
     "wallet", "bank", "inventory", "last_daily", "last_work", "last_crime", "last_rob",
-    "loan", "loan_ban_until", "loan_warning_sent",
+    "loan", "loan_ban_until", "loan_warning_sent", "crypto",
 })
 
 
@@ -32,6 +32,7 @@ class UserRepository:
 
     def __init__(self, store: JsonStore, coin_symbols: Iterable[str], audit=None):
         self._store = store
+        self._data = OwnedJson(store)          # parsed once; every write still goes straight to disk
         self._coin_symbols = tuple(coin_symbols)
         self.audit = audit
 
@@ -48,25 +49,24 @@ class UserRepository:
         """Return the account, creating or repairing it if needed. The dict is a snapshot: persist changes
         with `update()`."""
         uid = str(user_id)
-        data = self._store.load()
+        data = self._data.value()
         account = data.get(uid)
-        dirty = account is None
-        if dirty:
-            account = self._blank_account()
-        else:
-            dirty = self._repair(account)
+        if account is None:
+            # a member who hasn't done anything yet: a blank account, *not* written to disk (looking someone up
+            # must not create data); it is saved by their first update()
+            return self._blank_account()
+        dirty = self._repair(account)
         wallet, bank = int(account.get("wallet", 0)), int(account.get("bank", 0))
         if account.get("wallet") != wallet or account.get("bank") != bank:
             dirty = True
         account["wallet"], account["bank"] = wallet, bank
         if dirty:
-            data[uid] = account
-            self._store.save(data)
-        return account
+            self._data.persist()
+        return json_copy(account)
 
     def all(self) -> dict[str, dict]:
         """Every raw account keyed by user-id string (a snapshot; use `transaction()` to mutate)."""
-        return self._store.load()
+        return json_copy(self._data.value())
 
     # ----------------------------------------------------------------- writes
     def update(self, user_id: int | str, **fields: Any) -> None:
@@ -79,7 +79,7 @@ class UserRepository:
         if unknown:
             raise TypeError(f"unknown account field(s): {', '.join(sorted(unknown))}")
         uid = str(user_id)
-        data = self._store.load()
+        data = self._data.value()
         account = data.get(uid)
         before = money_snapshot(account)
         if account is None:
@@ -87,24 +87,27 @@ class UserRepository:
         else:
             self._repair(account)
         for name, value in fields.items():
-            account[name] = int(value) if name in ("wallet", "bank") else value
+            # copy containers: the caller's dict must not alias the stored one
+            account[name] = int(value) if name in ("wallet", "bank") else json_copy(value)
         data[uid] = account
-        self._store.save(data)
+        self._data.persist()
         self._report(uid, before, money_snapshot(account))
 
     def save_all(self, data: Mapping[str, dict]) -> None:
-        before = {uid: money_snapshot(acc) for uid, acc in self._store.load().items()}
-        self._store.save(dict(data))
+        before = {uid: money_snapshot(acc) for uid, acc in self._data.value().items()}
+        self._data.replace(json_copy(dict(data)))
         self._report_all(before, data)
 
     @contextmanager
     def transaction(self) -> Iterator[dict[str, dict]]:
         """Load every account, let the caller mutate them in memory, and save only if the block succeeds."""
-        data = self._store.load()
+        owned = self._data.value()
+        data = json_copy(owned)
         before = {uid: money_snapshot(acc) for uid, acc in data.items()}
         yield data
-        self._store.save(data)
-        self._report_all(before, data)
+        if data != owned:                       # periodic jobs (loan settlement) mostly change nothing: don't rewrite
+            self._data.replace(data)
+            self._report_all(before, data)
 
     def _report_all(self, before: Mapping[str, Mapping], data: Mapping[str, dict]) -> None:
         for uid in sorted(set(before) | set(data)):
@@ -133,17 +136,17 @@ class UserRepository:
 
     # ----------------------------------------------- monthly special purchases
     def has_purchased_special(self, user_id: int | str, item: str, month: int) -> bool:
-        account = self._store.load().get(str(user_id))
+        account = self._data.value().get(str(user_id))
         if account is None:
             return False
         return item in account.get("monthly_purchases", {}).get(str(month), [])
 
     def record_special_purchase(self, user_id: int | str, item: str, month: int) -> None:
         uid, key = str(user_id), str(month)
-        data = self._store.load()
-        account = data.setdefault(uid, {"wallet": 0, "bank": 0, "inventory": {}, "monthly_purchases": {}})
+        data = self._data.value()
+        account = data.setdefault(uid, self._blank_account())
         account.setdefault("monthly_purchases", {}).setdefault(key, []).append(item)
-        self._store.save(data)
+        self._data.persist()
 
     # --------------------------------------------------------------- internals
     def _blank_account(self) -> dict:

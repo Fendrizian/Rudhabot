@@ -26,5 +26,16 @@ class PayToggle(ServiceButton):
         await interaction.response.edit_message(view=view)
 
 
+async def refuse_if_in_game(services, interaction: Interaction) -> bool:
+    """Shop and café buttons outlive the command that showed them, so they repeat its "not during a game" check:
+    spending while a bet is open would let a lost bet go uncollected. True if refused."""
+    if interaction.user.id in services.sessions:
+        from rudhabot.ui.messages import MSG_ONGAME
+        from rudhabot.ui.replies import error_embed
+        await interaction.response.send_message(embed=error_embed(MSG_ONGAME, interaction.user), ephemeral=True)
+        return True
+    return False
+
+
 def paid_suffix(pay_with: str) -> str:
     return " on your credit card 💳" if pay_with == "card" else ""

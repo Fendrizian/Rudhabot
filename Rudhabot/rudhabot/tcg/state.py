@@ -48,10 +48,21 @@ class Unit:
 
     def clone(self) -> "Unit":
         u = Unit.__new__(Unit)
-        for name in Unit.__slots__:
-            setattr(u, name, getattr(self, name))
+        _copy_unit_fields(self, u)
         u.boons, u.afflictions = list(self.boons), list(self.afflictions)
         return u
+
+
+def _make_field_copier(slots: tuple[str, ...]):
+    """A function copying every slot with plain attribute assignments: several times faster than a getattr/setattr
+    loop, and clone() is the hottest call in AI search."""
+    body = "\n".join(f"    dst.{name} = src.{name}" for name in slots)
+    namespace: dict = {}
+    exec(f"def copy_fields(src, dst):\n{body}\n", namespace)
+    return namespace["copy_fields"]
+
+
+_copy_unit_fields = _make_field_copier(Unit.__slots__)
 
 
 class Player:
@@ -146,7 +157,7 @@ class Game:
     def clone(self) -> "Game":
         g = Game.__new__(Game)
         g.seed, g.level = self.seed, self.level
-        g.rng = random.Random()
+        g.rng = random.Random.__new__(random.Random)      # no seeding from the OS: setstate fills in everything
         g.rng.setstate(self.rng.getstate())
         g.players = [p.clone() for p in self.players]
         g.active, g.first, g.round, g.turn, g.phase = self.active, self.first, self.round, self.turn, self.phase

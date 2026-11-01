@@ -10,17 +10,22 @@ class AmountError(ValueError):
         self.code = code
 
 
+def normalise_number(text):
+    """Accept thousands separators and stray spaces: "1,000" and " 2 500 " mean 1000 and 2500."""
+    return text.strip().replace(",", "").replace(" ", "") if isinstance(text, str) else text
+
+
 def parse_amount(text: str, all_value: int) -> int:
     """'all' (any case) means `all_value`; otherwise an integer. Must end up positive.
 
     Whether the result exceeds what the player owns is for the caller to decide, because each command words
     that refusal differently.
     """
-    if isinstance(text, str) and text.lower() == "all":
+    if isinstance(text, str) and text.strip().lower() == "all":
         amount = all_value
     else:
         try:
-            amount = int(text)
+            amount = int(normalise_number(text))
         except (TypeError, ValueError):
             raise AmountError("invalid") from None
     if amount <= 0:

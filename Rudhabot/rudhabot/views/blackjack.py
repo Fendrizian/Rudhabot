@@ -264,7 +264,7 @@ class BlackjackView(ServiceView):
                 # Try to edit the original message
                 if hasattr(self, 'original_interaction'):
                     await self.original_interaction.edit_original_response(embed=timeout_embed, view=None)
-            except:
+            except discord.HTTPException:
                 pass
         
         # Make sure user is removed from active gambling

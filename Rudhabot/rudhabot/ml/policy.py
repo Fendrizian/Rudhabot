@@ -35,8 +35,10 @@ class HeuristicEvaluator:
     @staticmethod
     def _side(g: Game, seat: int) -> float:
         p = g.players[seat]
-        board = sum(E.power(g, u) * 0.8 + E.remaining(g, u) * 0.5 - (1.5 if u.corrupted else 0) - 0.4 * u.taint
-                    for u in p.units())
+        board = 0.0
+        for u in p.units():
+            pw, st = E.base_stats(g, u)
+            board += pw * 0.8 + (st - u.damage) * 0.5 - (1.5 if u.corrupted else 0) - 0.4 * u.taint
         return p.resolve * 0.35 + board + 0.4 * len(p.hand) + 0.25 * E.capacity(g, p.seat) + 0.6 * (p.landmark is not None)
 
     def _value(self, g: Game, me: int) -> float:

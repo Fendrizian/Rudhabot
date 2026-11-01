@@ -14,6 +14,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from rudhabot.cogs.base import ServiceCog
+from rudhabot.cogs.checks import not_in_game
 from rudhabot.services.tcg import TcgError, deck_text, parse_deck_text
 from rudhabot.tcg import engine as E
 from rudhabot.tcg.cards import CARD_BY_ID, CARDS, find_card
@@ -91,6 +92,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
 
     @app_commands.command(name="pack", description="Open a 5-card Cloudfall pack, from your wallet or credit card")
     @app_commands.choices(pay_with=PAY_CHOICES)
+    @not_in_game()                       # spending during a bet would let a lost bet go uncollected
     async def pack(self, interaction: discord.Interaction, pay_with: Optional[app_commands.Choice[str]] = None):
         try:
             pulled = self.tcg.open_pack(interaction.user.id, pay_with.value if pay_with else "wallet")
@@ -252,6 +254,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
 
     @wishes.command(name="shards", description="Buy Cloud Shards (10 ra each), from your wallet or credit card")
     @app_commands.choices(pay_with=PAY_CHOICES)
+    @not_in_game()
     async def wish_shards(self, interaction: discord.Interaction, amount: app_commands.Range[int, 1, 16000],
                           pay_with: Optional[app_commands.Choice[str]] = None):
         total = await self._gacha(interaction, lambda: self.services.gacha.buy_shards(

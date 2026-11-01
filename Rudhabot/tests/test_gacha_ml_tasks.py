@@ -11,7 +11,7 @@ import discord
 from rudhabot.clock import FixedClock
 from rudhabot.domain import gacha as G
 from rudhabot.ml.anomaly import AnomalyDetector, IsolationForest, synthetic, windows
-from rudhabot.ml.intent import IntentRouter
+from rudhabot.ml.intent import MODEL_FILE as INTENT_MODEL_FILE, IntentRouter
 from rudhabot.persistence.json_store import JsonStore
 from rudhabot.persistence.ledger import Ledger
 from rudhabot.services.review import ReviewService
@@ -19,7 +19,7 @@ from rudhabot.settings import DEFAULT_MODELS_DIR
 from tests.cog_case import CogTestCase
 from tests.fakes import FakeInteraction
 
-INTENT_MODEL = os.path.join(DEFAULT_MODELS_DIR, "intent-v1.npz")
+INTENT_MODEL = os.path.join(DEFAULT_MODELS_DIR, INTENT_MODEL_FILE)
 
 
 class GachaRuleTests(unittest.TestCase):

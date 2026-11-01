@@ -73,6 +73,8 @@ privately and posted to the audit channel with who did it and why.
   small balances still earn.
 - Interest is only paid on up to 5× the tier's monthly limit, so the bank can't print money.
 - After downtime, at most a week of missed interest is paid.
+- The job is crash-safe: it records that today is paid for every account *before* paying anyone, so an interrupted run
+  can at worst skip a day for some accounts and can never pay the same day twice.
 - Money that was in the old savings accounts moves into the bank balance the first time the account is used. The audit
   log records it as `savings merged into bank`.
 
@@ -142,7 +144,20 @@ company's asset value, so value can't reach zero: there is no default.
 Baccarat uses an 8-deck shoe and the full punto banco third-card tableau. Both games use the same bet validation and
 player lock as the other games, and their results are audited like every other money change.
 
+**While a bet is open** (any game), money can't be spent elsewhere: every money command, `/tcg pack`,
+`/tcg wish shards` and the `/shop` and `/cafe` buttons refuse with "Finish your current game first". Games settle
+against the wallet as it is at the end, never below zero, so spending a bet mid-game would have let a lost bet go
+uncollected. A game always releases the player lock first and updates its message afterwards, so a message that
+can't be edited (deleted, Discord outage) can never leave a player locked out.
+
+**Fines** (`/crime`, a failed `/rob`) are sized on wallet + bank and taken from the wallet first, then the bank; a
+balance never goes below zero. Money can't be sent to (or robbed from) bots.
+
 ## Review signals (Clairvoyance anomaly detection)
 
 See `docs/ML.md`. Signals go to the review channel (`RUDHABOT_REVIEW_CHANNEL_ID`, which defaults to the audit channel).
-Admins see them with `/review list` and close them with `/review resolve`. Nothing is ever changed automatically.
+Bankers and admins see them with `/review list` and close them with `/review resolve`. Nothing is ever changed
+automatically.
+
+Each member is judged at most once a minute; activity that arrives inside that minute is picked up by a sweep every
+15 seconds, so a burst that starts and ends within a minute is still looked at.

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from rudhabot.persistence.json_store import JsonStore
+from rudhabot.persistence.json_store import JsonStore, OwnedJson, json_copy
 
 START_RATING = 1000
 
@@ -18,51 +18,48 @@ def blank_profile() -> dict:
 
 
 class TcgRepository:
+    """Profiles and live matches, kept in memory and written through to disk (see OwnedJson). Everything handed
+    out is a copy, so callers change stored data only by saving it back."""
+
     def __init__(self, profiles: JsonStore, matches: JsonStore):
-        self._profiles = profiles
-        self._matches = matches
+        self._profiles = OwnedJson(profiles)
+        self._matches = OwnedJson(matches)
 
     # ---------------------------------------------------------------- profiles
     def profile(self, user_id: int | str) -> dict:
-        data = self._profiles.load()
-        profile = data.get(str(user_id))
-        if profile is None:
-            return blank_profile()
+        profile = self._profiles.value().get(str(user_id))
         merged = blank_profile()
-        merged.update(profile)
+        if profile is not None:
+            merged.update(json_copy(profile))
         return merged
 
     def save_profile(self, user_id: int | str, profile: dict) -> None:
-        data = self._profiles.load()
-        data[str(user_id)] = profile
-        self._profiles.save(data)
+        self._profiles.value()[str(user_id)] = json_copy(profile)
+        self._profiles.persist()
 
     def all_profiles(self) -> dict[str, dict]:
-        return self._profiles.load()
+        return json_copy(self._profiles.value())
 
     def delete_profile(self, user_id: int | str) -> bool:
-        data = self._profiles.load()
-        removed = data.pop(str(user_id), None) is not None
+        removed = self._profiles.value().pop(str(user_id), None) is not None
         if removed:
-            self._profiles.save(data)
+            self._profiles.persist()
         return removed
 
     # ---------------------------------------------------------------- matches
     def live_matches(self) -> dict[str, dict]:
-        return self._matches.load()
+        return json_copy(self._matches.value())
 
     def save_match(self, match_id: str, record: dict) -> None:
-        data = self._matches.load()
-        data[match_id] = record
-        self._matches.save(data)
+        self._matches.value()[match_id] = json_copy(record)
+        self._matches.persist()
 
     def get_match(self, match_id: str) -> Optional[dict]:
-        return self._matches.load().get(match_id)
+        return json_copy(self._matches.value().get(match_id))
 
     def delete_match(self, match_id: str) -> None:
-        data = self._matches.load()
-        if data.pop(match_id, None) is not None:
-            self._matches.save(data)
+        if self._matches.value().pop(match_id, None) is not None:
+            self._matches.persist()
 
 
 def empty_matches() -> dict:

@@ -48,14 +48,27 @@ Discord permissions the bot needs in the channels where people play Cloudfall:
 Without these permissions, matches still work. The board is attached to the command reply and refreshes whenever a player
 presses **Act**.
 
-Data files are created in the working directory, exactly where the old bot kept them:
-- existing: `data.json`, `crypto.json`, `specials.json`, `birthdays.json`, `birthday_registry.json`, `lottery.json`;
-- new: `tcg.json` (Cloudfall profiles) and `tcg_matches.json` (live matches, restored after a restart).
+### Production checklist
 
-Existing files are read unchanged. No migration is needed, and nothing in the old files is rewritten.
+1. **Secrets:** `DISCORD_TOKEN` (required) and `OPENAI_API_KEY` (optional) in `.env`, which is gitignored. Every other
+   setting in `.env.example` is filled in with the values the bot uses: channels, roles, limits, model settings.
+2. **A clean economy:** `RUDHABOT_DATA_DIR=data` keeps every data file in `data/` next to `main.py`. A new, empty
+   folder means the bot starts with no balances, no inventories and no audit history; every file is created on first
+   use. (Unset, files go to the working directory, as before.)
+3. **Discord:** enable the *Message Content* intent (for @mentions); invite the bot with the permissions below; put
+   the bot's role **above** the bankrupt role so it can give and remove it (*Manage Roles*).
+4. **Channels the bot must be able to post embeds in:** notifications (loan notices), audit (economy log, banker
+   actions, review signals), lottery (jackpots), birthdays.
+5. **Back up `data/`**, above all `ledger.jsonl` (the audit trail) and `data.json` / `bank.json` (balances, cards).
+   Writes are atomic (temp file + rename, fsynced), so a backup taken while the bot runs is consistent per file.
+6. **Model:** `clairvoyance-v3` ships in `models/` (and `oracle-v1` / `clairvoyance-v2` for rollback). The bot works
+   without it (`CLAIRVOYANCE_ENABLED=0`): it falls back to a deterministic heuristic AI.
 
-The Clairvoyance model ships in `models/` (`oracle-v1`, 173 KB). The bot works without it (`CLAIRVOYANCE_ENABLED=0`): it falls back to a
-deterministic heuristic AI.
+Data files (all inside `RUDHABOT_DATA_DIR`): `data.json` (wallets, inventories, loans), `bank.json`, `ledger.jsonl`
+(append-only audit trail, rotates at 50 MB), `stocks.json`, `crypto.json`, `specials.json`, `lottery.json`,
+`birthdays.json`, `birthday_registry.json`, `tcg.json`, `tcg_matches.json` (live matches, restored after a restart),
+`gacha.json`, `reviews.json`, `failures.jsonl`. Hot data (accounts, bank, Cloudfall profiles) is kept in memory and
+written through to disk on every change; a file edited by hand while the bot runs is noticed and reloaded.
 
 ## Test
 
@@ -63,14 +76,28 @@ deterministic heuristic AI.
 python -m unittest discover -s tests -t .      # offline: no Discord connection, no OpenAI calls
 ```
 
-Rebuild or evaluate the model:
+Rebuild, recalibrate and benchmark the Cloudfall model (each about 25, 2 and 4 minutes on 4 cores):
 
 ```bash
-python -m rudhabot.ml.train --version clairvoyance-v2     # ~7 minutes on 4 cores
+python -m rudhabot.ml.train --version my-model --init clairvoyance-v3 --ema 0.999 --hide-hand 0.15 --no-current
 ```
 
 ```bash
-python -m rudhabot.ml.evaluate
+python -m rudhabot.ml.recalibrate --version my-model
+```
+
+```bash
+python -m rudhabot.ml.benchmark --versions clairvoyance-v3,my-model
+```
+
+Retrain the intent router and re-run the anomaly benchmark:
+
+```bash
+python -m rudhabot.ml.intent
+```
+
+```bash
+python -m rudhabot.ml.anomaly --tune
 ```
 
 ## What's new in v2
@@ -117,6 +144,12 @@ rewards, ratings and permissions are decided only by deterministic code.
 
 - `/help` lists the new commands. The help text for `/daily` claimed 200ra; it now matches the actual payout of 50ra (the
   payout itself is unchanged).
+- Fines from `/crime` and a failed `/rob` come from the wallet first and then the bank; they used to come from the
+  wallet alone and could leave it negative. Money can't be sent to (or robbed from) bots.
+- While a bet is open, `/tcg pack`, `/tcg wish shards` and the `/shop` / `/cafe` buttons are refused like every other
+  money command (spending a bet mid-game let a lost bet go uncollected).
+- Amounts accept thousands separators: `1,000` works wherever a number does.
+- Looking someone up (`/balance @user`, `/bank`) no longer creates an empty account on disk.
 
 ## Lottery
 

@@ -8,7 +8,7 @@ from rudhabot.services.shop import ShopRefused
 from rudhabot.ui.replies import author_embed, error_embed
 from rudhabot.ui.theme import CAFEICON, CURRENCY, Colors
 from rudhabot.views.base import ServiceButton, ServiceModal, ServiceSelect, ServiceView
-from rudhabot.views.payment import PayToggle, paid_suffix
+from rudhabot.views.payment import PayToggle, paid_suffix, refuse_if_in_game
 
 WELCOME = "Welcome to Joot Cafe! The oldest running business in Rudharta that is full of history.\n"
 
@@ -94,6 +94,8 @@ class CafeQuantityModal(ServiceModal):
 
     async def on_submit(self, interaction: Interaction):
         user = interaction.user
+        if await refuse_if_in_game(self.services, interaction):
+            return
         try:
             quantity = int(self.quantity.value)
         except ValueError:

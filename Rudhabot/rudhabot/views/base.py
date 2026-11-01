@@ -24,6 +24,25 @@ class ServiceView(ui.View):
         self._label_interaction(interaction)
         return True
 
+    async def on_error(self, interaction: Interaction, error: Exception, item) -> None:
+        """A button or select failed: log it, count it for the review monitor (as the command tree does) and tell
+        the player, instead of Discord's bare "This interaction failed"."""
+        import logging
+        import discord
+        logging.getLogger("rudhabot.views").error("%s failed in %s", type(item).__name__, type(self).__name__,
+                                                  exc_info=error)
+        reviews = getattr(self.services, "reviews", None)
+        if reviews is not None:
+            reviews.on_failure(interaction.user.id, f"{type(self).__name__}: {type(error).__name__}")
+        message = {"content": "❌ Something went wrong. Please try again.", "ephemeral": True}
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(**message)
+            else:
+                await interaction.response.send_message(**message)
+        except discord.HTTPException:
+            pass
+
     def __init_subclass__(cls, **kwargs):
         """Views that override interaction_check still get the audit label, without having to call super()."""
         super().__init_subclass__(**kwargs)

@@ -37,12 +37,10 @@ def schema_hash() -> str:
     return hashlib.sha256(spec.encode()).hexdigest()[:16]
 
 
-def _slot(g: Game, u, out: np.ndarray, at: int) -> None:
-    if u is None:
-        return
-    st = E.stamina(g, u)
+def _slot(g: Game, u, out: np.ndarray, at: int, stats: tuple[int, int]) -> None:
+    pw, st = stats
     out[at:at + SLOT_FEATURES] = (
-        1.0, E.power(g, u) / 10, st / 10, (st - u.damage) / 10, E.grade(g, u) / 5, u.taint / 3, u.corrupted, u.ready,
+        1.0, pw / 10, st / 10, (st - u.damage) / 10, E.grade(g, u) / 5, u.taint / 3, u.corrupted, u.ready,
         u.frozen, u.soaked, len(u.equipment()) / 2, len(u.boons) / 2, len(u.afflictions) / 2,
         E.has_kw(g, u, "Guard"), E.can_attack(g, u) if g.active == u.owner else 0.0, E.has_kw(g, u, "First Strike"),
         E.has_kw(g, u, "Skyborne"), E.has_kw(g, u, "Piercing"), u.uid in g.attackers, u.uid in g.blocks.values(),
@@ -84,19 +82,21 @@ def encode(g: Game, me: int) -> tuple[np.ndarray, np.ndarray]:
     dense[i] = g.active == me; i += 1
     dense[i + (PHASES.index(g.phase) if g.phase in PHASES else 4)] = 1; i += 5
     dense[i] = E.decider(g) == me; i += 1
+    stats = {u.uid: E.base_stats(g, u) for seat in (me, opp) for u in g.players[seat].units()}   # one pass per unit
     for seat in (me, opp):
         p = g.players[seat]
         units = p.units()
         dense[i:i + 10] = (p.resolve / 30, p.vapor / 10, E.capacity(g, seat) / 10, len(p.hand) / 8, len(p.deck) / 40,
                            len(p.rainfall) / 40, len(units) / 4, sum(u.corrupted for u in units) / 4,
-                           sum(E.power(g, u) for u in units) / 20,
-                           sum(E.remaining(g, u) for u in units) / 30)
+                           sum(stats[u.uid][0] for u in units) / 20,
+                           sum(stats[u.uid][1] - u.damage for u in units) / 30)
         i += 10
         dense[i + (LANDMARKS.index(p.landmark) + 1 if p.landmark else 0)] = 1
         i += 10
     for seat in (me, opp):
         for u in g.players[seat].field:
-            _slot(g, u, dense, i)
+            if u is not None:
+                _slot(g, u, dense, i, stats[u.uid])
             i += SLOT_FEATURES
     dense[i:i + PREVIEW_DIM] = _preview(g, me)
     for cid in g.players[me].hand:

@@ -36,25 +36,16 @@ def ece(p: np.ndarray, y: np.ndarray, bins: int = 10) -> float:
 
 
 def auc(p: np.ndarray, y: np.ndarray) -> float:
-    """ROC AUC on decisive labels (draw rows are excluded), via the rank-sum formula."""
+    """ROC AUC on decisive labels (draw rows are excluded), via the rank-sum formula with tied scores sharing their
+    average rank (vectorised: the benchmark's bootstrap calls this thousands of times)."""
     mask = (y == 0) | (y == 1)
-    p, y = p[mask], y[mask]
+    p, y = np.asarray(p)[mask], np.asarray(y)[mask]
     pos, neg = int(y.sum()), int(len(y) - y.sum())
     if pos == 0 or neg == 0:
         return float("nan")
-    order = np.argsort(p, kind="mergesort")
-    ranks = np.empty(len(p))
-    ranks[order] = np.arange(1, len(p) + 1)
-    # average ranks for ties
-    sorted_p = p[order]
-    i = 0
-    while i < len(p):
-        j = i
-        while j + 1 < len(p) and sorted_p[j + 1] == sorted_p[i]:
-            j += 1
-        if j > i:
-            ranks[order[i:j + 1]] = (i + j + 2) / 2
-        i = j + 1
+    _, inverse, counts = np.unique(p, return_inverse=True, return_counts=True)
+    ends = np.cumsum(counts)
+    ranks = ((ends - counts + 1 + ends) / 2)[inverse]          # average 1-based rank of each tie group
     return float((ranks[y == 1].sum() - pos * (pos + 1) / 2) / (pos * neg))
 
 

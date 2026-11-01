@@ -1,4 +1,5 @@
-# runtime data (created in the working directory by the bot)
+# runtime data (RUDHABOT_DATA_DIR, or the working directory when it is unset)
+data/
 data.json
 crypto.json
 specials.json
@@ -7,6 +8,12 @@ birthday_registry.json
 lottery.json
 tcg.json
 tcg_matches.json
+bank.json
+stocks.json
+gacha.json
+reviews.json
+ledger.jsonl
+failures.jsonl
 *.corrupt-*
 *.tmp
 # secrets

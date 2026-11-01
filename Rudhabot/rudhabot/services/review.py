@@ -2,8 +2,9 @@
 for moderators. It never changes a balance, blocks a command or punishes anyone; a human decides (/review).
 
 Flow   every audit entry and every failed interaction -> the user's current hourly window is re-judged (at most once
-       a minute per user) -> a flag opens a review signal (at most one open signal per user per 6 hours), which is
-       stored in reviews.json and posted to the review channel.
+       a minute per user; activity that arrives inside that minute is judged by `sweep()`, which the audit cog runs
+       every 15 s, so a burst that ends within a minute is still looked at) -> a flag opens a review signal (at most
+       one open signal per user per 6 hours), which is stored in reviews.json and posted to the review channel.
 Model  refitted from the last 7 days of the ledger at startup and every 6 hours (`refit()`, run in a worker thread).
 """
 from __future__ import annotations
@@ -34,6 +35,7 @@ class ReviewService:
         self._recent: dict[str, deque] = defaultdict(lambda: deque(maxlen=2000))     # user -> recent audit entries
         self._fails: dict[str, deque] = defaultdict(lambda: deque(maxlen=500))
         self._last_judged: dict[str, datetime] = {}
+        self._dirty: set[str] = set()                     # users with activity not yet judged (rate-limited)
         self.pending: deque = deque(maxlen=200)                                       # signals waiting to be posted
         self.stats = {"judged": 0, "flags": 0}
 
@@ -71,9 +73,31 @@ class ReviewService:
         now = self._clock.now()
         last = self._last_judged.get(user)
         if last and now - last < REJUDGE_EVERY:
+            self._dirty.add(user)                         # judged later by sweep(), even if they go quiet
             return None
+        return self._judge(user, now)
+
+    def sweep(self) -> list[dict]:
+        """Judge users whose recent activity was skipped by the once-a-minute limit. Returns signals opened."""
+        if not self.enabled:
+            return []
+        now, opened = self._clock.now(), []
+        for user in list(self._dirty):
+            last = self._last_judged.get(user)
+            if last is None or now - last >= REJUDGE_EVERY:
+                self._dirty.discard(user)
+                latest = max([e["ts"] for e in self._recent[user]][-1:] + [f["ts"] for f in self._fails[user]][-1:],
+                             default=None)
+                signal = self._judge(user, now, hour=latest[:13] if latest else None)   # the hour the activity was in
+                if signal:
+                    opened.append(signal)
+        return opened
+
+    def _judge(self, user: str, now: datetime, hour: Optional[str] = None) -> Optional[dict]:
+        """Judge `user`'s window for `hour` (default: the current hour)."""
+        self._dirty.discard(user)
         self._last_judged[user] = now
-        hour = now.isoformat()[:13]
+        hour = hour or now.isoformat()[:13]
         mine = [e for e in self._recent[user] if e["ts"][:13] == hour]
         fails = [f for f in self._fails[user] if f["ts"][:13] == hour]
         current = [w for w in windows(mine, fails) if w.user == user]

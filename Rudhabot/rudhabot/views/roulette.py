@@ -68,7 +68,7 @@ class RouletteView(ServiceView):
             
             try:
                 await self.original_interaction.edit_original_response(embed=timeout_embed, view=None)
-            except:
+            except discord.HTTPException:
                 pass
         
         self.services.sessions.end(self.user_id)
@@ -398,14 +398,6 @@ class SpinButton(ServiceButton):
 
         result_embed.set_footer(text=f"Final wallet: {user_data['wallet']}ra")
 
-        try:
-            self.services.sessions.end(view.user_id)
-            view.game_over = True
-            await interaction.edit_original_response(embed=result_embed, view=None)
-        except Exception as e:
-            self.services.sessions.end(view.user_id)
-            view.game_over = True
-            raise e
-
+        self.services.sessions.end(view.user_id)          # before the Discord call: a failed edit must not lock them out
         view.game_over = True
         await interaction.edit_original_response(embed=result_embed, view=None)

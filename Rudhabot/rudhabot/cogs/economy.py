@@ -25,6 +25,14 @@ def _plain(user, message: str, color: int = Colors.FAIL) -> discord.Embed:
     return embed
 
 
+def _fine_split(account: dict, fine: int) -> dict:
+    """A fine is sized on wallet + bank, so it is taken from the wallet first and the rest from the bank (it used to
+    come out of the wallet alone, which could leave it negative). Returns the new wallet and bank."""
+    wallet, bank = int(account["wallet"]), int(account.get("bank", 0))
+    from_wallet = min(max(wallet, 0), fine)
+    return {"wallet": wallet - from_wallet, "bank": max(0, bank - (fine - from_wallet))}
+
+
 class EconomyCog(ServiceCog):
     def __init__(self, bot):
         super().__init__(bot)
@@ -118,7 +126,7 @@ class EconomyCog(ServiceCog):
             await respond(interaction, _plain(interaction.user, "You were caught while trying to commit a crime!\n"
                                               "You're too poor to even be fined, you broke bandit.", Colors.LOSS))
             return
-        self.users.update(interaction.user.id, wallet=account["wallet"] - fine, last_crime=Cooldown.stamp(now))
+        self.users.update(interaction.user.id, **_fine_split(account, fine), last_crime=Cooldown.stamp(now))
         await respond(interaction, _plain(interaction.user, f"You got caught while trying to commit a crime!\nYou were fined {CURRENCY}{fine}", Colors.LOSS))
 
     @app_commands.command(name="rob", description="Try to rob another user!")
@@ -127,6 +135,9 @@ class EconomyCog(ServiceCog):
     async def rob(self, interaction: discord.Interaction, target: discord.User):
         if target.id == interaction.user.id:
             await respond(interaction, _plain(interaction.user, "❌ You can't rob yourself!"), ephemeral=True)
+            return
+        if getattr(target, "bot", False):
+            await respond(interaction, _plain(interaction.user, "❌ Bots don't carry wallets."), ephemeral=True)
             return
         attacker, victim = self.users.get(interaction.user.id), self.users.get(target.id)
         now = self._now_utc()
@@ -151,25 +162,11 @@ class EconomyCog(ServiceCog):
             await respond(interaction, _plain(interaction.user, f"You were caught trying to rob {target.mention}!\n"
                                               f"You're too poor to even be fined, you broke bandit.", Colors.LOSS))
             return
-        self.users.update(interaction.user.id, wallet=attacker["wallet"] - fine, last_rob=Cooldown.stamp(now))
+        self.users.update(interaction.user.id, **_fine_split(attacker, fine), last_rob=Cooldown.stamp(now))
         await respond(interaction, _plain(interaction.user, f"You were caught trying to rob {target.mention}!\n"
                                           f"You were fined **{CURRENCY}{fine}**.", Colors.LOSS))
 
     # ------------------------------------------------------------------ banking
-    async def _bank_transfer(self, interaction, amount_text: str, source: str, destination: str,
-                             shortage: str, verb: str, color: int):
-        account = self.users.get(interaction.user.id)
-        try:
-            amount = parse_amount(amount_text, account[source])
-        except AmountError as error:
-            await respond(interaction, _plain(interaction.user, INVALID_AMOUNT if error.code == "invalid" else NOT_POSITIVE), ephemeral=True)
-            return
-        if amount > account[source]:
-            await respond(interaction, _plain(interaction.user, shortage))
-            return
-        self.users.update(interaction.user.id, **{source: account[source] - amount, destination: account[destination] + amount})
-        await respond(interaction, _plain(interaction.user, verb.format(c=CURRENCY, n=amount), color))
-
     async def _bank_move(self, interaction: discord.Interaction, amount: str, kind: str, verb: str, color: int):
         """Deposits and withdrawals go through the bank, which enforces the card tier's monthly limits."""
         from rudhabot.services.bank import BankRefused
@@ -208,6 +205,10 @@ class EconomyCog(ServiceCog):
     async def send(self, interaction: discord.Interaction, target: discord.User, amount: str):
         if target.id == interaction.user.id:
             await respond(interaction, _plain(interaction.user, "❌ You cannot give money to yourself!"), ephemeral=True)
+            return
+        if getattr(target, "bot", False):
+            await respond(interaction, _plain(interaction.user, "❌ Bots don't have wallets: the money would be lost."),
+                          ephemeral=True)
             return
         sender = self.users.get(interaction.user.id)
         try:

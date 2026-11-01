@@ -133,24 +133,34 @@ class LoansCog(ServiceCog):
     async def settle_loans(self):
         try:
             guild, channel = self._notification_channel()
-            for event in self.services.loans.settle_due_loans():
+            events = self.services.loans.settle_due_loans()
+        except Exception:
+            log.exception("loan settlement pass failed")
+            return
+        for event in events:                    # the money is settled; one failed notice mustn't skip the others
+            try:
                 if isinstance(event, AutoPaid):
                     await self.services.loan_notices.auto_paid(event, channel)
                 else:
                     await self.services.loan_notices.bankrupt(event, channel)
                     await self._assign_bankrupt_role(guild, event.user_id)
-        except Exception:
-            log.exception("loan settlement pass failed")
+            except Exception:
+                log.exception("loan notice for %s failed", event.user_id)
 
     @tasks.loop(hours=1)
     async def warn_loans(self):
         try:
             _, channel = self._notification_channel()
-            for warning in self.services.loans.pending_warnings():
-                await self.services.loan_notices.due_soon(warning, channel)
-                self.services.loans.mark_warned(warning.user_id)
+            warnings = self.services.loans.pending_warnings()
         except Exception:
             log.exception("loan warning pass failed")
+            return
+        for warning in warnings:
+            try:
+                await self.services.loan_notices.due_soon(warning, channel)
+            except Exception:
+                log.exception("loan warning for %s failed", warning.user_id)
+            self.services.loans.mark_warned(warning.user_id)      # warn once, even if this one couldn't be delivered
 
     @settle_loans.before_loop
     @warn_loans.before_loop

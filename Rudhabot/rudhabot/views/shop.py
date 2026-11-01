@@ -9,7 +9,7 @@ from discord import ButtonStyle, Interaction
 from rudhabot.services.shop import ShopRefused
 from rudhabot.ui.theme import CURRENCY, Colors, SHOPICON
 from rudhabot.views.base import ServiceButton, ServiceView
-from rudhabot.views.payment import PayToggle, paid_suffix
+from rudhabot.views.payment import PayToggle, paid_suffix, refuse_if_in_game
 
 
 def shop_page(services, page: int, wallet: int):
@@ -59,6 +59,8 @@ class BuyButton(ServiceButton):
         self.price = price
 
     async def callback(self, interaction: Interaction):
+        if await refuse_if_in_game(self.services, interaction):
+            return
         emoji = self.services.catalog.emoji(self.item_name)
         pay_with = getattr(self.view, "pay_with", "wallet")
         try:

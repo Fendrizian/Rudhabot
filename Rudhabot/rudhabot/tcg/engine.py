@@ -148,6 +148,10 @@ def _distinct_affiliations(g: Game, seat: int) -> int:
     return len(affs)
 
 
+WEAPON_POWER = {"E01": 2, "E02": 3, "E03": 1, "E04": 1, "E05": 1, "E06": 1, "E07": 1, "E08": 4}
+GEAR_STATS = {"E10": (0, 3), "E11": (0, 2), "E12": (0, 1), "E15": (0, 1), "E16": (1, 0), "E18": (0, 1)}
+
+
 def _stat_bonus(g: Game, u: Unit) -> tuple[int, int]:
     """Static +Power/+Stamina from every source except the combat-only ones."""
     p = s = 0
@@ -158,11 +162,10 @@ def _stat_bonus(g: Game, u: Unit) -> tuple[int, int]:
     p += u.perm_power + u.tmp_power
     s += u.perm_stamina + u.tmp_stamina
     # equipment
-    weapon_power = {"E01": 2, "E02": 3, "E03": 1, "E04": 1, "E05": 1, "E06": 1, "E07": 1, "E08": 4}
-    p += weapon_power.get(u.weapon, 0)
+    p += WEAPON_POWER.get(u.weapon, 0)
     if u.weapon == "E07":
         s += 1
-    gear = {"E10": (0, 3), "E11": (0, 2), "E12": (0, 1), "E15": (0, 1), "E16": (1, 0), "E18": (0, 1)}.get(u.gear, (0, 0))
+    gear = GEAR_STATS.get(u.gear, (0, 0))
     p += gear[0]; s += gear[1]
     # boons and afflictions
     for b in u.boons:
@@ -239,6 +242,13 @@ def _stat_bonus(g: Game, u: Unit) -> tuple[int, int]:
 
 def stamina(g: Game, u: Unit) -> int:
     return max(0, u.card.stamina + _stat_bonus(g, u)[1])
+
+
+def base_stats(g: Game, u: Unit) -> tuple[int, int]:
+    """(power, stamina) outside combat, computed in one pass: the same values as power(g, u) and stamina(g, u).
+    For callers that need both (feature encoding, the heuristic), this halves the stat work."""
+    bp, bs = _stat_bonus(g, u)
+    return max(0, u.card.attack + bp), max(0, u.card.stamina + bs)
 
 
 def power(g: Game, u: Unit, vs: Optional[Unit] = None, role: Optional[str] = None) -> int:

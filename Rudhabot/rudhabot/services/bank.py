@@ -15,7 +15,7 @@ from typing import Optional
 
 from rudhabot.clock import Clock
 from rudhabot.domain.bank import TIER_BY_KEY, TIERS, Tier, accrue, month_key, next_tier, roll_statement
-from rudhabot.persistence.json_store import JsonStore
+from rudhabot.persistence.json_store import JsonStore, OwnedJson, json_copy
 from rudhabot.persistence.users import UserRepository
 from rudhabot.services.audit import audit_context
 
@@ -35,26 +35,39 @@ def blank_profile(today_iso: str) -> dict:
 class BankService:
     def __init__(self, store: JsonStore, users: UserRepository, clock: Clock, audit=None):
         self._store, self._users, self._clock, self._audit = store, users, clock, audit
+        self._data = OwnedJson(store)
 
     # ------------------------------------------------------------------ profile plumbing
     def _today(self):
         return self._clock.now().date()
 
-    def _load(self, uid: str) -> tuple[dict, dict]:
-        data = self._store.load()
-        profile = data.get(uid)
-        if profile is None:
-            profile = blank_profile(self._today().isoformat())
-        else:
-            base = blank_profile(self._today().isoformat())
-            base.update(profile)
-            base["credit"] = {**blank_profile("")["credit"], **profile.get("credit", {})}
-            profile = base
-        return data, profile
+    def _normalised(self, stored: Optional[dict]) -> dict:
+        """A complete profile in the current layout (missing fields filled in), as a new object."""
+        profile = blank_profile(self._today().isoformat())
+        if stored is not None:
+            profile.update(json_copy(stored))
+            profile["credit"] = {**blank_profile("")["credit"], **json_copy(stored.get("credit", {}))}
+        return profile
 
-    def _save(self, data: dict, uid: str, profile: dict) -> None:
-        data[uid] = profile
-        self._store.save(data)
+    def _profile(self, uid: str) -> dict:
+        """The member's profile, refreshed (statement roll, monthly limits, legacy savings).
+
+        A stored profile that refreshing changed is saved *immediately*, so an operation that is then refused can
+        neither lose what refreshing did nor repeat it next time (late interest charged and audited once; old savings
+        moved into the bank exactly once). A member with no stored profile gets a blank one that isn't written until
+        an operation commits it (looking someone up doesn't create data)."""
+        data = self._data.value()
+        stored = data.get(uid)
+        profile = self._normalised(stored)
+        self._refresh(uid, profile)
+        if stored is not None and profile != stored:
+            data[uid] = json_copy(profile)
+            self._data.persist()
+        return profile
+
+    def _commit(self, uid: str, profile: dict) -> None:
+        self._data.value()[uid] = json_copy(profile)
+        self._data.persist()
 
     def _record(self, uid: str, account: str, delta, after, reason: Optional[str] = None) -> None:
         if self._audit is not None:
@@ -78,48 +91,39 @@ class BankService:
             profile["usage"] = {"month": month_key(today), "deposit": 0, "withdraw": 0}
 
     def apply_daily_interest(self) -> int:
-        """Credit each bank balance once a day (catching up at most MAX_CATCH_UP_DAYS). Returns accounts credited."""
+        """Credit each bank balance once a day (catching up at most MAX_CATCH_UP_DAYS). Returns accounts credited.
+
+        Crash-safe: every account's new interest date is saved *before* any interest is paid, so a crash part-way
+        can at worst skip one day for some accounts; it can never pay the same day twice."""
         today = self._today()
-        data = self._store.load()
-        credited = 0
+        data = self._data.value()
+        payouts = []
         for uid, account in self._users.all().items():
-            profile = data.get(uid)
-            if profile is None:
-                if int(account.get("bank", 0) or 0) <= 0:
-                    continue
-                profile = blank_profile(today.isoformat())     # starts earning from today
-                data[uid] = profile
+            stored = data.get(uid)
+            if stored is None:
+                if int(account.get("bank", 0) or 0) > 0:
+                    data[uid] = blank_profile(today.isoformat())     # starts earning from today
                 continue
-            _, profile = self._load_into(data, uid)
+            profile = self._normalised(stored)
             self._refresh(uid, profile)
             last = datetime.fromisoformat(profile["interest_date"]).date() if profile.get("interest_date") else today
             days = min((today - last).days, MAX_CATCH_UP_DAYS)
-            if days <= 0:
-                continue
-            balance = int(self._users.get(uid)["bank"])
-            interest, carry = accrue(balance, profile.get("interest_carry", 0.0), self.tier_of(profile), days)
-            profile["interest_carry"], profile["interest_date"] = carry, today.isoformat()
-            if interest:
-                with audit_context(f"bank interest ({days} day(s))"):
-                    self._users.update(uid, bank=balance + interest)
-                credited += 1
+            if days > 0:
+                balance = int(self._users.get(uid)["bank"])
+                interest, carry = accrue(balance, profile.get("interest_carry", 0.0), self.tier_of(profile), days)
+                profile["interest_carry"], profile["interest_date"] = carry, today.isoformat()
+                if interest:
+                    payouts.append((uid, interest, days))
             data[uid] = profile
-        self._store.save(data)
-        return credited
-
-    def _load_into(self, data: dict, uid: str) -> tuple[dict, dict]:
-        base = blank_profile(self._today().isoformat())
-        base.update(data[uid])
-        base["credit"] = {**blank_profile("")["credit"], **data[uid].get("credit", {})}
-        data[uid] = base
-        return data, base
+        self._data.persist()                            # 1. remember that today is paid ...
+        for uid, interest, days in payouts:             # 2. ... then pay
+            with audit_context(f"bank interest ({days} day(s))"):
+                self._users.update(uid, bank=int(self._users.get(uid)["bank"]) + interest)
+        return len(payouts)
 
     def account(self, user_id) -> dict:
-        uid = str(user_id)
-        data, profile = self._load(uid)
-        self._refresh(uid, profile)
-        self._save(data, uid, profile)
-        return profile
+        """The member's bank profile (a copy: changing it changes nothing)."""
+        return self._profile(str(user_id))
 
     @staticmethod
     def tier_of(profile: dict) -> Tier:
@@ -137,8 +141,7 @@ class BankService:
     def transfer(self, user_id, amount: Optional[int], kind: str) -> int:
         """kind = "deposit" (wallet -> bank) or "withdraw" (bank -> wallet). amount=None means "all allowed"."""
         uid = str(user_id)
-        data, profile = self._load(uid)
-        self._refresh(uid, profile)
+        profile = self._profile(uid)
         source, destination = ("wallet", "bank") if kind == "deposit" else ("bank", "wallet")
         acc = self._users.get(uid)
         left = self.remaining(profile, kind)
@@ -154,7 +157,7 @@ class BankService:
             raise BankRefused(self._limit_message(profile, kind))
         self._users.update(uid, **{source: acc[source] - amount, destination: acc[destination] + amount})
         profile["usage"][kind] += amount
-        self._save(data, uid, profile)
+        self._commit(uid, profile)
         return amount
 
     def _limit_message(self, profile: dict, kind: str) -> str:
@@ -165,8 +168,7 @@ class BankService:
     # ------------------------------------------------------------------ tiers
     def upgrade(self, user_id) -> Tier:
         uid = str(user_id)
-        data, profile = self._load(uid)
-        self._refresh(uid, profile)
+        profile = self._profile(uid)
         target = next_tier(profile["tier"])
         if target is None:
             raise BankRefused("💳 You already hold the highest card tier.")
@@ -179,7 +181,7 @@ class BankService:
             raise BankRefused(f"❌ The {target.name} upgrade fee is {target.upgrade_fee:,}, paid from your bank balance.")
         self._users.update(uid, bank=acc["bank"] - target.upgrade_fee)
         profile["tier"] = target.key
-        self._save(data, uid, profile)
+        self._commit(uid, profile)
         return target
 
     # ------------------------------------------------------------------ credit card
@@ -189,8 +191,7 @@ class BankService:
     def charge(self, user_id, amount: int, reason: str) -> int:
         """Put a purchase on the card. Raises BankRefused if the card is frozen or over its limit."""
         uid = str(user_id)
-        data, profile = self._load(uid)
-        self._refresh(uid, profile)
+        profile = self._profile(uid)
         credit = profile["credit"]
         if credit.get("hold"):
             raise BankRefused(f"❌ Your card is on hold by the bank: {credit['hold']['reason']}")
@@ -200,35 +201,32 @@ class BankService:
             raise BankRefused(f"❌ Card declined: {self.credit_available(profile):,} of credit available.")
         credit["balance"] += amount
         self._record(uid, "credit", amount, credit["balance"], reason=f"card purchase: {reason}")
-        self._save(data, uid, profile)
+        self._commit(uid, profile)
         return credit["balance"]
 
     def hold_card(self, user_id, reason: str, by) -> dict:
         """A banker's manual hold: the card is declined until a banker releases it. Paying the card doesn't lift it."""
         uid = str(user_id)
-        data, profile = self._load(uid)
-        self._refresh(uid, profile)
+        profile = self._profile(uid)
         if profile["credit"].get("hold"):
             raise BankRefused("❌ That card is already on hold.")
         profile["credit"]["hold"] = {"reason": reason, "by": str(by), "at": self._clock.now().isoformat(timespec="seconds")}
-        self._save(data, uid, profile)
+        self._commit(uid, profile)
         return profile["credit"]["hold"]
 
     def release_card(self, user_id) -> dict:
         uid = str(user_id)
-        data, profile = self._load(uid)
-        self._refresh(uid, profile)
+        profile = self._profile(uid)
         hold = profile["credit"].get("hold")
         if not hold:
             raise BankRefused("❌ That card isn't on hold.")
         profile["credit"]["hold"] = None
-        self._save(data, uid, profile)
+        self._commit(uid, profile)
         return hold
 
     def pay_card(self, user_id, amount: Optional[int], source: str = "wallet") -> int:
         uid = str(user_id)
-        data, profile = self._load(uid)
-        self._refresh(uid, profile)
+        profile = self._profile(uid)
         credit = profile["credit"]
         acc = self._users.get(uid)
         amount = min(credit["balance"], acc[source]) if amount is None else min(amount, credit["balance"])
@@ -242,5 +240,5 @@ class BankService:
         if credit["statement"] == 0:
             credit["frozen"] = False
         self._record(uid, "credit", -amount, credit["balance"], reason=f"card payment from {source}")
-        self._save(data, uid, profile)
+        self._commit(uid, profile)
         return amount

@@ -100,8 +100,8 @@ class HighLowView(ServiceView):
         self.game_over = True
         result = discord.Embed(title=f"{HIGHLOWICON} HIGH-LOW", description=result_text, color=color)
         result.set_author(name=i.user.name, icon_url=i.user.display_avatar.url)
+        self.services.sessions.end(self.user_id)          # before any Discord call: a failed edit must not lock them out
         await i.response.edit_message(embed=result, view=None)
-        self.services.sessions.end(self.user_id)
 
     async def on_timeout(self):
         if self.game_over:
@@ -114,5 +114,9 @@ class HighLowView(ServiceView):
             color=Colors.COOLDOWN,
         )
         embed.set_footer(text=f"Final wallet: {wallet}ra")
-        await self.interaction.edit_original_response(embed=embed, view=None)
+        self.game_over = True
         self.services.sessions.end(self.user_id)
+        try:
+            await self.interaction.edit_original_response(embed=embed, view=None)
+        except discord.HTTPException:
+            pass                                          # the message is gone; the refund and unlock already happened

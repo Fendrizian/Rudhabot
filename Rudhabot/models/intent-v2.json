@@ -1,0 +1,672 @@
+{
+  "model": "intent-v2",
+  "labels": 30,
+  "train_phrases": 520,
+  "train_examples": 4680,
+  "hidden": 96,
+  "epochs": 40,
+  "temperature": 1.4500000000000002,
+  "confident_threshold": 0.95,
+  "target_precision": 0.95,
+  "cross_validation": {
+    "n": 520,
+    "accuracy": 0.7884615384615384,
+    "command_accuracy": 0.7903846153846154,
+    "macro_f1": 0.7882233341197159,
+    "ece": 0.07958543214660424,
+    "confident": {
+      "threshold": 0.95,
+      "coverage": 0.6019230769230769,
+      "precision": 0.9456869009584664
+    },
+    "chat_offered_as_command": 0.014705882352941176,
+    "task_sent_to_chat": 0.03982300884955752,
+    "per_intent": {
+      "help": {
+        "precision": 0.6666666666666666,
+        "recall": 0.6,
+        "support": 20
+      },
+      "balance": {
+        "precision": 0.6666666666666666,
+        "recall": 0.8,
+        "support": 20
+      },
+      "daily": {
+        "precision": 0.9375,
+        "recall": 1.0,
+        "support": 15
+      },
+      "work": {
+        "precision": 0.8,
+        "recall": 1.0,
+        "support": 16
+      },
+      "crime": {
+        "precision": 0.7777777777777778,
+        "recall": 0.5,
+        "support": 14
+      },
+      "inventory": {
+        "precision": 0.7894736842105263,
+        "recall": 0.8823529411764706,
+        "support": 17
+      },
+      "shop": {
+        "precision": 0.75,
+        "recall": 0.8823529411764706,
+        "support": 17
+      },
+      "cafe": {
+        "precision": 0.7333333333333333,
+        "recall": 0.6470588235294118,
+        "support": 17
+      },
+      "buy": {
+        "precision": 0.8333333333333334,
+        "recall": 0.8823529411764706,
+        "support": 17
+      },
+      "loan": {
+        "precision": 0.9,
+        "recall": 0.9473684210526315,
+        "support": 19
+      },
+      "deposit": {
+        "precision": 0.5789473684210527,
+        "recall": 0.7857142857142857,
+        "support": 14
+      },
+      "withdraw": {
+        "precision": 0.75,
+        "recall": 0.5,
+        "support": 12
+      },
+      "bank": {
+        "precision": 0.7368421052631579,
+        "recall": 0.7368421052631579,
+        "support": 19
+      },
+      "card": {
+        "precision": 0.7647058823529411,
+        "recall": 0.7647058823529411,
+        "support": 17
+      },
+      "stocks": {
+        "precision": 0.8333333333333334,
+        "recall": 0.9090909090909091,
+        "support": 22
+      },
+      "crypto": {
+        "precision": 1.0,
+        "recall": 0.8235294117647058,
+        "support": 17
+      },
+      "portfolio": {
+        "precision": 0.6666666666666666,
+        "recall": 0.5714285714285714,
+        "support": 7
+      },
+      "look": {
+        "precision": 0.7777777777777778,
+        "recall": 0.7,
+        "support": 10
+      },
+      "games": {
+        "precision": 0.75,
+        "recall": 0.7058823529411765,
+        "support": 17
+      },
+      "blackjack": {
+        "precision": 0.8333333333333334,
+        "recall": 0.7692307692307693,
+        "support": 13
+      },
+      "baccarat": {
+        "precision": 1.0,
+        "recall": 0.75,
+        "support": 12
+      },
+      "craps": {
+        "precision": 1.0,
+        "recall": 0.9230769230769231,
+        "support": 13
+      },
+      "tcg_play": {
+        "precision": 0.7272727272727273,
+        "recall": 0.8421052631578947,
+        "support": 19
+      },
+      "tcg_rules": {
+        "precision": 0.4375,
+        "recall": 0.5384615384615384,
+        "support": 13
+      },
+      "tcg_collection": {
+        "precision": 0.8461538461538461,
+        "recall": 0.7857142857142857,
+        "support": 14
+      },
+      "gacha": {
+        "precision": 0.9375,
+        "recall": 0.6818181818181818,
+        "support": 22
+      },
+      "leaderboard": {
+        "precision": 0.9230769230769231,
+        "recall": 0.8571428571428571,
+        "support": 14
+      },
+      "lottery": {
+        "precision": 0.9285714285714286,
+        "recall": 1.0,
+        "support": 13
+      },
+      "birthday": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 12
+      },
+      "chat": {
+        "precision": 0.7428571428571429,
+        "recall": 0.7647058823529411,
+        "support": 68
+      }
+    }
+  },
+  "test": {
+    "n": 58,
+    "accuracy": 0.8103448275862069,
+    "command_accuracy": 0.8103448275862069,
+    "macro_f1": 0.8195970695970696,
+    "ece": 0.07353815950196363,
+    "confident": {
+      "threshold": 0.95,
+      "coverage": 0.4827586206896552,
+      "precision": 1.0
+    },
+    "chat_offered_as_command": 0.0,
+    "task_sent_to_chat": 0.09259259259259259,
+    "per_intent": {
+      "help": {
+        "precision": 0.5,
+        "recall": 0.5,
+        "support": 2
+      },
+      "balance": {
+        "precision": 0.5,
+        "recall": 0.5,
+        "support": 2
+      },
+      "daily": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "work": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "crime": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "inventory": {
+        "precision": 0.3333333333333333,
+        "recall": 0.5,
+        "support": 2
+      },
+      "shop": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "support": 2
+      },
+      "cafe": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "support": 2
+      },
+      "buy": {
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "support": 2
+      },
+      "loan": {
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "support": 2
+      },
+      "deposit": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "withdraw": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "bank": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "support": 2
+      },
+      "card": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "support": 2
+      },
+      "stocks": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "support": 2
+      },
+      "crypto": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "games": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "blackjack": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "baccarat": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "craps": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "tcg_play": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "tcg_rules": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "support": 2
+      },
+      "tcg_collection": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "gacha": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "support": 2
+      },
+      "leaderboard": {
+        "precision": 1.0,
+        "recall": 0.5,
+        "support": 2
+      },
+      "lottery": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "birthday": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 2
+      },
+      "chat": {
+        "precision": 0.4444444444444444,
+        "recall": 1.0,
+        "support": 4
+      }
+    },
+    "errors": [
+      [
+        "i'm lost, show me around",
+        "chat",
+        "help",
+        0.47
+      ],
+      [
+        "am i broke",
+        "chat",
+        "balance",
+        0.5
+      ],
+      [
+        "what's in my backpack",
+        "balance",
+        "inventory",
+        0.69
+      ],
+      [
+        "anything nice to buy in the shop",
+        "buy",
+        "shop",
+        0.51
+      ],
+      [
+        "what's cooking at joot",
+        "chat",
+        "cafe",
+        0.63
+      ],
+      [
+        "what's my savings rate",
+        "inventory",
+        "bank",
+        0.36
+      ],
+      [
+        "how much do i owe on my card",
+        "loan",
+        "card",
+        0.88
+      ],
+      [
+        "i want to invest in joot",
+        "inventory",
+        "stocks",
+        0.4
+      ],
+      [
+        "what does taint do",
+        "help",
+        "tcg_rules",
+        0.74
+      ],
+      [
+        "what's on the banner this week",
+        "chat",
+        "gacha",
+        0.77
+      ],
+      [
+        "who's on top",
+        "chat",
+        "leaderboard",
+        0.37
+      ]
+    ]
+  },
+  "test_2": {
+    "n": 135,
+    "accuracy": 0.8740740740740741,
+    "command_accuracy": 0.8740740740740741,
+    "macro_f1": 0.8763997113997115,
+    "ece": 0.04950337685920572,
+    "confident": {
+      "threshold": 0.95,
+      "coverage": 0.5851851851851851,
+      "precision": 1.0
+    },
+    "chat_offered_as_command": 0.0,
+    "task_sent_to_chat": 0.03937007874015748,
+    "per_intent": {
+      "help": {
+        "precision": 0.75,
+        "recall": 0.6,
+        "support": 5
+      },
+      "balance": {
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "support": 5
+      },
+      "daily": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 4
+      },
+      "work": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 4
+      },
+      "crime": {
+        "precision": 1.0,
+        "recall": 0.25,
+        "support": 4
+      },
+      "inventory": {
+        "precision": 0.6,
+        "recall": 0.75,
+        "support": 4
+      },
+      "shop": {
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "support": 4
+      },
+      "cafe": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 4
+      },
+      "buy": {
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "support": 4
+      },
+      "loan": {
+        "precision": 0.8,
+        "recall": 1.0,
+        "support": 4
+      },
+      "deposit": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 4
+      },
+      "withdraw": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 4
+      },
+      "bank": {
+        "precision": 1.0,
+        "recall": 0.8,
+        "support": 5
+      },
+      "card": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 5
+      },
+      "stocks": {
+        "precision": 1.0,
+        "recall": 0.8,
+        "support": 5
+      },
+      "crypto": {
+        "precision": 1.0,
+        "recall": 0.8,
+        "support": 5
+      },
+      "portfolio": {
+        "precision": 1.0,
+        "recall": 0.6,
+        "support": 5
+      },
+      "look": {
+        "precision": 1.0,
+        "recall": 0.6,
+        "support": 5
+      },
+      "games": {
+        "precision": 0.75,
+        "recall": 0.75,
+        "support": 4
+      },
+      "blackjack": {
+        "precision": 1.0,
+        "recall": 0.75,
+        "support": 4
+      },
+      "baccarat": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 4
+      },
+      "craps": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 4
+      },
+      "tcg_play": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 5
+      },
+      "tcg_rules": {
+        "precision": 0.8333333333333334,
+        "recall": 1.0,
+        "support": 5
+      },
+      "tcg_collection": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 4
+      },
+      "gacha": {
+        "precision": 1.0,
+        "recall": 0.8,
+        "support": 5
+      },
+      "leaderboard": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 4
+      },
+      "lottery": {
+        "precision": 0.8,
+        "recall": 1.0,
+        "support": 4
+      },
+      "birthday": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "support": 4
+      },
+      "chat": {
+        "precision": 0.5833333333333334,
+        "recall": 0.875,
+        "support": 8
+      }
+    },
+    "errors": [
+      [
+        "i don't know how this works",
+        "chat",
+        "help",
+        0.42
+      ],
+      [
+        "how do i get started",
+        "buy",
+        "help",
+        0.35
+      ],
+      [
+        "let's break the law",
+        "chat",
+        "crime",
+        0.18
+      ],
+      [
+        "i'm gonna steal something",
+        "chat",
+        "crime",
+        0.65
+      ],
+      [
+        "do something shady for money",
+        "buy",
+        "crime",
+        0.47
+      ],
+      [
+        "what did i buy so far",
+        "shop",
+        "inventory",
+        0.58
+      ],
+      [
+        "how much can i deposit each month",
+        "loan",
+        "bank",
+        0.21
+      ],
+      [
+        "what's the price of nas",
+        "chat",
+        "stocks",
+        0.63
+      ],
+      [
+        "how much is scay",
+        "balance",
+        "crypto",
+        0.49
+      ],
+      [
+        "my holdings",
+        "inventory",
+        "portfolio",
+        0.65
+      ],
+      [
+        "what do i own in stocks and crypto",
+        "inventory",
+        "portfolio",
+        0.4
+      ],
+      [
+        "tell me about the archie fumo",
+        "chat",
+        "look",
+        0.55
+      ],
+      [
+        "what does the golden ticket do",
+        "lottery",
+        "look",
+        0.61
+      ],
+      [
+        "what can i play for money",
+        "shop",
+        "games",
+        0.32
+      ],
+      [
+        "let's play twenty one",
+        "games",
+        "blackjack",
+        0.56
+      ],
+      [
+        "how does pity work",
+        "tcg_rules",
+        "gacha",
+        0.63
+      ],
+      [
+        "can you help me with my homework",
+        "help",
+        "chat",
+        0.95
+      ]
+    ]
+  },
+  "data": "developer-written phrases with augmentation; TEST and TEST_2 phrasings written separately and never trained on; TEST_2 was frozen before this version's training data was written"
+}

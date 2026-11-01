@@ -67,6 +67,7 @@ class AuditCog(ServiceCog):
                                   color=Colors.NOTIFICATIONS)
             embed.set_footer(text=f"{len(batch)} change(s) · full history in ledger.jsonl")
             await self.services.messenger.post(channels.audit, embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        self.reviews.sweep()                              # activity skipped by the once-a-minute limit
         while self.reviews.pending:
             signal = self.reviews.pending.popleft()
             await self.services.messenger.post(channels.reviews, embed=review_embed(signal),

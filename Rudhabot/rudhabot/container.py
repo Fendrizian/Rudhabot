@@ -23,7 +23,7 @@ from rudhabot.persistence.prices import PriceBook, starting_prices
 from rudhabot.persistence.specials import SpecialStockRepository, initial_stocks
 from rudhabot.persistence.tcg import TcgRepository, empty_matches
 from rudhabot.persistence.users import UserRepository
-from rudhabot.ml.intent import IntentRouter
+from rudhabot.ml.intent import MODEL_FILE as INTENT_MODEL_FILE, IntentRouter
 from rudhabot.services.audit import AuditService
 from rudhabot.services.bank import BankService
 from rudhabot.services.birthdays import BirthdayService
@@ -140,7 +140,7 @@ class Services:
 
 def _intent_model(models_dir: str):
     import os
-    path = os.path.join(models_dir, "intent-v1.npz")
+    path = os.path.join(models_dir, INTENT_MODEL_FILE)
     return path if os.path.exists(path) else None
 
 
