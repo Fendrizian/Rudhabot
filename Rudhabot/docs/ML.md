@@ -49,8 +49,8 @@ re-samples hidden information (determinization), so it gets no information a hum
    always uses true results.
 3. **Hand-hidden augmentation:** 15% of every training batch sees no own hand. The spectator win bar always hides
    hands, and earlier models never trained on that input.
-4. **EMA (Polyak) weight averaging**, decay 0.999; early stopping keeps the best validation epoch. (v2 overfit after
-   1–3 epochs; v3's validation loss kept improving longer.)
+4. **EMA (Polyak) weight averaging**, decay 0.999; early stopping keeps the best validation epoch. Networks
+   still peak early: v3's best epochs per generation were 3, 1 and 1 (v2's: 1, 2 and 3).
 5. **Serving blend weight chosen by arenas** among 0 / 0.25 / 0.5 / 0.75 / 1, stored as `serving.blend_weight`.
 6. **Calibration:** Platt scaling fitted on a broad mixture (heuristic-played and AI-played games, a third with the
    hand hidden; seeds 8.1M+). The blend weight was rescaled with it, so the AI's move choices are exactly the measured
