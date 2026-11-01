@@ -7,8 +7,9 @@ from rudhabot.settings import load_env_file, read_token
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     loaded = load_env_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")) + load_env_file(".env")
+    level = os.environ.get("RUDHABOT_LOG_LEVEL", "INFO").strip().upper()
+    logging.basicConfig(level=getattr(logging, level, logging.INFO), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if loaded:
         logging.getLogger("rudhabot").info("loaded from .env: %s", ", ".join(sorted(set(loaded))))
     from rudhabot.app import RudhaBot             # imported after .env so settings see those variables

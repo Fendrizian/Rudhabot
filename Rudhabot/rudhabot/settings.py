@@ -12,6 +12,18 @@ OPENAI_KEY_ENV_VAR = "OPENAI_API_KEY"
 DEFAULT_MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
 
 
+def _id(name: str, default: int, environ: Optional[Mapping[str, str]] = None) -> int:
+    """A Discord id from the environment (read when Settings is built, i.e. after .env is loaded), else the default."""
+    environ = os.environ if environ is None else environ
+    value = (environ.get(name) or "").strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        raise ValueError(f"{name} must be a numeric Discord id, got {value!r}") from None
+
+
 @dataclass(frozen=True)
 class Paths:
     """Data files. Relative names resolve against the working directory, exactly as before."""
@@ -36,19 +48,33 @@ class Paths:
         defaults = cls()
         return cls(**{name: join(getattr(defaults, name)) for name in defaults.__dataclass_fields__})
 
+    @classmethod
+    def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "Paths":
+        """RUDHABOT_DATA_DIR keeps every data file in one folder (created if missing); unset = the working directory."""
+        directory = ((os.environ if environ is None else environ).get("RUDHABOT_DATA_DIR") or "").strip()
+        if not directory:
+            return cls()
+        os.makedirs(directory, exist_ok=True)
+        return cls.in_directory(directory)
+
 
 @dataclass(frozen=True)
 class Channels:
-    notifications: int = 1215241240539431033
-    lottery: int = 1419303864326295608
-    # The original code posted birthday messages to the placeholder id 123456789012345678, which can never
-    # resolve. Until you point this at a real channel, birthdays are announced in the notifications channel.
-    birthdays: int = 1215241240539431033
-    # The economy audit log (every money change) has its own channel; loan notices stay in `notifications`.
-    # Review signals go to the audit channel too unless RUDHABOT_REVIEW_CHANNEL_ID says otherwise.
-    audit: int = int(os.environ.get("RUDHABOT_AUDIT_CHANNEL_ID") or 1215240269377830943)
-    reviews: int = int(os.environ.get("RUDHABOT_REVIEW_CHANNEL_ID") or os.environ.get("RUDHABOT_AUDIT_CHANNEL_ID")
-                       or 1215240269377830943)
+    notifications: int = 1215241240539431033      # loan notices
+    lottery: int = 1419303864326295608            # jackpot announcements
+    birthdays: int = 1215241240539431033          # greetings and cake deliveries
+    audit: int = 1215240269377830943              # the economy audit log (every money change)
+    reviews: int = 1215240269377830943            # Clairvoyance review signals
+
+    @classmethod
+    def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "Channels":
+        d = cls()
+        audit = _id("RUDHABOT_AUDIT_CHANNEL_ID", d.audit, environ)
+        return cls(notifications=_id("RUDHABOT_NOTIFICATIONS_CHANNEL_ID", d.notifications, environ),
+                   lottery=_id("RUDHABOT_LOTTERY_CHANNEL_ID", d.lottery, environ),
+                   birthdays=_id("RUDHABOT_BIRTHDAYS_CHANNEL_ID", d.birthdays, environ),
+                   audit=audit,
+                   reviews=_id("RUDHABOT_REVIEW_CHANNEL_ID", audit, environ))      # follows the audit channel if unset
 
 
 @dataclass(frozen=True)
@@ -61,6 +87,10 @@ class LoanTerms:
     max_days: int = 30
     min_days: int = 1
     bankrupt_role_id: int = 1395412495254159371
+
+    @classmethod
+    def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "LoanTerms":
+        return cls(bankrupt_role_id=_id("RUDHABOT_BANKRUPT_ROLE_ID", cls.bankrupt_role_id, environ))
 
 
 @dataclass(frozen=True)
@@ -117,14 +147,14 @@ class AISettings:
 
 @dataclass(frozen=True)
 class Settings:
-    paths: Paths = field(default_factory=Paths)
-    channels: Channels = field(default_factory=Channels)
-    loans: LoanTerms = field(default_factory=LoanTerms)
+    paths: Paths = field(default_factory=Paths.from_env)
+    channels: Channels = field(default_factory=Channels.from_env)
+    loans: LoanTerms = field(default_factory=LoanTerms.from_env)
     birthdays: BirthdayTerms = field(default_factory=BirthdayTerms)
     ai: AISettings = field(default_factory=AISettings.from_env)
     page_size: int = 5
-    admin_role_id: int = 1142722971606200460
-    banker_role_id: int = 1566271529245999255     # economy staff: see cogs/banker.py
+    admin_role_id: int = field(default_factory=lambda: _id("RUDHABOT_ADMIN_ROLE_ID", 1142722971606200460))
+    banker_role_id: int = field(default_factory=lambda: _id("RUDHABOT_BANKER_ROLE_ID", 1566271529245999255))  # cogs/banker.py
 
 
 def load_env_file(path: str = ".env", environ=os.environ) -> list[str]:
