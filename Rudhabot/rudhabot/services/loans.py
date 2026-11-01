@@ -143,6 +143,22 @@ class LoanService:
         self._users.update(user_id, wallet=wallet - pay_amount, loan=loan.to_dict())
         return LoanRepayment(pay_amount, remaining, cleared=False)
 
+    def ban_until(self, user_id: int | str) -> Optional[datetime]:
+        """The user's current loan ban, if any (expired or unreadable bans count as none)."""
+        try:
+            until = datetime.fromisoformat(self._users.get(user_id).get("loan_ban_until") or "")
+        except (ValueError, TypeError):
+            return None
+        return until if until > self._clock.now() else None
+
+    def lift_ban(self, user_id: int | str) -> datetime:
+        """A banker lifts a loan ban early. Returns the ban's old end date; raises LoanRefused('not_banned')."""
+        until = self.ban_until(user_id)
+        if until is None:
+            raise LoanRefused("not_banned")
+        self._users.update(user_id, loan_ban_until=None)
+        return until
+
     def _check_ban(self, user_id, account: dict) -> None:
         ban = account.get("loan_ban_until")
         if not ban:

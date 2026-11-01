@@ -59,7 +59,7 @@ class EconomyCog(ServiceCog):
             usage, credit = profile["usage"], profile["credit"]
             embed.add_field(name="This month", value=f"Deposits {usage['deposit']:,}/{tier.monthly_limit:,}\n"
                                                       f"Withdrawals {usage['withdraw']:,}/{tier.monthly_limit:,}")
-            status = "❄️ frozen" if credit.get("frozen") else "active"
+            status = "⛔ on hold" if credit.get("hold") else "❄️ frozen" if credit.get("frozen") else "active"
             embed.add_field(name="Credit card", value=f"Owed {CURRENCY}{credit['balance']:,} of {tier.credit_limit:,} ({status})"
                                                        + (f"\nStatement {credit['statement']:,} due {credit['due']}"
                                                           if credit.get("statement") else ""))

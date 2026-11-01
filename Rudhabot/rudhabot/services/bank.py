@@ -192,6 +192,8 @@ class BankService:
         data, profile = self._load(uid)
         self._refresh(uid, profile)
         credit = profile["credit"]
+        if credit.get("hold"):
+            raise BankRefused(f"❌ Your card is on hold by the bank: {credit['hold']['reason']}")
         if credit.get("frozen"):
             raise BankRefused("❌ Your card is frozen until this month's statement is paid (`/card pay`).")
         if amount > self.credit_available(profile):
@@ -200,6 +202,28 @@ class BankService:
         self._record(uid, "credit", amount, credit["balance"], reason=f"card purchase: {reason}")
         self._save(data, uid, profile)
         return credit["balance"]
+
+    def hold_card(self, user_id, reason: str, by) -> dict:
+        """A banker's manual hold: the card is declined until a banker releases it. Paying the card doesn't lift it."""
+        uid = str(user_id)
+        data, profile = self._load(uid)
+        self._refresh(uid, profile)
+        if profile["credit"].get("hold"):
+            raise BankRefused("❌ That card is already on hold.")
+        profile["credit"]["hold"] = {"reason": reason, "by": str(by), "at": self._clock.now().isoformat(timespec="seconds")}
+        self._save(data, uid, profile)
+        return profile["credit"]["hold"]
+
+    def release_card(self, user_id) -> dict:
+        uid = str(user_id)
+        data, profile = self._load(uid)
+        self._refresh(uid, profile)
+        hold = profile["credit"].get("hold")
+        if not hold:
+            raise BankRefused("❌ That card isn't on hold.")
+        profile["credit"]["hold"] = None
+        self._save(data, uid, profile)
+        return hold
 
     def pay_card(self, user_id, amount: Optional[int], source: str = "wallet") -> int:
         uid = str(user_id)

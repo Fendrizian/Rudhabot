@@ -124,6 +124,7 @@ class Settings:
     ai: AISettings = field(default_factory=AISettings.from_env)
     page_size: int = 5
     admin_role_id: int = 1142722971606200460
+    banker_role_id: int = 1566271529245999255     # economy staff: see cogs/banker.py
 
 
 def load_env_file(path: str = ".env", environ=os.environ) -> list[str]:

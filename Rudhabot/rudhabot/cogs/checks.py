@@ -16,6 +16,15 @@ def not_in_game():
     return app_commands.check(predicate)
 
 
+def banker_only():
+    """Bankers (the banker role) and administrators."""
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if not interaction.client.services.admin.is_banker(interaction.user):
+            raise NotAuthorized()
+        return True
+    return app_commands.check(predicate)
+
+
 def admin_only():
     """Only administrators (or the configured admin role) may run the command."""
     async def predicate(interaction: discord.Interaction) -> bool:

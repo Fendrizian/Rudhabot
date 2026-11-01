@@ -1,8 +1,8 @@
 """Economy audit log and Clairvoyance review signals: posting to their channels, and the admin commands.
 
-/audit recent [user]       the latest ledger entries (admins)
-/review list [status]      Clairvoyance's review signals (admins)
-/review resolve <id> ...   mark a signal dismissed or confirmed, with a note (admins). Nothing else happens:
+/audit [user]              the latest ledger entries (bankers and admins)
+/review list [status]      Clairvoyance's review signals (bankers and admins)
+/review resolve <id> ...   mark a signal dismissed or confirmed, with a note (bankers and admins). Nothing else happens:
                            signals never change balances or permissions.
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from rudhabot.cogs.base import ServiceCog
-from rudhabot.cogs.checks import admin_only
+from rudhabot.cogs.checks import banker_only
 from rudhabot.ui.theme import BANKICON, CLAIRVOYANCEICON, TCG, Colors
 
 log = logging.getLogger("rudhabot.audit")
@@ -83,21 +83,21 @@ class AuditCog(ServiceCog):
     async def _ready2(self) -> None:
         await self.bot.wait_until_ready()
 
-    # ------------------------------------------------------------------ admin commands
-    @app_commands.command(name="audit", description="Admin: the latest economy audit entries")
+    # ------------------------------------------------------------------ banker commands
+    @app_commands.command(name="audit", description="Banker: the latest economy audit entries")
     @app_commands.describe(user="Only this user's entries")
-    @admin_only()
+    @banker_only()
     async def audit_cmd(self, interaction: discord.Interaction, user: Optional[discord.User] = None):
         entries = self.audit.recent(20, user.id if user else None)
         embed = discord.Embed(title="🧾 Audit log" + (f" · {user.display_name}" if user else ""), color=Colors.NOTIFICATIONS,
                               description="\n".join(entry_line(e) for e in reversed(entries))[:4096] or "No entries.")
         await interaction.response.send_message(embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
-    review = app_commands.Group(name="review", description="Admin: Clairvoyance review signals")
+    review = app_commands.Group(name="review", description="Banker: Clairvoyance review signals")
 
     @review.command(name="list", description="Open (or all) review signals")
     @app_commands.choices(status=[app_commands.Choice(name=s, value=s) for s in ("open", "dismissed", "confirmed", "all")])
-    @admin_only()
+    @banker_only()
     async def review_list(self, interaction: discord.Interaction, status: Optional[app_commands.Choice[str]] = None):
         value = status.value if status else "open"
         items = self.reviews.signals(None if value == "all" else value)
@@ -109,7 +109,7 @@ class AuditCog(ServiceCog):
     @review.command(name="resolve", description="Mark a review signal dismissed or confirmed")
     @app_commands.choices(outcome=[app_commands.Choice(name="Dismiss (nothing wrong)", value="dismissed"),
                                    app_commands.Choice(name="Confirm (needs action by a moderator)", value="confirmed")])
-    @admin_only()
+    @banker_only()
     async def review_resolve(self, interaction: discord.Interaction, signal_id: str, outcome: app_commands.Choice[str],
                              note: str = ""):
         try:

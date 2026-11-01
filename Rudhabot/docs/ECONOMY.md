@@ -40,7 +40,19 @@ happens:
 - Entries are posted to the audit channel in batched embeds: up to 20 per embed, every 15 s.
 - The audit channel is the economy log channel (`1215240269377830943`); override it with `RUDHABOT_AUDIT_CHANNEL_ID`.
   Loan notices are not economy logs: they stay in the notifications channel.
-- Admins: `/audit [user]`. Players: `/bank history`, which shows only their own entries.
+- Bankers and admins: `/audit [user]`. Players: `/bank history`, which shows only their own entries.
+
+## Banker role
+
+Members with the banker role (`banker_role_id`, 1566271529245999255) and all administrators can:
+- read the economy: `/audit [user]`, `/review list | resolve` and `/banker account <user>` (a member's balances, card,
+  monthly limits, loan, holds and bans, shown privately);
+- put a member's credit card on hold with a reason (`/banker card-hold`) and lift it (`/banker card-release`). A held
+  card is declined with that reason, and paying the card doesn't lift the hold;
+- lift a bankruptcy loan ban early, which also removes the bankrupt role (`/banker loan-unban`).
+
+Bankers can't create or remove money: `/add-money` and `/remove-money` stay admin-only. Every banker action is answered
+privately and posted to the audit channel with who did it and why.
 
 ## Bank
 

@@ -104,6 +104,8 @@ class BankCog(ServiceCog, commands.GroupCog, group_name="bank", group_descriptio
         e.add_field(name="Available", value=f"{CURRENCY}{self.bank.credit_available(profile):,} of {tier.credit_limit:,}")
         e.add_field(name="Statement", value=(f"{CURRENCY}{credit['statement']:,} due {credit['due']}" if credit.get("statement")
                                              else "Nothing due"), inline=False)
+        if credit.get("hold"):
+            e.add_field(name="⛔ On hold", value=f"{credit['hold']['reason']}\nOnly a banker can lift a hold.", inline=False)
         if credit.get("frozen"):
             e.add_field(name="❄️ Frozen", value="Pay the statement in full to unfreeze (`/bank card pay`).", inline=False)
         tips = [t for t in self._insights(interaction.user.id, profile, self.users.get(interaction.user.id)["bank"])

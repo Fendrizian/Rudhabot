@@ -68,8 +68,10 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
       "tcg match | forfeit | forget-me")),
     ("community", "Lottery & birthdays", "🎉", "Lottery tickets and birthday celebrations",
      ("lottery", "birthday set", "birthday view", "birthday remove", "birthday upcoming")),
+    ("banker", "Banker", "💼", "The banker role (and admins): look after member accounts",
+     ("audit", "review list | resolve", "banker account", "banker card-hold | card-release", "banker loan-unban")),
     ("admin", "Admin", "🛠️", "Server administrators only",
-     ("add-money", "remove-money", "audit", "review list | resolve", "clairvoyance status | reload")),
+     ("add-money", "remove-money", "clairvoyance status | reload")),
 ]
 SECTION_BY_KEY = {key: (title, emoji, summary, names) for key, title, emoji, summary, names in SECTIONS}
 
@@ -271,12 +273,27 @@ def get_commands_data():
         {
             "name": "audit",
             "args": "[user]",
-            "description": "Admin: the latest economy audit entries (every money change is logged)."
+            "description": "Banker: the latest economy audit entries (every money change is logged)."
         },
         {
             "name": "review list | resolve",
             "args": "",
-            "description": "Admin: Clairvoyance's unusual-activity signals, for human review only (nothing is changed automatically)."
+            "description": "Banker: Clairvoyance's unusual-activity signals, for human review only (nothing is changed automatically)."
+        },
+        {
+            "name": "banker account",
+            "args": "<user>",
+            "description": "Banker: a member's wallet, bank, card, monthly limits, loan, card holds and loan bans (private, read-only)."
+        },
+        {
+            "name": "banker card-hold | card-release",
+            "args": "<user> <reason>",
+            "description": "Banker: decline a member's credit card until a banker releases it. Logged in the audit channel."
+        },
+        {
+            "name": "banker loan-unban",
+            "args": "<user> <reason>",
+            "description": "Banker: lift a bankruptcy loan ban early (and the bankrupt role). Logged in the audit channel."
         },
         {
             "name": "tcg starter",

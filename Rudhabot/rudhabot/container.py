@@ -114,7 +114,7 @@ class Services:
             menu=menu,
             shop=shop,
             sessions=GamblingSessions(),
-            admin=AdminPolicy(settings.admin_role_id),
+            admin=AdminPolicy(settings.admin_role_id, settings.banker_role_id),
             loans=LoanService(users, settings.loans, clock),
             crypto=CryptoMarket(PriceBook(JsonStore(paths.crypto, lambda: starting_prices(symbols))), coins, users, rng),
             lottery=LotteryService(users, LotteryLedger(JsonStore(paths.lottery, empty_ledger)), Lottery(rng=rng), clock),

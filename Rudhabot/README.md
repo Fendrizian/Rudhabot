@@ -84,7 +84,8 @@ python -m rudhabot.ml.evaluate
 | Casino | `/baccarat`, `/craps` |
 | Items | `/look <item>` (lore, price, aliases); `/inventory` lists each item's aliases for `/use` and `/sell` |
 | Skyfall Wishes | `/tcg wish banner | pull | shards | daily | craft | convergence` |
-| Admin | `/audit`, `/review list | resolve`, `/clairvoyance status | reload` |
+| Banker | `/audit`, `/review list | resolve`, `/banker account | card-hold | card-release | loan-unban` |
+| Admin | `/clairvoyance status | reload` |
 
 Designed for Discord:
 - Each duel gets its own **thread**, so channels stay readable.
