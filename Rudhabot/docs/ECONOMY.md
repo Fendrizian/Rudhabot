@@ -38,8 +38,8 @@ happens:
 
 **Discord:**
 - Entries are posted to the audit channel in batched embeds: up to 20 per embed, every 15 s.
-- The audit channel is, for now, the notifications channel where the bank's loan notices go. Point it at a dedicated
-  channel with `RUDHABOT_AUDIT_CHANNEL_ID`.
+- The audit channel is the economy log channel (`1215240269377830943`); override it with `RUDHABOT_AUDIT_CHANNEL_ID`.
+  Loan notices are not economy logs: they stay in the notifications channel.
 - Admins: `/audit [user]`. Players: `/bank history`, which shows only their own entries.
 
 ## Bank

@@ -44,11 +44,11 @@ class Channels:
     # The original code posted birthday messages to the placeholder id 123456789012345678, which can never
     # resolve. Until you point this at a real channel, birthdays are announced in the notifications channel.
     birthdays: int = 1215241240539431033
-    # The economy audit log is posted where the bank's loan notices go (the notifications channel) until a dedicated
-    # channel exists; override with RUDHABOT_AUDIT_CHANNEL_ID / RUDHABOT_REVIEW_CHANNEL_ID.
-    audit: int = int(os.environ.get("RUDHABOT_AUDIT_CHANNEL_ID") or 1215241240539431033)
+    # The economy audit log (every money change) has its own channel; loan notices stay in `notifications`.
+    # Review signals go to the audit channel too unless RUDHABOT_REVIEW_CHANNEL_ID says otherwise.
+    audit: int = int(os.environ.get("RUDHABOT_AUDIT_CHANNEL_ID") or 1215240269377830943)
     reviews: int = int(os.environ.get("RUDHABOT_REVIEW_CHANNEL_ID") or os.environ.get("RUDHABOT_AUDIT_CHANNEL_ID")
-                       or 1215241240539431033)
+                       or 1215240269377830943)
 
 
 @dataclass(frozen=True)
