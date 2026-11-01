@@ -175,16 +175,8 @@ class FixedBugTests(CogTestCase):
         self.assertEqual(self.account(self.alice)["wallet"], 4500)
         self.assertIsNone(self.account(self.alice)["loan"])
 
-    async def test_create_is_admin_only_and_confirms(self):
-        guild = FakeGuild()
-        it = await self.run_command("create", self.alice, guild=guild)
-        self.assertIn("don't have permission", it.text())
-        self.assertEqual(guild.created, [])
-        it = await self.run_command("create", self.admin, guild=guild)
-        self.assertEqual(len(guild.created), 1)
-        self.assertIn("Created", it.text())
-        it = await self.run_command("create", self.admin, guild=None)
-        self.assertIn("must be used in a server", it.text())
+    async def test_create_channel_command_is_gone(self):
+        self.assertIsNone(self.bot.tree.get_command("create"))
 
     async def test_add_and_remove_money_are_admin_only(self):
         it = await self.run_command("add-money", self.alice, target=self.bob, amount=100, location="wallet")

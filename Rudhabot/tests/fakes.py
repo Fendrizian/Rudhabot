@@ -68,15 +68,10 @@ class FakeGuild:
     def __init__(self, id=1, channels=None, members=None, roles=None):
         self.id = id
         self._channels, self._members, self._roles = channels or {}, members or {}, roles or {}
-        self.created = []
 
     def get_channel(self, cid): return self._channels.get(cid)
     def get_member(self, uid): return self._members.get(uid)
     def get_role(self, rid): return self._roles.get(rid)
-
-    async def create_text_channel(self, **kw):
-        self.created.append(kw)
-        return SimpleNamespace(mention="#new-temporary-bot-lab")
 
 
 class FakeInteraction:

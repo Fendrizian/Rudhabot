@@ -69,7 +69,7 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     ("community", "Lottery & birthdays", "🎉", "Lottery tickets and birthday celebrations",
      ("lottery", "birthday set", "birthday view", "birthday remove", "birthday upcoming")),
     ("admin", "Admin", "🛠️", "Server administrators only",
-     ("add-money", "remove-money", "create", "audit", "review list | resolve", "clairvoyance status | reload")),
+     ("add-money", "remove-money", "audit", "review list | resolve", "clairvoyance status | reload")),
 ]
 SECTION_BY_KEY = {key: (title, emoji, summary, names) for key, title, emoji, summary, names in SECTIONS}
 
@@ -467,11 +467,6 @@ def get_commands_data():
             "name": "leaderboard",
             "args": "[wallet|bank|total]",
             "description": "View the server leaderboard for money rankings."
-        },
-        {
-            "name": "create",
-            "args": "",
-            "description": "Admin: create a temporary private bot-lab channel."
         },
         {
             "name": "add-money",

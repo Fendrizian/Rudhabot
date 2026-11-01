@@ -18,21 +18,6 @@ def _with_author(embed: discord.Embed, user) -> discord.Embed:
 
 
 class AdminCog(ServiceCog):
-    @app_commands.command(name="create", description="Channels")
-    @admin_only()
-    async def create(self, interaction: discord.Interaction):
-        guild = interaction.guild
-        if guild is None:
-            await interaction.response.send_message(
-                embed=error_embed("❌ This command must be used in a server.", interaction.user), ephemeral=True)
-            return
-        overwrite = {guild.default_role: discord.PermissionOverwrite(view_channel=True)}
-        channel = await guild.create_text_channel(name="new-temporary-bot-lab", overwrites=overwrite)
-        # (the original never answered the interaction, so Discord showed "The application did not respond")
-        await interaction.response.send_message(
-            embed=discord.Embed(description=f"✅ Created {getattr(channel, 'mention', '#new-temporary-bot-lab')}.", color=Colors.SUCCESS),
-            ephemeral=True)
-
     @app_commands.command(name="add-money", description="Add money to a user's wallet or bank")
     @app_commands.describe(target="The user to add money to", amount="Amount of money to add",
                            location="Where to add the money: wallet or bank")
