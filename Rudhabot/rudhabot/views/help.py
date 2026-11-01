@@ -266,7 +266,7 @@ def get_commands_data():
         {
             "name": "tcg wish shards | daily | craft | convergence",
             "args": "",
-            "description": "Get Cloud Shards (daily, buy, or win matches), craft cards with Vapor Dust, and claim the server-wide Convergence."
+            "description": "Get Cloud Shards (daily, buy at 10ra each, or win matches), craft cards with Vapor Dust, and claim the server-wide Convergence."
         },
         {
             "name": "audit",
@@ -301,7 +301,7 @@ def get_commands_data():
         {
             "name": "tcg card | rules | collection | pack | ladder",
             "args": "",
-            "description": "Look up cards (with the Clairvoyance's similar cards), read the rules, open packs and see the rated ladder."
+            "description": "Look up cards (with the Clairvoyance's similar cards), read the rules, open packs (wallet or credit card) and see the rated ladder."
         },
         {
             "name": "tcg match | forfeit | forget-me",
@@ -351,17 +351,17 @@ def get_commands_data():
         {
             "name": "shop",
             "args": "",
-            "description": "Browse items available in the National Online Shop."
+            "description": "Browse and buy from the National Online Shop. The Paying with button switches between wallet and credit card."
         },
         {
             "name": "cafe",
             "args": "",
-            "description": "View the Joot Cafe menu with special monthly items."
+            "description": "View and order from the Joot Cafe menu, monthly specials included. Pay from your wallet or by credit card."
         },
         {
             "name": "buy",
-            "args": "<item> [quantity]",
-            "description": "Purchase items from shops or the cafe."
+            "args": "<item> [quantity] [pay_with]",
+            "description": "Purchase items from the shop or the cafe, from your wallet or by credit card."
         },
         {
             "name": "sell",

@@ -43,6 +43,9 @@ async def _reply(interaction: discord.Interaction, embed: discord.Embed, ephemer
         await interaction.response.send_message(embed=embed, ephemeral=ephemeral, allowed_mentions=NO_MENTIONS, **kw)
 
 
+PAY_CHOICES = [app_commands.Choice(name="Wallet", value="wallet"), app_commands.Choice(name="Credit card", value="card")]
+
+
 def thread_name(title: str) -> str:
     """Channel and thread names are plain text: Discord shows a custom emoji there as raw `<:name:id>`, so drop any."""
     return re.sub(r"\s{2,}", " ", re.sub(r"<a?:\w+:\d+>", "", title)).strip()[:90] or "Cloudfall match"
@@ -86,10 +89,11 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
     async def collection(self, interaction: discord.Interaction):
         await _reply(interaction, collection_embed(interaction.user, self.tcg.profile(interaction.user.id)))
 
-    @app_commands.command(name="pack", description="Open a 5-card Cloudfall pack (paid from your wallet)")
-    async def pack(self, interaction: discord.Interaction):
+    @app_commands.command(name="pack", description="Open a 5-card Cloudfall pack, from your wallet or credit card")
+    @app_commands.choices(pay_with=PAY_CHOICES)
+    async def pack(self, interaction: discord.Interaction, pay_with: Optional[app_commands.Choice[str]] = None):
         try:
-            pulled = self.tcg.open_pack(interaction.user.id)
+            pulled = self.tcg.open_pack(interaction.user.id, pay_with.value if pay_with else "wallet")
         except TcgError as error:
             return await _reply(interaction, _note(str(error), Colors.FAIL))
         embed = discord.Embed(title=f"{TCG.PACK} Cloudfall pack", color=CLOUD,
@@ -246,8 +250,8 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
                     + (f" · {TCG.DUST} +{dust} Vapor Dust from extra copies" if dust else ""), inline=False)
         await _reply(interaction, e, ephemeral=False)
 
-    @wishes.command(name="shards", description="Buy Cloud Shards (1 ra each), from your wallet or credit card")
-    @app_commands.choices(pay_with=[app_commands.Choice(name="Wallet", value="wallet"), app_commands.Choice(name="Credit card", value="card")])
+    @wishes.command(name="shards", description="Buy Cloud Shards (10 ra each), from your wallet or credit card")
+    @app_commands.choices(pay_with=PAY_CHOICES)
     async def wish_shards(self, interaction: discord.Interaction, amount: app_commands.Range[int, 1, 16000],
                           pay_with: Optional[app_commands.Choice[str]] = None):
         total = await self._gacha(interaction, lambda: self.services.gacha.buy_shards(

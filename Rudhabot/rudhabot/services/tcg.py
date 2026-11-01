@@ -130,6 +130,7 @@ class TcgService:
         self.clairvoyance = clairvoyance
         self.matches: dict[str, Match] = {}
         self.gacha = None                     # GachaService, set by the container: match wins pay Cloud Shards
+        self.bank = None                      # BankService, set by the container: packs can go on the credit card
 
     # ================================================================== collection & decks
     def profile(self, user_id) -> dict:
@@ -185,12 +186,21 @@ class TcgService:
             raise TcgError("Your active deck is not legal: " + problems[0])
         return list(cards)
 
-    def open_pack(self, user_id) -> list[str]:
+    def open_pack(self, user_id, pay_with: str = "wallet") -> list[str]:
         price = self.terms.pack_price
-        account = self.users.get(user_id)
-        if account["wallet"] < price:
-            raise TcgError(f"A Cloudfall pack costs {price} in your wallet.")
-        self.users.update(user_id, wallet=account["wallet"] - price)
+        if pay_with == "card":
+            if self.bank is None:
+                raise TcgError("Card payments are unavailable.")
+            from rudhabot.services.bank import BankRefused
+            try:
+                self.bank.charge(user_id, price, "Cloudfall pack")
+            except BankRefused as refusal:
+                raise TcgError(str(refusal)) from None
+        else:
+            account = self.users.get(user_id)
+            if account["wallet"] < price:
+                raise TcgError(f"A Cloudfall pack costs {price} in your wallet.")
+            self.users.update(user_id, wallet=account["wallet"] - price)
         pool, weights = [], []
         for card in CARDS:
             if card.unique:

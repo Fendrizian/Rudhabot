@@ -9,6 +9,7 @@ from discord import ButtonStyle, Interaction
 from rudhabot.services.shop import ShopRefused
 from rudhabot.ui.theme import CURRENCY, Colors, SHOPICON
 from rudhabot.views.base import ServiceButton, ServiceView
+from rudhabot.views.payment import PayToggle, paid_suffix
 
 
 def shop_page(services, page: int, wallet: int):
@@ -31,8 +32,9 @@ def shop_page(services, page: int, wallet: int):
 
 
 class ItemRow(ServiceView):
-    def __init__(self, services, items, page, total_pages, user_id):
+    def __init__(self, services, items, page, total_pages, user_id, pay_with: str = "wallet"):
         super().__init__(services, timeout=300)
+        self.pay_with = pay_with
         self.page = page
         self.total_pages = total_pages
         self.user_id = user_id
@@ -40,6 +42,7 @@ class ItemRow(ServiceView):
             self.add_item(BuyButton(item_name, price))
         self.add_item(PageNav("⬅ Previous", -1))
         self.add_item(PageNav("Next ⮕", 1))
+        self.add_item(PayToggle(pay_with))
 
     async def interaction_check(self, interaction: Interaction):
         if interaction.user.id != self.user_id:
@@ -57,18 +60,21 @@ class BuyButton(ServiceButton):
 
     async def callback(self, interaction: Interaction):
         emoji = self.services.catalog.emoji(self.item_name)
+        pay_with = getattr(self.view, "pay_with", "wallet")
         try:
-            purchase = self.services.shop.buy(interaction.user.id, self.item_name, 1)
+            purchase = self.services.shop.buy(interaction.user.id, self.item_name, 1, pay_with)
         except ShopRefused as refusal:
-            if refusal.code != "insufficient_wallet":
+            if refusal.code == "insufficient_wallet":
+                message = f"❌ You don't have enough money in your wallet to buy {emoji} **{self.item_name}**."
+            elif refusal.code == "card_declined":
+                message = refusal.data.get("message", "❌ Card declined.")
+            else:
                 raise
-            embed = discord.Embed(
-                description=f"❌ You don't have enough money in your wallet to buy {emoji} **{self.item_name}**.",
-                color=Colors.FAIL)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=discord.Embed(description=message, color=Colors.FAIL),
+                                                    ephemeral=True)
             return
         embed = discord.Embed(
-            description=f"✅ You bought **1 {emoji} {self.item_name.title()}** for {CURRENCY}{purchase.total}",
+            description=f"✅ You bought **1 {emoji} {self.item_name.title()}** for {CURRENCY}{purchase.total}{paid_suffix(pay_with)}",
             color=Colors.SUCCESS)
         await interaction.response.send_message(embed=embed)
 
@@ -84,4 +90,4 @@ class PageNav(ServiceButton):
         wallet = self.services.users.get(interaction.user.id).get("wallet", 0)
         embed, items, total_pages = shop_page(self.services, new_page, wallet)
         await interaction.response.edit_message(
-            embed=embed, view=ItemRow(self.services, items, new_page, view.total_pages, view.user_id))
+            embed=embed, view=ItemRow(self.services, items, new_page, view.total_pages, view.user_id, view.pay_with))

@@ -19,7 +19,7 @@ from rudhabot.persistence.tcg import TcgRepository
 from rudhabot.persistence.users import UserRepository
 from rudhabot.tcg.cards import CARD_BY_ID
 
-SHARD_PRICE = 1                  # ra per Cloud Shard
+SHARD_PRICE = 10                 # ra per Cloud Shard
 MAX_SHARD_PURCHASE = 16_000      # per command, so a typo can't empty a wallet
 
 

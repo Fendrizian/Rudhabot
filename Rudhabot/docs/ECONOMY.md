@@ -65,7 +65,9 @@ happens:
   log records it as `savings merged into bank`.
 
 **Credit card:**
-- Pay with `pay_with:card` on `/buy` and on `/tcg wish shards`.
+- Every purchase can go on the card: `pay_with:card` on `/buy`, `/tcg pack` and `/tcg wish shards`, and the
+  **Paying with** toggle on the `/shop` and `/cafe` menus. The bank balance never pays for purchases.
+- Investments (`/stocks buy`, `/buycoin`) are wallet-only, so the card can't be turned into cash.
 - On the first access in a month, the balance becomes that month's statement, due on the 11th.
 - If the statement is unpaid after its due date, 5% interest is added once and the card is frozen until the statement is
   paid. No money is ever taken automatically.

@@ -63,8 +63,8 @@ class GachaServiceTests(CogTestCase):
         g, uid = self.s.gacha, self.alice.id
         with self.assertRaises(Exception):
             g.wish(uid, 10)                                              # no shards yet
-        self.fund(self.alice, 5000)
-        g.buy_shards(uid, 1600)
+        self.fund(self.alice, 20_000)
+        g.buy_shards(uid, 1600)                                          # 10 ra per shard: 16,000 ra
         g.claim_daily(uid)
         with self.assertRaises(Exception):
             g.claim_daily(uid)
@@ -74,7 +74,7 @@ class GachaServiceTests(CogTestCase):
         profile = self.s.tcg.profile(uid)
         self.assertEqual(profile["shards"], 1600 + G.DAILY_SHARDS - 10 * G.WISH_COST)
         self.assertEqual(sum(profile["collection"].values()), 10)
-        self.assertEqual(self.account(self.alice)["wallet"], 3400)
+        self.assertEqual(self.account(self.alice)["wallet"], 20_000 - 1600 * 10)
         accounts = {e["account"] for e in self.s.audit.ledger.read()}
         self.assertTrue({"wallet", "shards"} <= accounts)
         self.assertEqual(g.convergence()["wishes"], 10)
@@ -184,7 +184,7 @@ class WishCommandIconTests(CogTestCase):
         self.assertIn(TCG.rarity(5), banner.last_embed.description)
         self.assertIn(TCG.SHARD, banner.text())
         self.fund(self.alice, 20_000)
-        await self._run("shards", amount=5_000)
+        await self._run("shards", amount=1_600)                          # 16,000 ra: exactly one 10-wish
         pull = await self._run("pull", count=SimpleNamespace(value=10), banner=None)
         embed = pull.last_embed
         self._fits(embed)

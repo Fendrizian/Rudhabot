@@ -103,6 +103,7 @@ class Services:
         shop = ShopService(catalog, menu, users, stocks, bank=bank, exchange=exchange)
         gacha = GachaService(tcg_repo, JsonStore(paths.gacha, dict), users, clock, rng, audit, bank)
         tcg.gacha = gacha
+        tcg.bank = bank
 
         return cls(
             settings=settings,

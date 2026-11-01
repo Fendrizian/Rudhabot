@@ -8,6 +8,7 @@ from rudhabot.services.shop import ShopRefused
 from rudhabot.ui.replies import author_embed, error_embed
 from rudhabot.ui.theme import CAFEICON, CURRENCY, Colors
 from rudhabot.views.base import ServiceButton, ServiceModal, ServiceSelect, ServiceView
+from rudhabot.views.payment import PayToggle, paid_suffix
 
 WELCOME = "Welcome to Joot Cafe! The oldest running business in Rudharta that is full of history.\n"
 
@@ -23,9 +24,10 @@ def special_fields(embed: discord.Embed, services, specials) -> None:
 
 
 class CafeBuyView(ServiceView):
-    def __init__(self, services, user_id, menu_type="specials"):
+    def __init__(self, services, user_id, menu_type="specials", pay_with: str = "wallet"):
         super().__init__(services, timeout=300)
         self.user_id = user_id
+        self.pay_with = pay_with
         self.menu_type = menu_type
         catalog = services.catalog
         if menu_type == "specials":
@@ -39,6 +41,7 @@ class CafeBuyView(ServiceView):
         self.add_item(MenuSwitchButton("⭐ Specials", "specials"))
         self.add_item(MenuSwitchButton("🍽️ Food", "food"))
         self.add_item(MenuSwitchButton("🥤 Beverages", "beverages"))
+        self.add_item(PayToggle(pay_with))
 
     async def interaction_check(self, interaction: Interaction):
         return interaction.user.id == self.user_id
@@ -69,7 +72,7 @@ class MenuSwitchButton(ServiceButton):
             items = catalog.cafe_food_items if self.menu_type == "food" else catalog.cafe_beverage_items
             for item, price in items.items():
                 embed.add_field(name=f"{catalog.emoji(item)} {item.title()}", value=f"{CURRENCY}{price}", inline=True)
-        await interaction.response.edit_message(embed=embed, view=CafeBuyView(services, view.user_id, self.menu_type))
+        await interaction.response.edit_message(embed=embed, view=CafeBuyView(services, view.user_id, self.menu_type, view.pay_with))
 
 
 class CafeItemSelect(ServiceSelect):
@@ -78,13 +81,14 @@ class CafeItemSelect(ServiceSelect):
         super().__init__(placeholder="Choose an item to buy...", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: Interaction):
-        await interaction.response.send_modal(CafeQuantityModal(self.services, self.values[0]))
+        await interaction.response.send_modal(CafeQuantityModal(self.services, self.values[0], getattr(self.view, "pay_with", "wallet")))
 
 
 class CafeQuantityModal(ServiceModal):
-    def __init__(self, services, item):
+    def __init__(self, services, item, pay_with: str = "wallet"):
         super().__init__(services, title="Cafe Purchase")
         self.item = item
+        self.pay_with = pay_with
         self.quantity = ui.TextInput(label="Quantity", placeholder="Enter quantity", required=True)
         self.add_item(self.quantity)
 
@@ -100,17 +104,18 @@ class CafeQuantityModal(ServiceModal):
             return
         title, emoji = self.item.title(), self.services.catalog.emoji(self.item)
         try:
-            purchase = self.services.shop.buy(user.id, self.item, quantity)
+            purchase = self.services.shop.buy(user.id, self.item, quantity, self.pay_with)
         except ShopRefused as refusal:
             message = {
                 "already_bought_special": f"❌ You can only buy 1 {emoji}**{title}** per month!",
                 "special_quantity": f"❌ You can only buy 1 {emoji}**{title}** per month!",
                 "sold_out": f"❌ {emoji}**{title}** is sold out!",
                 "insufficient_wallet": f"❌ You don't have enough money in your wallet to buy {quantity} of **{emoji}{title}**.",
+                "card_declined": refusal.data.get("message", "❌ Card declined."),
             }.get(refusal.code)
             if message is None:
                 raise
             await interaction.response.send_message(embed=error_embed(message, user), ephemeral=True)
             return
-        embed = author_embed(user, f"✅ You bought **{quantity} {emoji}{title}** for {CURRENCY}{purchase.total}", Colors.SUCCESS)
+        embed = author_embed(user, f"✅ You bought **{quantity} {emoji}{title}** for {CURRENCY}{purchase.total}{paid_suffix(self.pay_with)}", Colors.SUCCESS)
         await interaction.response.send_message(embed=embed)

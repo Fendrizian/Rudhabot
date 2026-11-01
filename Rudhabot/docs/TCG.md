@@ -153,7 +153,7 @@ Some matters are open or ambiguous in the Codex. Each interpretation below is sh
 - One wish costs 160 Cloud Shards.
 - You can get shards from:
   - `/tcg wish daily`: 80 a day;
-  - `/tcg wish shards`: 1 ra each, paid from your wallet or credit card, up to 16,000 per purchase;
+  - `/tcg wish shards`: 10 ra each (one wish = 1,600 ra), paid from your wallet or credit card, up to 16,000 per purchase;
   - rated PvP wins: +60, under the same daily cap as the ra reward;
   - practice wins against Clairvoyance: +20, up to 3 a day.
 
