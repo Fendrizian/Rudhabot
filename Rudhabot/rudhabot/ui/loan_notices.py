@@ -7,7 +7,7 @@ import discord
 
 from rudhabot.services.loans import AutoPaid, Bankruptcy, DueSoon
 from rudhabot.ui.messenger import Messenger
-from rudhabot.ui.theme import CURRENCY, LOANDUEICON, Colors
+from rudhabot.ui.theme import CURRENCY, LOANAUTOICON, LOANBANKRUPTICON, LOANDUEICON, Colors
 
 GREY = Colors.NOTIFICATIONS
 
@@ -39,7 +39,7 @@ class LoanNotifier:
 
     async def auto_paid(self, event: AutoPaid, channel) -> None:
         def build(description: str, footer: str) -> discord.Embed:
-            embed = discord.Embed(title="💳 Loan Auto-Paid", description=description, color=GREY)
+            embed = discord.Embed(title=f"{LOANAUTOICON} Loan Auto-Paid", description=description, color=GREY)
             embed.add_field(name="Amount Deducted", value=f"{CURRENCY}{event.total_due}", inline=True)
             embed.add_field(name="Status", value="☑️ Loan Cleared", inline=True)
             embed.set_footer(text=footer)
@@ -56,7 +56,7 @@ class LoanNotifier:
 
     async def bankrupt(self, event: Bankruptcy, channel) -> None:
         def build(description: str) -> discord.Embed:
-            embed = discord.Embed(title="⛓️ Bankruptcy Notice", description=description, color=GREY)
+            embed = discord.Embed(title=f"{LOANBANKRUPTICON} Bankruptcy Notice", description=description, color=GREY)
             embed.add_field(name="Debt Amount", value=f"{CURRENCY}{event.total_due}", inline=True)
             embed.add_field(name="Ban Duration", value=f"{event.ban_days} days", inline=True)
             embed.add_field(name="Ban Until", value=event.ban_until.strftime("%d %B %Y"), inline=True)

@@ -4,13 +4,13 @@ from __future__ import annotations
 import discord
 from discord import ButtonStyle, Interaction, ui
 
-from rudhabot.ui.theme import CURRENCY, Colors
+from rudhabot.ui.theme import CURRENCY, LEADERBOARDICON, Colors
 
 PAGE_SIZE = 10
 
 
 def create_leaderboard_embed(entries, page, total_pages, leaderboard_type):
-    embed = discord.Embed(title=f"🏆 Server Leaderboard - {leaderboard_type.title()}", color=Colors.LEADERBOARD)
+    embed = discord.Embed(title=f"{LEADERBOARDICON} Server Leaderboard - {leaderboard_type.title()}", color=Colors.LEADERBOARD)
     start = page * PAGE_SIZE
     for idx, (user_id, value) in enumerate(entries[start:start + PAGE_SIZE], start=start + 1):
         embed.add_field(name=f"#{idx}", value=f"<@{user_id}>: {CURRENCY}{value}", inline=False)

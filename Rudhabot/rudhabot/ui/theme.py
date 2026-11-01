@@ -13,6 +13,10 @@ COINICON = "<:coinF_heads:1398951529955852328>"
 CARDBACKICON = "<:card_back:1413016849515417691>"
 BANKICON = "<:bank:1566106240495390750>"
 CLAIRVOYANCEICON = "<:Clairvoyance:1566097544558411916>"
+PORTFOLIOICON = "<:portfolio:1566239179040628958>"
+LEADERBOARDICON = "<:leaderboard:1566239719182958683>"
+LOANAUTOICON = "<:loan_auto:1566240694459433010>"
+LOANBANKRUPTICON = "<:loan_bankrupt:1566241115542126664>"
 
 # game title icons (blackjack and roulette keep theirs inline)
 SLOTSICON = "<:roulette_table:1399759017932361809>"
@@ -29,13 +33,29 @@ class TCG:
     CARD_BACK = "<:TCG_cardback:1566112821970731128>"
     PACK = "<:TCG_pack:1566111704364883998>"
     VAPOR = "<:TCG_vapor:1566116502774616195>"
-    TAINTED = "<:TCG_tainted:1566117813603799091>"
-    CORRUPTED = "<:TCG_corrupted:1566117817055715399>"
+    TAINTED = "<:TCG_tainted:1566246023486119997>"
+    CORRUPTED = "<:TCG_corrupted:1566245773044220065>"
     THREAT = "<:TCG_threat:1566117811305054208>"
     RESOLVE_HIGH = "<:TCG_resolvehigh:1566115222425440306>"
     RESOLVE_MID = "<:TCG_resolvemid:1566115206503997510>"
     RESOLVE_LOW = "<:TCG_resolvelow:1566115191601627206>"
     RESOLVE_DEAD = "<:TCG_resolvedead:1566115174564499756>"
+    SHARD = "<:TCG_shard:1566241621526315119>"           # Cloud Shards (wish currency)
+    DUST = "<:TCG_dust:1566242096879509680>"             # Vapor Dust (crafting currency)
+    STAR = "<:TCG_star:1566242729074233515>"             # wish rarity
+    GRADES = {1: "<:TCG_cloud1:1566244166181322752>", 2: "<:TCG_cloud2:1566244168874070036>",
+              3: "<:TCG_cloud3:1566244171042521098>", 4: "<:TCG_cloud4:1566244173034557480>",
+              5: "<:TCG_cloud5:1566244174989099120>"}  # Cloud Grade pips, 1 to 5
+
+    @classmethod
+    def stars(cls, n: int) -> str:
+        """A pull's rarity as a row of stars."""
+        return cls.STAR * n
+
+    @classmethod
+    def rarity(cls, n: int) -> str:
+        """Compact rarity label for running text, e.g. 5 + star."""
+        return f"{n}{cls.STAR}"
 
     @classmethod
     def resolve(cls, value: int) -> str:

@@ -199,15 +199,16 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         b = svc.banner("featured")
         pity = svc.pity(profile, "featured")
         e = discord.Embed(title=f"🌠 {b.name}", color=Colors.TCG_BLUE,
-                          description=f"Featured ★5: **{CARD_BY_ID[b.featured5].name}**\n"
-                                      f"Featured ★4: {', '.join(CARD_BY_ID[c].name for c in b.featured4)}")
+                          description=f"Featured {TCG.rarity(5)}: **{CARD_BY_ID[b.featured5].name}**\n"
+                                      f"Featured {TCG.rarity(4)}: {', '.join(CARD_BY_ID[c].name for c in b.featured4)}")
         e.add_field(name="Rates", inline=False,
-                    value=f"★5 {G.RATES[5] * 100:.1f}% · ★4 {G.RATES[4] * 100:.0f}% · ★3 {G.RATES[3] * 100:.0f}% · "
-                          f"★2 {G.RATES[2] * 100:.1f}%\nSoft pity from wish {G.SOFT_PITY_START}, guaranteed ★5 by wish "
-                          f"{G.HARD_PITY}; a ★4+ at least every {G.FOUR_STAR_PITY} wishes. Featured ★5 is a 50/50; lose it "
-                          f"and the next ★5 is featured. {G.FOIL_RATE * 100:.0f}% of cards are ✨ Cloudshine foils (cosmetic).")
-        e.add_field(name="You", value=f"◇ {profile.get('shards', 0):,} Cloud Shards · {profile.get('dust', 0):,} Vapor Dust\n"
-                                      f"Pity {pity.pity5}/{G.HARD_PITY}" + (" · next ★5 is featured" if pity.guaranteed else ""))
+                    value=f"{TCG.rarity(5)} {G.RATES[5] * 100:.1f}% · {TCG.rarity(4)} {G.RATES[4] * 100:.0f}% · "
+                          f"{TCG.rarity(3)} {G.RATES[3] * 100:.0f}% · {TCG.rarity(2)} {G.RATES[2] * 100:.1f}%\n"
+                          f"Soft pity from wish {G.SOFT_PITY_START}, guaranteed {TCG.rarity(5)} by wish "
+                          f"{G.HARD_PITY}; a {TCG.rarity(4)} or better at least every {G.FOUR_STAR_PITY} wishes. Featured {TCG.rarity(5)} "
+                          f"is a 50/50; lose it and the next {TCG.rarity(5)} is featured. {G.FOIL_RATE * 100:.0f}% of cards are ✨ Cloudshine foils (cosmetic).")
+        e.add_field(name="You", value=f"{TCG.SHARD} {profile.get('shards', 0):,} Cloud Shards · {TCG.DUST} {profile.get('dust', 0):,} Vapor Dust\n"
+                                      f"Pity {pity.pity5}/{G.HARD_PITY}" + (f" · next {TCG.rarity(5)} is featured" if pity.guaranteed else ""))
         conv = svc.convergence()
         meter = " · ".join(f"{'✅' if m['reached'] else '⬜'} {m['at']}" for m in conv["milestones"])
         e.add_field(name="🌌 Convergence (server-wide this week)", inline=False,
@@ -221,7 +222,6 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
                                   app_commands.Choice(name="Cloudfall Standard", value="standard")])
     async def wish_pull(self, interaction: discord.Interaction, count: app_commands.Choice[int],
                         banner: Optional[app_commands.Choice[str]] = None):
-        from rudhabot.domain.gacha import STARS
         result = await self._gacha(interaction, lambda: self.services.gacha.wish(
             interaction.user.id, count.value, banner.value if banner else "featured"))
         if result is None:
@@ -230,13 +230,14 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         best = max(p.stars for p in pulls)
         lines = []
         for pull, is_new in sorted(zip(pulls, new), key=lambda pn: -pn[0].stars):
-            lines.append(f"{STARS[pull.stars]} {'✨ ' if pull.foil else ''}**{CARD_BY_ID[pull.card].name}**"
+            lines.append(f"{TCG.stars(pull.stars)} {'✨ ' if pull.foil else ''}**{CARD_BY_ID[pull.card].name}**"
                          + (" · featured" if pull.featured else "") + (" · NEW" if is_new else ""))
         color = {5: Colors.TCG_DEEP, 4: Colors.TCG_BLUE, 3: Colors.TCG_SKY}.get(best, Colors.TCG_MIST)
         e = discord.Embed(title=f"🌠 {'A star falls' if best >= 5 else 'The sky answers'} · {b.name}",
                           description="\n".join(lines), color=color)
         profile = self.tcg.profile(interaction.user.id)
-        e.set_footer(text=f"◇ {profile.get('shards', 0):,} shards left" + (f" · +{dust} Vapor Dust from extra copies" if dust else ""))
+        e.add_field(name="Left", value=f"{TCG.SHARD} {profile.get('shards', 0):,} Cloud Shards"
+                    + (f" · {TCG.DUST} +{dust} Vapor Dust from extra copies" if dust else ""), inline=False)
         await _reply(interaction, e, ephemeral=False)
 
     @wishes.command(name="shards", description="Buy Cloud Shards (1 ra each), from your wallet or credit card")
@@ -246,13 +247,13 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
         total = await self._gacha(interaction, lambda: self.services.gacha.buy_shards(
             interaction.user.id, amount, pay_with.value if pay_with else "wallet"))
         if total is not None:
-            await _reply(interaction, _note(f"◇ Bought {amount:,} Cloud Shards. You now have {total:,}."))
+            await _reply(interaction, _note(f"{TCG.SHARD} Bought {amount:,} Cloud Shards. You now have {total:,}."))
 
     @wishes.command(name="daily", description="Claim today's free Cloud Shards")
     async def wish_daily(self, interaction: discord.Interaction):
         total = await self._gacha(interaction, lambda: self.services.gacha.claim_daily(interaction.user.id))
         if total is not None:
-            await _reply(interaction, _note(f"◇ Daily shards claimed! You have {total:,}."))
+            await _reply(interaction, _note(f"{TCG.SHARD} Daily shards claimed! You have {total:,}."))
 
     @wishes.command(name="craft", description="Craft a card with Vapor Dust")
     async def wish_craft(self, interaction: discord.Interaction, card: str):
@@ -261,7 +262,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             return await _reply(interaction, _note("No card by that name."))
         left = await self._gacha(interaction, lambda: self.services.gacha.craft(interaction.user.id, found.id))
         if left is not None:
-            await _reply(interaction, _note(f"🛠️ Crafted **{found.name}**. {left:,} Vapor Dust left."))
+            await _reply(interaction, _note(f"🛠️ Crafted **{found.name}**. {TCG.DUST} {left:,} Vapor Dust left."))
 
     @wish_craft.autocomplete("card")
     async def _craft_autocomplete(self, interaction: discord.Interaction, current: str):
@@ -271,7 +272,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
     async def wish_convergence(self, interaction: discord.Interaction):
         reward = await self._gacha(interaction, lambda: self.services.gacha.claim_convergence(interaction.user.id))
         if reward is not None:
-            await _reply(interaction, _note(f"🌌 The Convergence answers: +{reward:,} Cloud Shards."), ephemeral=False)
+            await _reply(interaction, _note(f"🌌 The Convergence answers: +{TCG.SHARD} {reward:,} Cloud Shards."), ephemeral=False)
 
     # ================================================================== matches
     @app_commands.command(name="practice", description="Play a practice match against the Clairvoyance AI (unrated, coaching on)")

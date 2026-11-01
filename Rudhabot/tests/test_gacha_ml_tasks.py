@@ -159,3 +159,34 @@ class ReviewCommandTests(CogTestCase):
         self.assertTrue(it.log)
         admin = await self.run_command("review", self.admin, group="list")
         self.assertIn("review", admin.text().lower())
+
+
+class WishCommandIconTests(CogTestCase):
+    async def _run(self, sub, **kwargs):
+        from tests.fakes import FakeInteraction
+        tcg = self.bot.tree.get_command("tcg")
+        command = next(c for c in next(g for g in tcg.commands if g.name == "wish").commands if c.name == sub)
+        it = FakeInteraction(self.bot, self.alice)
+        it.command = command
+        await command.callback(command.binding, it, **kwargs)
+        return it
+
+    def _fits(self, embed):
+        self.assertLessEqual(len(embed.description or ""), 4096)
+        for field in embed.fields:
+            self.assertLessEqual(len(field.value), 1024, field.name)
+
+    async def test_banner_and_ten_wishes_use_the_star_shard_and_dust_icons_within_limits(self):
+        from types import SimpleNamespace
+        from rudhabot.ui.theme import TCG
+        banner = await self._run("banner")
+        self._fits(banner.last_embed)
+        self.assertIn(TCG.rarity(5), banner.last_embed.description)
+        self.assertIn(TCG.SHARD, banner.text())
+        self.fund(self.alice, 20_000)
+        await self._run("shards", amount=5_000)
+        pull = await self._run("pull", count=SimpleNamespace(value=10), banner=None)
+        embed = pull.last_embed
+        self._fits(embed)
+        self.assertEqual(sum(line.startswith(TCG.STAR) for line in embed.description.split("\n")), 10)
+        self.assertIn(TCG.SHARD, {f.name: f.value for f in embed.fields}["Left"])

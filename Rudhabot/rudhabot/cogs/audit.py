@@ -17,10 +17,10 @@ from discord.ext import commands, tasks
 
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import admin_only
-from rudhabot.ui.theme import BANKICON, CLAIRVOYANCEICON, Colors
+from rudhabot.ui.theme import BANKICON, CLAIRVOYANCEICON, TCG, Colors
 
 log = logging.getLogger("rudhabot.audit")
-ACCOUNT_ICONS = {"wallet": "👛", "bank": BANKICON, "savings": "🐷", "credit": "💳", "shards": "◇", "dust": "✨"}
+ACCOUNT_ICONS = {"wallet": "👛", "bank": BANKICON, "savings": "🐷", "credit": "💳", "shards": TCG.SHARD, "dust": TCG.DUST}
 
 
 def entry_line(e: dict) -> str:

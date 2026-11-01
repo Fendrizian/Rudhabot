@@ -11,7 +11,7 @@ from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import not_in_game
 from rudhabot.services.crypto_market import TradeRefused
 from rudhabot.ui.replies import respond
-from rudhabot.ui.theme import CURRENCY, Colors, STOCKSICON
+from rudhabot.ui.theme import CURRENCY, PORTFOLIOICON, Colors, STOCKSICON
 
 log = logging.getLogger("rudhabot.crypto")
 
@@ -97,7 +97,7 @@ class CryptoCog(ServiceCog):
         """Crypto holdings and Rudharta Exchange shares in one view."""
         coins = self.services.crypto.portfolio(self.users.get(interaction.user.id))
         shares = self.services.stocks.portfolio(interaction.user.id)
-        embed = discord.Embed(title=f"📊 {interaction.user.name}'s Portfolio", color=Colors.PORTFOLIO)
+        embed = discord.Embed(title=f"{PORTFOLIOICON} {interaction.user.name}'s Portfolio", color=Colors.PORTFOLIO)
         if not coins and not shares:
             embed.description = "Your portfolio is empty. Buy coins with `/buycoin` or shares with `/stocks buy`."
             await respond(interaction, embed)

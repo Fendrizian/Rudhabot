@@ -14,7 +14,6 @@ from rudhabot.ui.theme import CLAIRVOYANCEICON, TCG, Colors
 
 CLOUD = Colors.TCG_BLUE        # the open sky: boards, cards, collection
 CORRUPT = Colors.TCG_DEEP      # Fallen cards and a board at Threat Level 6+
-GRADE_SHADES = {1: "▪️", 2: "◽", 3: "⬜", 4: "🤍", 5: "✨"}
 
 
 def bar(fraction: float, width: int = 10) -> str:
@@ -35,7 +34,7 @@ def card_embed(card: Card, similar: list[tuple[str, float]] = ()) -> discord.Emb
     embed.add_field(name="Type", value=card.kind + (" · Reaction" if card.reaction else ""), inline=True)
     embed.add_field(name="Cost", value=f"{TCG.VAPOR} {card.cost} Vapor", inline=True)
     if card.kind == CHARACTER:
-        embed.add_field(name="Cloud Grade", value=f"{GRADE_SHADES[card.grade]} {card.grade}", inline=True)
+        embed.add_field(name="Cloud Grade", value=f"{TCG.GRADES[card.grade]} {card.grade}", inline=True)
         embed.add_field(name="Power / Stamina", value=f"{card.attack} / {card.stamina}", inline=True)
         embed.add_field(name="Affiliation", value=", ".join(card.affiliations), inline=True)
     elif card.power or card.grade:
