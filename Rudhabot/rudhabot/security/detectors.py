@@ -11,13 +11,15 @@ from dataclasses import dataclass
 from typing import Optional
 
 from rudhabot.security.events import MemberJoin, Message
-from rudhabot.security.links import LinkReport, analyse_attachment
+from rudhabot.security.links import COMMON_SITES, URL_RE, LinkReport, analyse_attachment
 from rudhabot.security.policy import SecurityConfig
 from rudhabot.security.reasons import duration
 from rudhabot.security.signals import Reason, Signal
 from rudhabot.security.text import CoordinationIndex, content_hash, name_shape, normalise, skeleton, snippet
 
 DAY = 86400.0
+DRIP_WINDOW_S = DAY
+DRIP_MAX_KEYS = 5000
 
 
 def poisson_tail(k: int, lam: float) -> float:
@@ -279,6 +281,7 @@ class MessageDetector:
         self._last_prune = 0.0
         self._surge_reported: dict[int, float] = {}
         self._rate_updated: dict[int, float] = {}
+        self.drip: dict[str, Window] = {}                     # site or link-message fingerprint -> new members' posts
 
     def prune(self, now: float) -> None:
         if now - self._last_prune < 60:
@@ -289,6 +292,8 @@ class MessageDetector:
         for table, span in ((self.by_author, 120), (self.mentions, 120), (self.webhooks, 120)):
             for key in [k for k, w in table.items() if not w.items or now - w.items[-1][0] > span]:
                 del table[key]
+        for key in [k for k, w in self.drip.items() if not w.items or now - w.items[-1][0] > DRIP_WINDOW_S]:
+            del self.drip[key]
         for author in list(self.dups):
             per = self.dups[author]
             for h in [h for h, w in per.items() if not w.items or now - w.items[-1][0] > 3600]:
@@ -368,6 +373,12 @@ class MessageDetector:
                                       messages=[ref], evidence={"invites": links.invites[:5]}, snippet=snip))
                 if cfg["messages.invites"] == "delete":
                     delete = True
+            # ---------------------------------------------------------------- slow drip (new members, hours apart)
+            if links.links and msg.member_age_days is not None and msg.member_age_days < 1:
+                drip = self._drip(msg, now, ref, links, snip, cfg)
+                if drip is not None:
+                    signals.append(drip)
+                    delete = delete or drip.evidence["remove"]
             # ---------------------------------------------------------------- coordination (several accounts)
             self.member_age[msg.author_id] = msg.member_age_days if msg.member_age_days is not None else 99.0
             cluster = self.coordination.add(now, msg.author_id, msg.channel_id, msg.message_id, msg.content)
@@ -432,6 +443,45 @@ class MessageDetector:
                 if finding.score >= cfg["files.delete_score"]:
                     delete = True
         return MessageVerdict(signals, delete)
+
+    def _drip(self, msg: Message, now: float, ref, links: LinkReport, snip, cfg: SecurityConfig) -> Optional[Signal]:
+        """A raid spread over hours: each account posts once or twice, long after the rate rules stop looking, but
+        several members who joined in the last day share the same unofficial site, or the same message around a
+        (rotating) link. Everyday sites and official ones never count; the link message's text must be substantial."""
+        keys = {f"site:{f.domain}" for f in links.links if not f.official and f.domain not in COMMON_SITES}
+        if not keys:
+            return None
+        text = URL_RE.sub(" ", msg.content)
+        if len(normalise(text)) >= 12:
+            keys.add(f"text:{content_hash(text)}")
+        best = None
+        for key in sorted(keys):
+            win = self.drip.get(key)
+            if win is None:
+                if len(self.drip) >= DRIP_MAX_KEYS:
+                    continue
+                win = self.drip[key] = Window(256)
+            win.add(now, (msg.author_id, msg.channel_id, ref))
+            win.prune(now, DRIP_WINDOW_S)
+            posts = win.within(now, DRIP_WINDOW_S)
+            authors = {a for _, (a, _, _) in posts}
+            if best is None or len(authors) > len(best[1]):
+                best = (key, authors, posts)
+        if best is None:
+            return None
+        key, authors, posts = best
+        need = int(cfg["messages.drip_accounts"])
+        if len(authors) < need:
+            return None
+        # remove the posts when the links carry any other warning sign, or the wave is clearly bigger than the bar
+        risky = links.score >= 0.3 or bool(links.lures) or len(authors) >= need + 2
+        what = f"links to {key[5:]}" if key.startswith("site:") else "the same message around a link"
+        return Signal("slow_drip", "phishing", min(1.0, 0.5 + 0.05 * (len(authors) - need) + (0.1 if risky else 0.0)),
+                      0.85 if risky else 0.7, now,
+                      [Reason.of("MSG_SLOW_DRIP", accounts=len(authors), what=what, window="24 h")],
+                      users=sorted(authors), channels=sorted({c for _, (_, c, _) in posts}),
+                      messages=[r for _, (_, _, r) in posts][-100:],
+                      evidence={"key": key, "accounts": len(authors), "remove": risky}, snippet=snip)
 
     def _channel(self, msg: Message, now: float, relax: float) -> Optional[Signal]:
         win = self.channels[msg.channel_id]

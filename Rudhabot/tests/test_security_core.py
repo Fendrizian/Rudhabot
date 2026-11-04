@@ -213,6 +213,36 @@ class DetectionTests(unittest.TestCase):
         _, plans, _ = self.feed(hooks)
         self.assertIn("delete_webhook", [p.kind for p in plans])
 
+    def test_slow_drip_raid_hours_apart_is_caught(self):
+        texts = ["omg check this out guys https://cloudfall-rewards.shop/claim",
+                 "anyone tried https://cloudfall-rewards.shop/claim ?? free cards",
+                 "this is legit https://cloudfall-rewards.shop/claim"]
+        outs = [self.engine.observe(msg(i, 800 + i, text, T0 + i * 2 * 3600, member_days=0.05))
+                for i, text in enumerate(texts)]
+        self.assertFalse(any(s.detector == "slow_drip" for o in outs[:2] for s in o.signals))   # 2 isn't a pattern
+        drip = next(s for s in outs[2].signals if s.detector == "slow_drip")
+        self.assertEqual(drip.users, [800, 801, 802])
+        self.assertEqual(len(drip.messages), 3)                                # every post in the wave, hours apart
+        self.assertIn("cloudfall-rewards.shop", explain(drip.reasons[0].code, **dict(drip.reasons[0].facts)))
+
+    def test_slow_drip_with_rotating_links_matches_on_the_message(self):
+        outs = [self.engine.observe(msg(i, 820 + i, "Nitro giveaway ending soon, claim yours here: "
+                                        f"https://nitro-gift{i}.xyz/claim", T0 + i * 3600, member_days=0.1))
+                for i in range(4)]
+        drips = [s for o in outs for s in o.signals if s.detector == "slow_drip"]
+        self.assertTrue(drips)
+        plans = [p for o in outs for p in o.plans]
+        self.assertIn("delete_messages", [p.kind for p in plans])            # lures + weak TLD: removed
+
+    def test_slow_drip_ignores_everyday_sites_and_established_members(self):
+        events = [msg(i, 840 + i, f"look at this https://x.com/someone/status/{i}", T0 + i * 3600, member_days=0.1)
+                  for i in range(6)]
+        events += [msg(10 + i, 860 + i, "my fan wiki https://asgrelia-wiki.net/page", T0 + (8 + i) * 3600,
+                       member_days=40) for i in range(6)]
+        _, plans, signals = self.feed(events)
+        self.assertFalse(any(s.detector == "slow_drip" for s in signals))
+        self.assertFalse(any(p.kind == "delete_messages" for p in plans))
+
     def test_dangerous_attachment(self):
         _, plans, _ = self.feed([msg(1, 7, "my resume", T0, attachments=(Attachment("cv.pdf.exe", 1000),))])
         self.assertEqual([p.kind for p in plans], ["delete_messages"])

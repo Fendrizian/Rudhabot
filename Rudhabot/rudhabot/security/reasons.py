@@ -23,6 +23,7 @@ REASONS: dict[str, str] = {
     "MSG_INVITE": "posted an invite to another server",
     "MSG_CHANNEL_SURGE": "{count} messages in {window} in this channel, about {ratio}x its usual rate",
     "MSG_NEW_ACCOUNT_LINK": "posted a link {age} after joining",
+    "MSG_SLOW_DRIP": "{accounts} members who joined in the last day posted {what} within {window}",
     "MSG_REPEAT_OFFENDER": "{count} messages removed in the last {window}",
     "MSG_MODEL_SCAM": "the message model rates this as likely scam or phishing ({confidence})",
     "MSG_MODEL_SPAM": "the message model rates this as likely spam ({confidence})",

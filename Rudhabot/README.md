@@ -24,6 +24,15 @@ A Discord economy and games bot (discord.py 2.x) built around **its own intellig
 
   Clairvoyance adds an 8.4M-parameter message-risk model, an incident model and an alert ranker, all advisory. See
   `docs/SECURITY.md`.
+- **One server, one system:**
+  - **Member standing** ties security, moderation and the economy together. Trusted members are spared automatic
+    restrictions; contained accounts can't move money.
+  - `/modlog` is a member file.
+  - `/setup` holds the server's channels and roles in one place.
+  - Clairvoyance learns this server's bar from staff verdicts.
+  - A weekly **State of the Realm** report.
+
+  See `CHANGELOG.md`.
 - Everything from v1 is still here.
 
 ## Run
@@ -66,18 +75,23 @@ presses **Act**.
 3. **Discord:** in the Developer Portal enable the **Server Members** and **Message Content** intents (security and
    @mentions); keep the bot's role **above every staff role** and the bankrupt role (*Manage Roles*). Security needs
    *View Audit Log* for anti-nuke (`docs/SECURITY.md` lists every permission and what stops without it).
-4. **Security setup:** `/security setup alert_channel:... modlog_channel:... probation_role:...`, map staff roles with
+4. **Home server and set-up:**
+   - set `RUDHABOT_GUILD_ID` to the server's id; commands then register there instantly, and other servers are
+     refused;
+   - check `/setup`: channels and roles, all changeable live.
+5. **Security setup:** `/security setup alert_channel:... modlog_channel:... probation_role:...`, map staff roles with
    `/security staff`, run `/security tools action:health check`, rehearse with `/security tools action:drill`. Security starts in **shadow
    mode** (detect and report only) until an admin runs `/security setup mode:live`.
-5. **Channels the bot must be able to post embeds in:** notifications (loan notices), audit (economy log, banker
-   actions, review signals), lottery (jackpots), birthdays.
-6. **Storage:** everything lives in `data/rudhabot.db` (SQLite, built into Python: no server, no hosted database).
+6. **Channels the bot must be able to post embeds in:** notifications (loan notices), audit (economy log, banker
+   actions, review signals), lottery (jackpots), birthdays, reports (the weekly State of the Realm; defaults to the
+   review channel).
+7. **Storage:** everything lives in `data/rudhabot.db` (SQLite, built into Python: no server, no hosted database).
    It is backed up daily to `data/backups/` (14 kept). Existing JSON files are imported once on first start and
    left in place.
    - Check or copy it with `python -m rudhabot.persistence.database info|check|backup <dir>`.
    - `RUDHABOT_STORAGE=json` keeps the old one-file-per-store layout; `... export <dir>` writes the database back out
      as JSON.
-7. **Model:** `clairvoyance-v3` ships in `models/` (and `oracle-v1` / `clairvoyance-v2` for rollback). The bot works
+8. **Model:** `clairvoyance-v3` ships in `models/` (and `oracle-v1` / `clairvoyance-v2` for rollback). The bot works
    without it (`CLAIRVOYANCE_ENABLED=0`): it falls back to a deterministic heuristic AI.
 
 Data (inside `RUDHABOT_DATA_DIR`): `rudhabot.db` holds every store:
@@ -138,8 +152,8 @@ python -m rudhabot.ml.anomaly --tune
 | Items | `/look <item>` (lore, price, aliases); `/inventory` lists each item's aliases for `/use` and `/sell` |
 | Skyfall Wishes | `/tcg wish banner | pull | shards | daily | craft | convergence` |
 | Banker | `/audit`, `/review list | resolve`, `/banker account | card-hold | card-release | loan-unban` |
-| Admin | `/clairvoyance status | reload` |
-| Moderation | `/warn`, `/timeout`, `/untimeout`, `/kick`, `/ban`, `/massban`, `/unban`, `/purge`, `/slowmode`, `/case view | edit | delete`, `/modlog`, the *Report to moderators* message command |
+| Admin | `/clairvoyance status | report | reload`, `/setup` |
+| Moderation | `/warn`, `/timeout`, `/untimeout`, `/kick`, `/ban`, `/massban`, `/unban`, `/purge`, `/slowmode`, `/case view | edit | delete`, `/modlog` (the member file), the *Report to moderators* message command |
 | Security | Everyday: `/security status | incident | lockdown | unlock | level | release | ask` · set-up: `/security setup | staff | settings | exempt | tools` |
 
 Designed for Discord:
@@ -206,5 +220,6 @@ disk, so a restart no longer loses it, and failed deliveries are retried.
 
 ## Tunables (`settings.py`)
 
-Paths, channel IDs, loan terms, birthday gift/timezone, admin, banker and bankrupt roles. Every id can be overridden
-from `.env` (see `.env.example`).
+Paths, channel IDs, loan terms, birthday gift/timezone, admin, banker and bankrupt roles, the home server. Every id can
+be overridden from `.env` (see `.env.example`), and the channels and roles also live with `/setup`, which wins over
+both.

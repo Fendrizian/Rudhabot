@@ -75,6 +75,8 @@ SETTINGS: tuple[Setting, ...] = (
     S("messages.dup_window_s", 45, "Duplicate window, in seconds.", int, 5, 3600),
     S("messages.coord_accounts", 3, "Accounts posting near-identical text that count as coordinated.", int, 2, 50),
     S("messages.coord_window_s", 180, "Coordination window, in seconds.", int, 30, 3600),
+    S("messages.drip_accounts", 3, "Members who joined in the last day posting the same unofficial link (or the same "
+      "link message) within 24 hours that count as a slow-drip raid.", int, 2, 50),
     S("messages.mention_limit", 8, "Distinct members mentioned in one message that count as a mention bomb.", int, 3, 100),
     S("messages.mention_window_limit", 15, "Distinct mentions by one member within a minute.", int, 5, 200),
     S("messages.invites", "flag", "Invites to other servers: allow, flag (report) or delete.", str,

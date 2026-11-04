@@ -48,7 +48,8 @@ Everything else runs on its own. Staff only need these:
 | `/security tools <action>` | health check, drills, snapshots and restore, AutoMod rules, verification panel, model status |
 
 Approvals, containment notices, level changes and the digest arrive in the alert channel with buttons; nobody has to
-type a command for those.
+type a command for those. Each alert also has **Real** / **False alarm** buttons: staff verdicts teach Clairvoyance
+this server's bar (see Clairvoyance's role).
 
 Changes to security are announced in the alert channel: every settings change shows who made it and what changed,
 in a warning colour when it weakens the defences (for example shadow mode, looser budgets, anti-nuke switches off,
@@ -111,6 +112,12 @@ All of these are deterministic rules with reason codes, so an alert says *what w
   - **Mention bombs** and mention floods, and **@everyone attempts**.
   - **Invites** to other servers (flag or delete; this server's own invites are allowed).
   - **Channel surges**, measured against each channel's learned rate.
+  - **Slow-drip raids:** a raid spread over hours, where each account posts once or twice, long after the rate rules
+    stop looking. Three or more members who joined in the last day (`messages.drip_accounts`) posting the same
+    unofficial site, or the same message around a rotating link, within 24 hours raise a phishing signal covering
+    every post in the wave. Official and everyday sites (YouTube, X, Reddit, Imgur, ...) never count, nor do members
+    who have been here longer. The posts are removed only when the links carry another warning sign (a risky
+    domain, a lure like "free nitro") or the wave is two accounts past the bar; otherwise it's an alert.
   - Relaxed channels (`channels.relaxed`, e.g. roleplay battles) get 3× the limits.
 - **Links (no fetching):**
   - look-alikes of protected brands (`dlscord`, `steamcomunnity`);
@@ -156,8 +163,9 @@ All of these are deterministic rules with reason codes, so an alert says *what w
 | pausing invites / DMs (Discord's own incident actions, which expire by themselves) | proposed: Senior Moderator confirms |
 | lockdowns, restores from a snapshot | proposed: **two different staff** approve (`approvals.two_person`) |
 
-Automatic actions never restrict staff, except anti-nuke quarantine. Models never trigger an action on their own (see
-below). Proposals arrive in the alert channel with **Approve** and **Decline** buttons. Each request:
+Automatic actions never restrict staff, except anti-nuke quarantine. Automatic timeouts and probation also skip
+**trusted members** (see member standing below): staff get a proposal instead, and the flagged messages are still
+removed, because established accounts do get compromised. Models never trigger an action on their own (see below). Proposals arrive in the alert channel with **Approve** and **Decline** buttons. Each request:
 - has a one-use token and expires after 20 minutes;
 - is answered by compare-and-set, so two people clicking at once can't both carry it out;
 - re-checks the presser's clearance at the moment of pressing.
@@ -233,7 +241,33 @@ deletes its evidence snippets. Incidents close after 30 quiet minutes.
 
 **Cases.** Every moderation action, manual or automatic, gets a numbered **case** in the mod-log channel. `/case edit`
 corrects a reason (the old reason is kept in the record's edit history), `/case delete` removes a case (Admin), and
-`/modlog` shows a member's history.
+`/modlog` opens the member file (below).
+
+## Member standing and economy holds
+
+**Standing** is one view of a member across every system, from this server's own records only: how long they've been
+here, on how many days they posted (daily message *counts*, never content), their moderation cases (automatic ones
+count half, and older ones fade over 6 months), the security incidents they were part of (an incident staff marked a
+false alarm doesn't count) and confirmed economy anomaly signals. No identity attributes are used.
+
+| band | score | |
+|---|---|---|
+| new | under 25 | |
+| regular | 25-49 | |
+| established | 50-74 | an alert about them says "possibly a compromised account" |
+| trusted | 75+, and 30+ days here and 14+ active days | automatic timeouts and probation are left to staff |
+| restricted | any | on probation or quarantined right now |
+
+`/modlog <member>` (Helpers and above) is the **member file**: standing and why, cases, incidents (with staff
+verdicts), anomaly signals and any economy hold. Security alerts and review signals cross-reference each other: an
+alert names members who also have economy signals, and a review signal shows the member's standing and incidents.
+
+**Economy holds** stop raid and alt accounts from laundering money while security has them contained:
+- an account on probation or in quarantine can't `/send` or receive money, rob or be robbed, or take a `/loan`;
+- during a raid alert (threat level 3 or higher), accounts that joined in the last 24 hours can't transfer either.
+
+The hold lifts when the member is released (`/security release`), when the alert ends or when the account is a day
+old.
 
 ## Privacy and retention
 
@@ -243,8 +277,11 @@ corrects a reason (the old reason is kept in the record's edit history), `/case 
   (`retention.snippet_days`).
 - Closed incidents (with their actions) are deleted after **90 days** (`retention.incident_days`).
 - Ban-evasion fingerprints (avatar hash, name stem of banned accounts) are kept for a year.
-- Staff "last seen" timestamps (for stale-staff checks) are kept; nothing about ordinary members.
-- No demographic or identity attributes are used anywhere. No moderator decision is turned into training data.
+- Staff "last seen" timestamps (for stale-staff checks) are kept.
+- For member standing, a **count of messages per member per day** is kept for 180 days, never their content, plus
+  which members each incident involved (deleted with the incident).
+- No demographic or identity attributes are used anywhere. No moderator decision is turned into training data:
+  staff verdicts only move a bounded threshold (below), and no model weights change.
 - Records are per server, readable by Helpers and above, and kept in `data/rudhabot.db` (backed up daily).
 
 ## Clairvoyance's role
@@ -265,6 +302,15 @@ event loop with a 2-second timeout. If one fails, the rules carry on alone.
   beats severity there, but not among full alerts, so alerts aren't re-ordered by it.
 - **Staff baseline:** each staff account's own usual rate of high-impact actions. A wildly unusual burst is flagged
   even under budget, but only budgets trigger quarantine.
+- **Learning from staff verdicts (no new weights):** every alert has **Real** and **False alarm** buttons (Helpers and
+  above; a later press replaces the earlier verdict). Once staff have judged 5 alerts the models contributed to, the
+  confidence the message and incident models need moves with the share of false alarms: from 0.80 (few false
+  alarms) up to at most 0.95 (mostly false alarms). It never goes below 0.80. Per-detector precision appears in
+  `/clairvoyance status`, and a detector that is mostly false alarms here (5+ verdicts, under 50% real) gets a
+  health-check hint on which setting to adjust.
+
+Wherever a model contributed (an alert with model evidence, the ranked digest, drills with models), the post carries
+the Clairvoyance footer and logo.
 
 How they were trained and how well they work, with confidence intervals and what the numbers do and don't show:
 `docs/ML.md` and `models/security/BENCHMARK.md`.
@@ -305,6 +351,11 @@ Changes are versioned (`/security settings key:rollback`, `/security settings ke
 - `levels.*`: the highest automatic level and the decay time.
 - `auto.*`: which automatic actions live mode may take, the timeout length, model corroboration.
 - `approvals.*`, `lockdown.*`, `retention.*`, `models.*`, `llm.summaries`.
+- `messages.drip_accounts` (default 3): how many members who joined in the last day make a slow-drip raid.
+
+The channels and roles the rest of Rudhabot uses (economy, birthdays, lottery, audit, reports; admin, banker,
+bankrupt) are set with `/setup`; it also shows this security set-up. Changing the admin or banker role there is posted
+to the alert channel, like a settings change.
 
 Staff tiers (`/security staff`) can't be given to @everyone or to an integration's role. Only the owner can map
 a role to Admin, or make a role held by 25+ members Moderator or higher.
@@ -329,7 +380,10 @@ Lists: `links.deny`, `links.allow`, `channels.relaxed`, `channels.protected`, `c
 in-memory fake server: nothing touches Discord.
 
 They cover:
-- every detector, including the hard negatives: birthday floods, roleplay battles, onboarding waves, staff floods;
+- every detector, including the hard negatives: birthday floods, roleplay battles, onboarding waves, staff floods,
+  everyday links from new members;
+- member standing, trusted members spared automatic restrictions, economy holds, cross-references
+  (`tests/test_standing.py`), and learning from verdicts (`tests/test_clairvoyance_integration.py`);
 - anti-nuke containment, and the owner and Rudhabot never being targeted;
 - shadow vs live mode;
 - the clearance rules, approvals (two-person, replay, expiry, decline) and lockdowns (preview, overlap, restart,

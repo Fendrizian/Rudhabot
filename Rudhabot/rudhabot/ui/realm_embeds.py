@@ -47,7 +47,8 @@ def report_embed(r: dict) -> discord.Embed:
             lines.append(f"Staff verdicts: {sec['verdicts']} · alerts {sec['precision']:.0%} real · model bar "
                          f"{sec['message_bar']:.2f}")
         if sec.get("spared_trusted"):
-            lines.append(f"{sec['spared_trusted']} trusted member(s) left to staff instead of automatic action")
+            lines.append(f"{sec['spared_trusted']} time(s) a trusted member was left to staff instead of an "
+                         "automatic action (since the last restart)")
         embed.add_field(name="🛡️ Security", value="\n".join(lines)[:1024], inline=False)
     com = r.get("community")
     if com:

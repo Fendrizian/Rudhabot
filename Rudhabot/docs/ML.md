@@ -180,6 +180,10 @@ opens `/bank tiers`); the trainer's first epoch saw the data sorted by intent.
   | **v2 detector** | **0.948** | **0.856** | 0.69 / 0.99 / 0.76 / 1.00 |
 
   This is synthetic data. Real-server precision has to be judged from moderators' `/review resolve` outcomes.
+- **Learning this server's bar (no new weights):** `/review resolve` outcomes move the forest's threshold. Over the
+  last 60 resolved model signals (rule signals are fixed), once there are at least 5: mostly dismissed raises the
+  bar (up to 0.74), mostly confirmed lowers it (down to 0.58). The base is 0.62. It is remembered across restarts
+  and shown in `/clairvoyance status`.
 
 ## 4. Finance insights (`services/insights.py`)
 
@@ -343,13 +347,58 @@ the rules but not contained. That is the cost of not quarantining staff on weak 
 **These are simulation results.** The simulator measures behaviour against modelled attacks. It doesn't prove
 real-world accuracy.
 
+## 6. Clairvoyance across the bot
+
+**Branding.** Every output a Clairvoyance model contributed to carries a "Clairvoyance · ..." footer with the logo:
+- the Cloudfall win bar, coach hints, Deck Doctor and similar cards;
+- finance tips in `/balance` and `/bank card info`;
+- `/ask` suggestions ("understood locally, 87% sure");
+- review signals and the `/review` list;
+- security alerts with model evidence, the ranked digest, drills with models;
+- the weekly State of the Realm.
+
+Rule-only outputs (an alert no model contributed to, a card with no similar-card list) are not branded, so the logo
+means a model was involved.
+
+**One status view.** `/clairvoyance status` (and `/security tools action:models`) shows every component with its
+health, its fallback, and what it has learned here:
+- Cloudfall: model, held-out AUC and ECE, calls, p95 latency;
+- intent router: suggestions offered, run and clarifying questions asked;
+- anomaly monitor: windows fitted, the current bar and the verdicts it learned from;
+- security models: their state, staff verdicts, alert precision and the current model bars;
+- the language model: on or off.
+
+**Learning from this server, without new weights.** Three feedback loops move bounded settings, never weights:
+- **Security verdicts** (Real / False alarm on alerts): set the message and incident models' bar between 0.80 and
+  0.95, and give noisy detectors a health-check hint (`docs/SECURITY.md`).
+- **Review verdicts** (`/review resolve`): set the anomaly bar between 0.58 and 0.74 (section 3).
+- **Intent outcomes:** how often a suggestion was offered, run, or turned into a clarifying question, per intent.
+  Counts only: the text people typed is never stored. They show which intents need better phrases when the router
+  is next retrained.
+
+**Member standing** (`services/standing.py`) combines the security records, the moderation log and confirmed
+anomaly signals into one score per member. It is a deterministic formula, not a trained model, so it isn't branded;
+see `docs/SECURITY.md`.
+
+**State of the Realm** (`services/realm.py`). A weekly, read-only report posted on Sunday evenings (and on demand
+with `/clairvoyance report`). It covers:
+- the economy trend from daily snapshots, and where money came from and went;
+- security incidents, actions and what shadow mode would have done;
+- staff verdicts;
+- community activity (counts only);
+- Cloudfall results;
+- Clairvoyance's own health and calibration;
+- birthdays ahead.
+
 ## Next steps
 1. **Play:** search two plies within your own turn; more generations from v3.
 2. **Prediction:** the early game is where every model is weakest; features for deck composition remaining could help.
 3. **Intent:** collect consented real phrasings (for example `/ask` texts that users approve) to retrain and evaluate.
-4. **Anomaly:** tune the bars from moderators' dismiss/confirm outcomes once real signals exist.
+4. **Anomaly:** the bar now learns from moderators' outcomes. Next: per-feature explanations staff can rate.
 5. **Security:**
-   - measure real precision from moderators' verdicts in shadow mode before going live;
+   - verdict buttons now measure real precision: collect a few weeks of them in shadow mode before going live;
    - more scam data (with a proper data policy);
-   - slow-drip detection across hours (per-account history rather than per-minute counts);
+   - slow-drip detection is now a rule (24-hour site and message fingerprints for new members); the incident model
+     still can't see it, because it reads per-minute counts;
    - tighter default budgets if staff agree.
+6. **Intent:** use the outcome counts to choose which intents get more training phrases.

@@ -143,7 +143,14 @@ class StandingService:
         if hit is not None and now - hit[0] < CACHE_S:
             return hit[1]
         try:
-            value = self.of(guild_id, user_id).trusted
+            # fast path for raids (hundreds of brand-new targets at once): too new, or not here, is never trusted
+            rt = self.security.runtime(guild_id)
+            member = rt.port.member(user_id) if rt is not None else None
+            joined = getattr(member, "joined_at", None)
+            if joined is None or now - joined < TRUST_MIN_TENURE_DAYS * 86400:
+                value = False
+            else:
+                value = self.of(guild_id, user_id, joined).trusted
         except Exception:
             value = False
         self._cache[(guild_id, user_id)] = (now, value)

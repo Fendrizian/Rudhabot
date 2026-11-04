@@ -381,7 +381,7 @@ def get_commands_data():
         {
             "name": "rob",
             "args": "<user>",
-            "description": "Attempt to rob another user. Success steals money, failure results in a fine."
+            "description": "Attempt to rob another user. Success steals money, failure results in a fine. Accounts security has on probation or in quarantine can't rob or be robbed."
         },
         {
             "name": "send",
@@ -426,7 +426,7 @@ def get_commands_data():
         {
             "name": "loan",
             "args": "<amount> <days>",
-            "description": "Take a loan from the bank. Amount: 100-10000ra, Days: 1-30."
+            "description": "Take a loan from the bank. Amount: 100-10000ra, Days: 1-30. Not available while security has your account on probation or in quarantine."
         },
         {
             "name": "pay",

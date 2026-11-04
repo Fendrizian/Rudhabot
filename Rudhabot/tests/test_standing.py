@@ -122,6 +122,7 @@ class EconomyHoldTests(_StandingCase):
         self.sec.store.set_probation(1, self.bob.id, 7, self.now() + 3600, "test", None)
         it = await self.run_command("send", self.alice, self.guild, target=self.bob, amount="100")
         self.assertIn("can't move money", it.last_embed.description)
+        self.assertNotIn("probation", it.last_embed.description)
         self.assertEqual(self.account(self.bob)["wallet"], 1000)
         it = await self.run_command("send", self.bob, self.guild, target=self.alice, amount="100")
         self.assertIn("Your account", it.last_embed.description)
@@ -142,8 +143,11 @@ class EconomyHoldTests(_StandingCase):
         self.assertEqual(self.account(self.bob)["wallet"], 1010)                  # level 1: fine
         rt.engine.set_level(Level(3), self.now(), ADMIN, "raid", 3600)
         it = await self.run_command("send", self.alice, self.guild, target=self.bob, amount="10")
-        self.assertIn("raid alert", it.last_embed.description)
+        self.assertIn("can't move money", it.last_embed.description)
+        self.assertNotIn("raid", it.last_embed.description)                     # not told why someone else is held
         self.assertEqual(self.account(self.bob)["wallet"], 1010)
+        it = await self.run_command("send", self.bob, self.guild, target=self.alice, amount="10")
+        self.assertIn("raid alert", it.last_embed.description)                  # the member themselves is told
         self.bob.joined_at = self.clock.now(timezone.utc) - timedelta(days=3)
         await self.run_command("send", self.alice, self.guild, target=self.bob, amount="10")
         self.assertEqual(self.account(self.bob)["wallet"], 1020)                  # older members aren't held

@@ -1051,7 +1051,7 @@ class SecurityService(RecoveryMixin):
 
 #: settings whose higher value is a looser defence, and booleans whose switching off is
 LOOSER_WHEN_HIGHER = ("joins.min_joins", "joins.surge_ratio", "joins.cohort_min", "messages.flood_count",
-                      "messages.dup_count", "messages.coord_accounts", "messages.mention_limit",
+                      "messages.dup_count", "messages.coord_accounts", "messages.drip_accounts", "messages.mention_limit",
                       "messages.mention_window_limit", "messages.relaxed_factor", "links.delete_score",
                       "files.delete_score", "antinuke.window_s", "antinuke.budget_mod", "antinuke.budget_senior",
                       "antinuke.budget_admin", "levels.decay_minutes")
@@ -1087,6 +1087,7 @@ DETECTOR_HINTS = {
     "flood": "Raise messages.flood_count, or mark busy game channels relaxed (channels.relaxed).",
     "duplicate": "Raise messages.dup_count, or mark channels with repeated commands relaxed.",
     "coordinated": "Raise messages.coord_accounts.",
+    "slow_drip": "Raise messages.drip_accounts, or allow the site (links.allow) if new members share it legitimately.",
     "channel_surge": "Mark event/announcement channels relaxed or protected.",
     "join_surge": "Raise joins.min_joins or joins.surge_ratio (common around events and partner posts).",
     "join_cohort": "Raise joins.cohort_min.",

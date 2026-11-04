@@ -46,8 +46,9 @@ def economy_hold(interaction: discord.Interaction, *users) -> Optional[str]:
         joined = getattr(user, "joined_at", None)
         why = security.economy_hold(interaction.guild_id, user.id, joined.timestamp() if joined else None)
         if why:
-            whose = "Your account" if user.id == interaction.user.id else f"{user.mention}'s account"
-            after = ("It lifts by itself when the alert ends or the account is a day old." if "raid" in why else
-                     "It lifts when a moderator releases the account (`/security release`).")
-            return f"⛔ {whose} can't move money right now: {why}. {after}"
+            if user.id != interaction.user.id:            # someone else's moderation status isn't shared
+                return f"⛔ {user.mention}'s account can't move money right now. Try again later."
+            after = ("It lifts by itself when the alert ends or your account is a day old." if "raid" in why else
+                     "It lifts when a moderator releases your account.")
+            return f"⛔ Your account can't move money right now: {why}. {after}"
     return None

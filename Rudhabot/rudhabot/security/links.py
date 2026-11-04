@@ -45,6 +45,15 @@ PROTECTED = {
     "spotify": ("spotify.com", "spotify.link"),
 }
 OFFICIAL = {d for domains in PROTECTED.values() for d in domains}
+#: Everyday sites new members often share; the slow-drip detector doesn't count them (other checks still apply).
+COMMON_SITES = {"x.com", "twitter.com", "reddit.com", "redd.it", "instagram.com", "tiktok.com", "imgur.com",
+                "wikipedia.org", "wikimedia.org", "fandom.com", "pinterest.com", "facebook.com", "fb.watch",
+                "medium.com", "pixiv.net", "deviantart.com", "artstation.com", "soundcloud.com", "bandcamp.com",
+                "giphy.com", "streamable.com", "kick.com", "bsky.app", "threads.net", "linkedin.com", "amazon.com",
+                "netflix.com", "crunchyroll.com", "myanimelist.net", "anilist.co", "imdb.com", "genshin.hoyoverse.com",
+                "hoyoverse.com", "hoyolab.com", "pokemon.com", "nintendo.com", "playstation.com", "ea.com",
+                "riotgames.com", "valorant.com", "leagueoflegends.com", "speedtest.net", "notion.so", "canva.com",
+                "docs.google.com", "drive.google.com", "dropbox.com", "mediafire.com", "mega.nz", "tumblr.com"}
 SHORTENERS = {"bit.ly", "tinyurl.com", "t.co", "is.gd", "cutt.ly", "rb.gy", "shorturl.at", "ow.ly", "buff.ly",
               "tiny.cc", "rebrand.ly", "t.ly", "s.id", "v.gd", "bit.do", "shorte.st", "adf.ly", "tiny.one", "u.to",
               "clck.ru", "qr.ae", "bl.ink", "short.io", "surl.li", "shorturl.asia", "linkr.it", "gg.gg"}

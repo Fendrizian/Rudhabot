@@ -3,7 +3,8 @@
 ## Audit trail (every money change)
 
 **Where it's stored:**
-- Every change to anyone's money is appended to `ledger.jsonl`, one JSON line per change.
+- Every change to anyone's money is appended to the ledger, one entry per change: the `ledger` table of
+  `rudhabot.db`, indexed by member and by time (or `ledger.jsonl` with `RUDHABOT_STORAGE=json`).
 - It is append-only: history is never rewritten.
 - A torn last line after a crash is skipped.
 - The file rotates at 50 MB, and old files are kept.
@@ -38,7 +39,8 @@ happens:
 
 **Discord:**
 - Entries are posted to the audit channel in batched embeds: up to 20 per embed, every 15 s.
-- The audit channel is the economy log channel (`1215240269377830943`); override it with `RUDHABOT_AUDIT_CHANNEL_ID`.
+- The audit channel is the economy log channel (`1215240269377830943`); change it with `/setup audit_channel:` (or
+  `RUDHABOT_AUDIT_CHANNEL_ID`).
   Loan notices are not economy logs: they stay in the notifications channel.
 - Bankers and admins: `/audit [user]`. Players: `/bank history`, which shows only their own entries.
 
@@ -52,7 +54,39 @@ Members with the banker role (`banker_role_id`, 1566271529245999255) and all adm
 - lift a bankruptcy loan ban early, which also removes the bankrupt role (`/banker loan-unban`).
 
 Bankers can't create or remove money: `/add-money` and `/remove-money` stay admin-only. Every banker action is answered
-privately and posted to the audit channel with who did it and why.
+privately and posted to the audit channel with who did it and why. The banker role can be changed with `/setup`
+(the change is announced in the security alert channel).
+
+## Security holds
+
+Money can't move to or from an account security has contained, so a raid or alt account can't launder it:
+- on probation or in quarantine: no `/send` either way, no `/rob` either way, no `/loan`;
+- during a raid alert (threat level 3+), accounts that joined in the last 24 hours can't send or receive.
+
+The member is told why and how it lifts. Holds are listed in the member file (`/modlog`). Spending, earning and
+games are unaffected.
+
+## Daily snapshots and the weekly State of the Realm
+
+Just after each day ends, a snapshot records:
+- the money supply (wallets plus banks) and how many accounts hold money;
+- credit and loans owed;
+- the day's wallet and bank movements and active accounts;
+- where money came from and went: the net change per command or job, from the audit ledger.
+
+Snapshots are kept for 400 days (`economy_daily`).
+
+Every Sunday from 20:00 Rudhanese Time, the **State of the Realm** is posted to the reports channel. That channel
+follows the review channel; move it with `/setup reports_channel:`. Admins can see it at any time with
+`/clairvoyance report`. It shows:
+- the week's economy trend and money sources and sinks;
+- security;
+- community activity;
+- Cloudfall;
+- Clairvoyance's health;
+- birthdays ahead.
+
+It is read-only.
 
 ## Bank
 
@@ -155,9 +189,11 @@ balance never goes below zero. Money can't be sent to (or robbed from) bots.
 
 ## Review signals (Clairvoyance anomaly detection)
 
-See `docs/ML.md`. Signals go to the review channel (`RUDHABOT_REVIEW_CHANNEL_ID`, which defaults to the audit channel).
-Bankers and admins see them with `/review list` and close them with `/review resolve`. Nothing is ever changed
-automatically.
+See `docs/ML.md`. Signals go to the review channel (`/setup reviews_channel:` or `RUDHABOT_REVIEW_CHANNEL_ID`, which
+defaults to the audit channel). Bankers and admins see them with `/review list` and close them with `/review resolve`.
+Nothing is ever changed automatically.
+- Each posted signal shows the member's standing and security record.
+- Verdicts teach the monitor this server's bar (within fixed bounds).
 
 Each member is judged at most once a minute; activity that arrives inside that minute is picked up by a sweep every
 15 seconds, so a burst that starts and ends within a minute is still looked at.
