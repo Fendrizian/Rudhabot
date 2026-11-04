@@ -3,6 +3,7 @@ roles from equal or higher ranks, Discord's move semantics, mod-log cases, anti-
 from dataclasses import replace
 from types import SimpleNamespace
 
+from rudhabot.security import perms as P
 from rudhabot.security.actions import Pacer
 from rudhabot.security.clearance import Refused
 from rudhabot.security.fake import demo_guild
@@ -18,7 +19,7 @@ async def no_sleep(_):
     return None
 
 
-class RoleToolTests(CogTestCase):
+class _RoleCase(CogTestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         self.fake = demo_guild()
@@ -41,6 +42,8 @@ class RoleToolTests(CogTestCase):
     def position(self, role_id):
         return self.fake.model().role(role_id).position
 
+
+class RoleToolTests(_RoleCase):
     async def test_an_admin_can_give_and_take_roles_below_rudhabot(self):
         message, case = await self.sec.role_assign(1, ADMIN, MEMBER, SENIOR, True, "promotion")
         self.assertIn(SENIOR, self.roles_of(MEMBER))
@@ -125,3 +128,59 @@ class RoleToolTests(CogTestCase):
         it = FakeInteraction(self.bot, FakeUser(MOD, "mod"), guild)
         await listing.callback(listing.binding, it)
         self.assertIn("Not allowed", it.last_embed.title)
+
+
+class RolePermissionTests(_RoleCase):
+    def perms(self, role_id):
+        return self.fake.model().role(role_id).permissions
+
+    async def test_turning_a_permission_on_and_off(self):
+        message, case = await self.sec.role_permissions(1, ADMIN, HELPER, P.KICK_MEMBERS, True, "Kick Members", "x")
+        self.assertTrue(self.perms(HELPER) & P.KICK_MEMBERS)
+        self.assertTrue(self.perms(HELPER) & P.MANAGE_MESSAGES)                       # the rest is kept
+        self.assertEqual((case["kind"], case["extra"]["allow"]), ("role_perms", True))
+        self.assertIn("role_change", [k for k, _ in self.notes])                      # dangerous: staff alerted
+        message, case = await self.sec.role_permissions(1, ADMIN, HELPER, P.KICK_MEMBERS, True, "Kick Members", "x")
+        self.assertIsNone(case)
+        await self.sec.role_permissions(1, ADMIN, HELPER, P.KICK_MEMBERS, False, "Kick Members", "x")
+        self.assertFalse(self.perms(HELPER) & P.KICK_MEMBERS)
+        info = self.sec.role_permissions_view(1, ADMIN, HELPER)
+        self.assertEqual(info["permissions"], self.perms(HELPER))
+
+    async def test_everyone_and_bot_roles(self):
+        with self.assertRaises(Refused):
+            await self.sec.role_permissions(1, ADMIN, 1, P.BAN_MEMBERS, True, "Ban Members", "x")
+        await self.sec.role_permissions(1, ADMIN, 1, P.ADD_REACTIONS, False, "Add Reactions", "calm down")
+        self.assertFalse(self.perms(1) & P.ADD_REACTIONS)                             # harmless @everyone edits work
+        await self.sec.role_permissions(1, ADMIN, OTHER_BOT, P.MANAGE_CHANNELS, False, "Manage Channels", "contain")
+        self.assertFalse(self.perms(OTHER_BOT) & P.MANAGE_CHANNELS)                   # another bot's role: allowed
+        with self.assertRaises(Refused):
+            await self.sec.role_permissions(1, ADMIN, RUDHABOT, P.ADMINISTRATOR, False, "Administrator", "x")
+        with self.assertRaises(Refused):
+            await self.sec.role_permissions(1, MOD, HELPER, P.KICK_MEMBERS, True, "Kick Members", "x")
+        with self.assertRaises(Refused):
+            await self.sec.role_permissions(1, ADMIN, HELPER, P.KICK_MEMBERS | P.BAN_MEMBERS, True, "two", "x")
+
+    async def test_administrator_for_a_broad_role_trips_the_requesters_anti_nuke_budget(self):
+        await self.sec.role_permissions(1, ADMIN, CITIZEN, P.ADMINISTRATOR, True, "Administrator", "oops")
+        rt = self.sec.runtime(1)
+        self.assertTrue(any(i.family == "nuke" and ADMIN in i.users for i in rt.engine.incidents.values()))
+        kinds = {k for (k,) in self.sec.store.db.query("SELECT kind FROM sec_actions")}
+        self.assertIn("quarantine", kinds)                                           # planned (shadow mode here)
+
+    async def test_the_perms_command(self):
+        guild = FakeGuild(1)
+        group = self.bot.tree.get_command("role")
+        command = next(c for c in group.commands if c.name == "perms")
+        from tests.fakes import FakeInteraction
+        it = FakeInteraction(self.bot, FakeUser(ADMIN, "admin"), guild)
+        await command.callback(command.binding, it, SimpleNamespace(id=HELPER))
+        self.assertIn("Manage Messages", it.last_embed.description)
+        it = FakeInteraction(self.bot, FakeUser(ADMIN, "admin"), guild)
+        await command.callback(command.binding, it, SimpleNamespace(id=HELPER), "kick_members", "allow")
+        self.assertIn("Permission changed", it.last_embed.title)
+        it = FakeInteraction(self.bot, FakeUser(ADMIN, "admin"), guild)
+        await command.callback(command.binding, it, SimpleNamespace(id=HELPER), "fly", "allow")
+        self.assertIn("Unknown permission", it.last_embed.title)
+        choices = await command._params["permission"].autocomplete(command.binding, it, "time")
+        self.assertEqual([c.value for c in choices], ["moderate_members"])

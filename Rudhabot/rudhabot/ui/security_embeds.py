@@ -144,7 +144,7 @@ def approval_embed(payload: dict, status: str = "pending", approvers: Optional[l
 
 CASE_ICONS = {"warn": "⚠️", "timeout": "⏱️", "untimeout": "▶️", "kick": "👢", "ban": "🔨", "unban": "🕊️",
               "purge": "🧹", "quarantine": "🧯", "release": "🔓", "probation": "🪖", "role_add": "🎖️",
-              "role_remove": "🎖️", "role_move": "↕️"}
+              "role_remove": "🎖️", "role_move": "↕️", "role_perms": "🔑"}
 
 
 def case_embed(case: dict) -> discord.Embed:
@@ -153,7 +153,12 @@ def case_embed(case: dict) -> discord.Embed:
     subject = f"**Member:** <@{case['target_id']}> (`{case['target_id']}`)\n" if case.get("target_id") else ""
     if case["kind"].startswith("role_"):
         subject += f"**Role:** {extra.get('role_name', '?')} (`{extra.get('role', '?')}`)"
-        subject += f", position {extra['from']} → {extra['to']}\n" if case["kind"] == "role_move" else "\n"
+        if case["kind"] == "role_move":
+            subject += f", position {extra['from']} → {extra['to']}\n"
+        elif case["kind"] == "role_perms":
+            subject += f"\n**Permission:** {extra.get('permission')} {'allowed' if extra.get('allow') else 'removed'}\n"
+        else:
+            subject += "\n"
     embed = discord.Embed(title=f"{CASE_ICONS.get(case['kind'], '📋')} Case #{case['case_no']} · "
                                 f"{case['kind'].replace('_', ' ')}", color=Colors.MODLOG,
                           description=f"{subject}**Moderator:** {moderator}\n**Reason:** {case.get('reason') or '—'}")
@@ -285,6 +290,9 @@ def role_change_embed(p: dict) -> discord.Embed:
     if p["kind"] == "grant":
         text = (f"<@{p['actor']}> gave <@{p['target']}> **{p['role']}** through Rudhabot's role tools "
                 f"(case #{p['case']}).")
+    elif p["kind"] == "perms":
+        text = (f"<@{p['actor']}> gave the role **{p['role']}** ({p.get('members', 0)} member(s)) a dangerous permission "
+                f"through Rudhabot's role tools (case #{p['case']}).")
     else:
         text = (f"<@{p['actor']}> moved **{p['role']}** up from position {p['from']} to {p['to']} through Rudhabot's "
                 f"role tools (case #{p['case']}).")

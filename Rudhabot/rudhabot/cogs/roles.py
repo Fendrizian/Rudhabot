@@ -3,6 +3,7 @@
 /role add <member> <role> [reason]
 /role remove <member> <role> [reason]
 /role move <role> [position | above | below] [reason]
+/role perms <role> [permission] [allow | deny] [reason]   without a permission: show the role's permissions
 /role list                                  the hierarchy, and whether Rudhabot itself can manage roles
 
 Admin clearance (checked on every use). Rudhabot can only touch roles below its own highest role, never @everyone or
@@ -11,17 +12,41 @@ budget, and granting a role with dangerous permissions alerts staff. Switch off 
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 import discord
 from discord import app_commands
 
 from rudhabot.cogs.base import ServiceCog
+from rudhabot.security import perms as P
 from rudhabot.security.clearance import Refused
 from rudhabot.ui.security_embeds import simple
 from rudhabot.ui.theme import Colors
 
 REASON = app_commands.Range[str, 1, 300]
+#: Discord's real names where they differ from the API flag ("manage_guild" is "Manage Server" in the app)
+RENAMED = {"manage_guild": "Manage Server", "moderate_members": "Timeout Members",
+           "mention_everyone": "Mention @everyone, @here and All Roles", "view_guild_insights": "View Server Insights",
+           "send_tts_messages": "Send Text-to-Speech Messages", "use_external_emojis": "Use External Emoji",
+           "create_polls": "Create Polls"}
+#: discord.py accepts several names for some permissions; offer each permission once, under its current name
+ALIASES = {"send_polls", "external_emojis", "external_stickers", "manage_emojis", "manage_emojis_and_stickers",
+           "manage_permissions", "read_messages"}
+
+
+def permission_names() -> dict[str, int]:
+    """Every permission Discord knows (the API flag name -> its bit), without the aliases discord.py also accepts."""
+    out, seen = {}, set()
+    for name in sorted(set(discord.Permissions.VALID_FLAGS) - ALIASES):
+        bit = discord.Permissions(**{name: True}).value
+        if bit and not bit & (bit - 1) and bit not in seen:
+            seen.add(bit)
+            out[name] = bit
+    return out
+
+
+def label(name: str) -> str:
+    return RENAMED.get(name) or name.replace("_", " ").title()
 
 
 class RolesCog(ServiceCog):
@@ -67,6 +92,47 @@ class RolesCog(ServiceCog):
         await self._run(interaction, "↕️ Role moved", self.security.role_move(
             interaction.guild.id, interaction.user.id, role.id, position=position,
             above=above.id if above else None, below=below.id if below else None, reason=reason))
+
+    async def _permission_choices(self, interaction: discord.Interaction, current: str):
+        current = current.lower().replace(" ", "_")
+        names = permission_names()
+        hits = [n for n in names if current in n or current in label(n).lower().replace(" ", "_")]
+        return [app_commands.Choice(name=label(n) + (" ⚠️" if names[n] & P.DANGEROUS else ""), value=n)
+                for n in hits[:25]]
+
+    @role.command(name="perms", description="Turn one of a role's permissions on or off, or show its permissions")
+    @app_commands.describe(permission="Leave out to see the role's current permissions",
+                           state="allow = turn it on, deny = turn it off")
+    async def perms(self, interaction: discord.Interaction, role: discord.Role, permission: Optional[str] = None,
+                    state: Optional[Literal["allow", "deny"]] = None, reason: REASON = "role tools"):
+        guild_id, user_id = interaction.guild.id, interaction.user.id
+        if permission is None:
+            try:
+                info = self.security.role_permissions_view(guild_id, user_id, role.id)
+            except Refused as refusal:
+                return await self._reply(interaction, "⛔ Not allowed", str(refusal), Colors.UNAVAILABLE)
+            names = permission_names()
+            if info["permissions"] & P.ADMINISTRATOR:
+                body = "**Administrator** (every permission, ignoring channel overwrites)"
+            else:
+                on = [label(n) + (" ⚠️" if bit & P.DANGEROUS else "") for n, bit in names.items()
+                      if info["permissions"] & bit]
+                body = ", ".join(on) or "none"
+            return await self._reply(interaction, f"🔑 {info['name']}: permissions",
+                                     f"{body}\n\n⚠️ = dangerous. Change one with `/role perms role:… permission:… "
+                                     f"state:allow|deny`.", Colors.SECURITY)
+        names = permission_names()
+        key = permission.strip().lower().replace(" ", "_")
+        if key not in names:
+            return await self._reply(interaction, "Unknown permission", f"`{permission}` isn't a Discord permission; "
+                                     "pick one from the list.", Colors.FAIL)
+        if state is None:
+            return await self._reply(interaction, "Allow or deny?", "Choose `state: allow` or `state: deny`.",
+                                     Colors.FAIL)
+        await self._run(interaction, "🔑 Permission changed", self.security.role_permissions(
+            guild_id, user_id, role.id, names[key], state == "allow", label(key), reason))
+
+    perms.autocomplete("permission")(_permission_choices)
 
     @role.command(name="list", description="The role hierarchy, and whether Rudhabot can manage roles")
     async def list_roles(self, interaction: discord.Interaction):

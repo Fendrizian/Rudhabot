@@ -730,7 +730,9 @@ class SecurityService:
     # the audit-log anti-nuke budgets, so each change is fed to the engine as the *requester's* action instead: a
     # compromised admin can't use these commands to hand out power unnoticed. Every change is a case in the mod log;
     # granting a role with dangerous permissions also alerts staff.
-    def _role_target(self, guild_id: int, actor_id: int, role_id: int):
+    def _role_target(self, guild_id: int, actor_id: int, role_id: int, *, editing_permissions: bool = False):
+        """The checks every role tool shares. Editing permissions also allows @everyone and other bots' roles (Discord
+        lets their permissions be edited, just not who holds them), never Rudhabot's own role."""
         if not self.role_tools:
             raise Refused("The role tools are switched off (RUDHABOT_ROLE_TOOLS=0).")
         rt = self.runtime(guild_id)
@@ -741,9 +743,11 @@ class SecurityService:
         role = model.role(role_id)
         if role is None:
             raise Refused("That role doesn't exist any more.")
-        if role.id == model.id:
+        if role.managed and role.bot_id is not None and role.bot_id == model.bot_id:
+            raise Refused("That is Rudhabot's own role; its permissions can only be changed by the server owner.")
+        if role.id == model.id and not editing_permissions:
             raise Refused("@everyone can't be assigned or moved.")
-        if role.managed:
+        if role.managed and not editing_permissions:
             raise Refused(f"'{role.name}' is managed by an integration (a bot, boosts or a linked app); Discord doesn't "
                           "let anyone assign or remove it by hand.")
         if not model.base_permissions(model.bot_id) & P.MANAGE_ROLES:
@@ -833,6 +837,44 @@ class SecurityService:
                                                          "from": old, "to": new, "case": case["case_no"],
                                                          "permissions": P.names(role.permissions & P.DANGEROUS)[:6]})
         return (f"Moved '{role.name}' from position {old} to {new} (case #{case['case_no']}).", case)
+
+    def role_permissions_view(self, guild_id: int, actor_id: int, role_id: int) -> dict:
+        rt, tier, model, role = self._role_target(guild_id, actor_id, role_id, editing_permissions=True)
+        return {"id": role.id, "name": role.name, "permissions": role.permissions, "position": role.position,
+                "everyone": role.id == model.id, "managed": role.managed, "members": role.member_count}
+
+    async def role_permissions(self, guild_id: int, actor_id: int, role_id: int, bit: int, allow: bool, label: str,
+                               reason: str) -> tuple[str, Optional[dict]]:
+        """Turn one permission on or off for a role. Dangerous permissions are never given to @everyone; every change
+        is a case, is fed to anti-nuke as the requester's role_update (so handing Administrator to a broad role trips
+        their budget at once), and granting a dangerous one alerts staff."""
+        rt, tier, model, role = self._role_target(guild_id, actor_id, role_id, editing_permissions=True)
+        if bit <= 0 or bit & (bit - 1):
+            raise Refused("Pick a single permission.")
+        everyone = role.id == model.id
+        if allow and everyone and bit & P.DANGEROUS:
+            raise Refused(f"Rudhabot won't give @everyone {label}: it would hand that power to every member.")
+        before = role.permissions
+        after = before | bit if allow else before & ~bit
+        if after == before:
+            return (f"'{role.name}' {'already has' if allow else 'already lacks'} {label}. Nothing changed.", None)
+        await rt.executor.pacer.wait()
+        try:
+            await rt.port.edit_role_permissions(role.id, after, f"Rudhabot role tools, by {actor_id}: {reason}"[:480])
+        except ActionFailed as error:
+            raise Refused(f"Discord refused: {error}")
+        case = self.store.add_case(guild_id, "role_perms", 0, actor_id, reason,
+                                   extra={"role": role.id, "role_name": role.name, "permission": label,
+                                          "allow": allow, "before": before, "after": after, "via": "role tools"})
+        await self._notify("case", guild_id, {"case": case})
+        await self._count_for(rt, actor_id, tier, "role_update", target_id=role.id, perms_before=before,
+                              perms_after=after, target_is_everyone=everyone)
+        if allow and bit & P.DANGEROUS:
+            await self._notify("role_change", guild_id, {"kind": "perms", "actor": actor_id, "role": role.name,
+                                                         "permissions": [label], "members": role.member_count,
+                                                         "case": case["case_no"]})
+        return (f"{'Allowed' if allow else 'Removed'} {label} {'for' if allow else 'from'} '{role.name}' "
+                f"(case #{case['case_no']}).", case)
 
     def role_overview(self, guild_id: int, actor_id: int) -> dict:
         """The hierarchy as Rudhabot sees it, and whether Rudhabot itself can manage roles (for diagnosing)."""
