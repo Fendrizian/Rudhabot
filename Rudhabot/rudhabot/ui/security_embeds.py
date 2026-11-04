@@ -144,7 +144,7 @@ def approval_embed(payload: dict, status: str = "pending", approvers: Optional[l
 
 CASE_ICONS = {"warn": "⚠️", "timeout": "⏱️", "untimeout": "▶️", "kick": "👢", "ban": "🔨", "unban": "🕊️",
               "purge": "🧹", "quarantine": "🧯", "release": "🔓", "probation": "🪖", "role_add": "🎖️",
-              "role_remove": "🎖️", "role_move": "↕️", "role_perms": "🔑"}
+              "role_remove": "🎖️", "role_move": "↕️", "role_perms": "🔑", "channel_perms": "🔐"}
 
 
 def case_embed(case: dict) -> discord.Embed:
@@ -155,6 +155,9 @@ def case_embed(case: dict) -> discord.Embed:
         subject += f"**Role:** {extra.get('role_name', '?')} (`{extra.get('role', '?')}`)"
         if case["kind"] == "role_move":
             subject += f", position {extra['from']} → {extra['to']}\n"
+        elif case["kind"] == "channel_perms":
+            subject = (f"**Channel:** #{extra.get('channel_name')} · **For:** {extra.get('target_name')}\n"
+                       f"**Permission:** {extra.get('permission')} → {extra.get('state')}\n")
         elif case["kind"] == "role_perms":
             subject += f"\n**Permission:** {extra.get('permission')} {'allowed' if extra.get('allow') else 'removed'}\n"
         else:
@@ -290,6 +293,9 @@ def role_change_embed(p: dict) -> discord.Embed:
     if p["kind"] == "grant":
         text = (f"<@{p['actor']}> gave <@{p['target']}> **{p['role']}** through Rudhabot's role tools "
                 f"(case #{p['case']}).")
+    elif p["kind"] == "channel":
+        text = (f"<@{p['actor']}> allowed {p['role']} a dangerous permission in #{p['channel']} through Rudhabot's "
+                f"role tools (case #{p['case']}).")
     elif p["kind"] == "perms":
         text = (f"<@{p['actor']}> gave the role **{p['role']}** ({p.get('members', 0)} member(s)) a dangerous permission "
                 f"through Rudhabot's role tools (case #{p['case']}).")

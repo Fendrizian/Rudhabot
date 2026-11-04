@@ -250,6 +250,8 @@ For when staff can't manage roles in Discord themselves (Rudhabot's role sits ab
 - `/role move` places a role at a position, or just above or below another role;
 - `/role perms` turns one permission on or off for a role, or shows its permissions. It can also edit @everyone
   and other bots' roles (never Rudhabot's own), but never gives @everyone a dangerous permission;
+- `/role channel` sets one permission (allow, deny or neutral) for a member or role in a channel or a whole
+  category, or shows their current overwrite there. Never gives @everyone a dangerous allow;
 - `/role list` shows the hierarchy with what Rudhabot can and can't manage, and whether Rudhabot itself still has
   Manage Roles. Use it first when roles "stop working".
 

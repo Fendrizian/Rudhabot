@@ -876,6 +876,80 @@ class SecurityService:
         return (f"{'Allowed' if allow else 'Removed'} {label} {'for' if allow else 'from'} '{role.name}' "
                 f"(case #{case['case_no']}).", case)
 
+    def _overwrite_target(self, guild_id: int, actor_id: int, channel_id: int, target_id: int, target_type: str):
+        if not self.role_tools:
+            raise Refused("The role tools are switched off (RUDHABOT_ROLE_TOOLS=0).")
+        rt = self.runtime(guild_id)
+        if rt is None:
+            raise Refused("Security isn't available in this server.")
+        tier = self.require(guild_id, actor_id, "role_manage")
+        model = rt.port.model()
+        channel = model.channel(channel_id)
+        if channel is None:
+            raise Refused("That channel doesn't exist any more (threads take their channel's permissions).")
+        if target_type == "role":
+            role = model.role(target_id)
+            if role is None:
+                raise Refused("That role doesn't exist any more.")
+            if role.managed and role.bot_id == model.bot_id:
+                raise Refused("That is Rudhabot's own role; leave its channel permissions to the server owner.")
+            name = "@everyone" if role.id == model.id else f"'{role.name}'"
+        else:
+            if target_id == model.bot_id:
+                raise Refused("Rudhabot's own channel permissions can't be changed this way.")
+            if target_id != actor_id and tier < Tier.OWNER and self.tier_of(guild_id, target_id) >= tier:
+                raise Refused(f"They hold {self.tier_of(guild_id, target_id).label} clearance; only someone of higher "
+                              "rank can change their permissions.")
+            name = f"<@{target_id}>"
+        return rt, tier, model, channel, name
+
+    def channel_permissions_view(self, guild_id: int, actor_id: int, channel_id: int, target_id: int,
+                                 target_type: str) -> dict:
+        rt, tier, model, channel, name = self._overwrite_target(guild_id, actor_id, channel_id, target_id, target_type)
+        ow = channel.overwrite_for(target_id)
+        return {"channel": channel.name, "category": channel.is_category, "target": name,
+                "allow": ow.allow if ow else 0, "deny": ow.deny if ow else 0}
+
+    async def channel_permission(self, guild_id: int, actor_id: int, channel_id: int, target_id: int,
+                                 target_type: str, bit: int, state: str, label: str,
+                                 reason: str) -> tuple[str, Optional[dict]]:
+        """Set one permission in a channel's (or category's) overwrite for a member or role: allow, deny, or neutral
+        (inherit). Same safeguards as the role tools; dangerous allows for @everyone are refused."""
+        rt, tier, model, channel, name = self._overwrite_target(guild_id, actor_id, channel_id, target_id, target_type)
+        if bit <= 0 or bit & (bit - 1):
+            raise Refused("Pick a single permission.")
+        if state not in ("allow", "deny", "neutral"):
+            raise Refused("Choose allow, deny or neutral.")
+        everyone = target_type == "role" and target_id == model.id
+        if state == "allow" and everyone and bit & P.DANGEROUS:
+            raise Refused(f"Rudhabot won't give @everyone {label}: it would hand that power to every member here.")
+        ow = channel.overwrite_for(target_id)
+        allow, deny = (ow.allow, ow.deny) if ow else (0, 0)
+        new_allow = (allow | bit) if state == "allow" else allow & ~bit
+        new_deny = (deny | bit) if state == "deny" else deny & ~bit
+        where = f"{'category' if channel.is_category else 'channel'} '{channel.name}'"
+        if (new_allow, new_deny) == (allow, deny):
+            return f"{label} is already {state} for {name} in {where}. Nothing changed.", None
+        await rt.executor.pacer.wait()
+        try:
+            await rt.port.set_overwrite(channel.id, target_id, target_type, new_allow, new_deny,
+                                        f"Rudhabot role tools, by {actor_id}: {reason}"[:480])
+        except ActionFailed as error:
+            raise Refused(f"Discord refused: {error}")
+        case = self.store.add_case(guild_id, "channel_perms", target_id if target_type == "member" else 0, actor_id,
+                                   reason, extra={"channel": channel.id, "channel_name": channel.name,
+                                                  "target": target_id, "target_type": target_type, "target_name": name,
+                                                  "permission": label, "state": state, "via": "role tools"})
+        await self._notify("case", guild_id, {"case": case})
+        await self._count_for(rt, actor_id, tier, "overwrite_update" if ow else "overwrite_create", target_id=channel.id,
+                              perms_before=allow, perms_after=new_allow, target_is_everyone=everyone)
+        if state == "allow" and bit & P.DANGEROUS:
+            await self._notify("role_change", guild_id, {"kind": "channel", "actor": actor_id, "role": name,
+                                                         "channel": channel.name, "permissions": [label],
+                                                         "case": case["case_no"]})
+        note = " Channels synced with this category follow it." if channel.is_category else ""
+        return (f"{label}: **{state}** for {name} in {where} (case #{case['case_no']}).{note}", case)
+
     def role_overview(self, guild_id: int, actor_id: int) -> dict:
         """The hierarchy as Rudhabot sees it, and whether Rudhabot itself can manage roles (for diagnosing)."""
         self.require(guild_id, actor_id, "role_manage")

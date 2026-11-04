@@ -4,6 +4,7 @@
 /role remove <member> <role> [reason]
 /role move <role> [position | above | below] [reason]
 /role perms <role> [permission] [allow | deny] [reason]   without a permission: show the role's permissions
+/role channel <channel|category> <member|role> [permission] [allow | deny | neutral] [reason]
 /role list                                  the hierarchy, and whether Rudhabot itself can manage roles
 
 Admin clearance (checked on every use). Rudhabot can only touch roles below its own highest role, never @everyone or
@@ -12,7 +13,7 @@ budget, and granting a role with dangerous permissions alerts staff. Switch off 
 """
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 import discord
 from discord import app_commands
@@ -133,6 +134,37 @@ class RolesCog(ServiceCog):
             guild_id, user_id, role.id, names[key], state == "allow", label(key), reason))
 
     perms.autocomplete("permission")(_permission_choices)
+
+    @role.command(name="channel", description="Set one permission for a member or role in a channel or category")
+    @app_commands.describe(channel="A channel or a whole category", target="The member or role",
+                           permission="Leave out to see their current overwrite there",
+                           state="allow, deny, or neutral (inherit from the role/category)")
+    async def channel_perms(self, interaction: discord.Interaction, channel: discord.abc.GuildChannel,
+                            target: Union[discord.Member, discord.Role], permission: Optional[str] = None,
+                            state: Optional[Literal["allow", "deny", "neutral"]] = None, reason: REASON = "role tools"):
+        guild_id, user_id = interaction.guild.id, interaction.user.id
+        target_type = "role" if isinstance(target, discord.Role) else "member"
+        names = permission_names()
+        if permission is None:
+            try:
+                info = self.security.channel_permissions_view(guild_id, user_id, channel.id, target.id, target_type)
+            except Refused as refusal:
+                return await self._reply(interaction, "⛔ Not allowed", str(refusal), Colors.UNAVAILABLE)
+            allowed = ", ".join(label(n) for n, b in names.items() if info["allow"] & b) or "none"
+            denied = ", ".join(label(n) for n, b in names.items() if info["deny"] & b) or "none"
+            return await self._reply(interaction, f"🔐 {info['target']} in #{info['channel']}",
+                                     f"**Allowed:** {allowed}\n**Denied:** {denied}\nEverything else is neutral "
+                                     "(inherited).", Colors.SECURITY)
+        key = permission.strip().lower().replace(" ", "_")
+        if key not in names:
+            return await self._reply(interaction, "Unknown permission", f"`{permission}` isn't a Discord permission; "
+                                     "pick one from the list.", Colors.FAIL)
+        if state is None:
+            return await self._reply(interaction, "Allow, deny or neutral?", "Choose a `state`.", Colors.FAIL)
+        await self._run(interaction, "🔐 Channel permission set", self.security.channel_permission(
+            guild_id, user_id, channel.id, target.id, target_type, names[key], state, label(key), reason))
+
+    channel_perms.autocomplete("permission")(_permission_choices)
 
     @role.command(name="list", description="The role hierarchy, and whether Rudhabot can manage roles")
     async def list_roles(self, interaction: discord.Interaction):

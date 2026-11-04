@@ -184,3 +184,41 @@ class RolePermissionTests(_RoleCase):
         self.assertIn("Unknown permission", it.last_embed.title)
         choices = await command._params["permission"].autocomplete(command.binding, it, "time")
         self.assertEqual([c.value for c in choices], ["moderate_members"])
+
+
+class ChannelPermissionTests(_RoleCase):
+    def overwrite(self, channel, target):
+        ow = self.fake.model().channel(channel).overwrite_for(target)
+        return (ow.allow, ow.deny) if ow else (0, 0)
+
+    async def test_allow_deny_neutral_for_roles_and_members(self):
+        await self.sec.channel_permission(1, ADMIN, 101, HELPER, "role", P.MANAGE_THREADS, "allow", "Manage Threads", "x")
+        self.assertTrue(self.overwrite(101, HELPER)[0] & P.MANAGE_THREADS)
+        await self.sec.channel_permission(1, ADMIN, 101, HELPER, "role", P.MANAGE_THREADS, "deny", "Manage Threads", "x")
+        self.assertEqual(self.overwrite(101, HELPER), (0, P.MANAGE_THREADS))
+        msg, case = await self.sec.channel_permission(1, ADMIN, 101, HELPER, "role", P.MANAGE_THREADS, "neutral",
+                                                      "Manage Threads", "x")
+        self.assertEqual(self.overwrite(101, HELPER), (0, 0))
+        self.assertEqual(case["kind"], "channel_perms")
+        msg, case = await self.sec.channel_permission(1, ADMIN, 100, MEMBER, "member", P.SEND_MESSAGES, "allow",
+                                                      "Send Messages", "x")
+        self.assertIn("category", msg)
+        self.assertTrue(self.overwrite(100, MEMBER)[0] & P.SEND_MESSAGES)
+        info = self.sec.channel_permissions_view(1, ADMIN, 100, MEMBER, "member")
+        self.assertTrue(info["allow"] & P.SEND_MESSAGES and info["category"])
+
+    async def test_guards(self):
+        with self.assertRaises(Refused):
+            await self.sec.channel_permission(1, ADMIN, 101, 1, "role", P.MANAGE_MESSAGES, "allow", "x", "x")
+        await self.sec.channel_permission(1, ADMIN, 101, 1, "role", P.SEND_MESSAGES, "deny", "Send Messages", "x")
+        self.assertTrue(self.overwrite(101, 1)[1] & P.SEND_MESSAGES)                  # @everyone deny is fine
+        with self.assertRaises(Refused):
+            await self.sec.channel_permission(1, MOD, 101, HELPER, "role", P.SEND_MESSAGES, "allow", "x", "x")
+        with self.assertRaises(Refused):
+            await self.sec.channel_permission(1, ADMIN, 101, ADMIN2, "member", P.SEND_MESSAGES, "deny", "x", "x")
+        with self.assertRaises(Refused):
+            await self.sec.channel_permission(1, ADMIN, 101, RUDHABOT, "role", P.SEND_MESSAGES, "deny", "x", "x")
+        with self.assertRaises(Refused):
+            await self.sec.channel_permission(1, ADMIN, 999, HELPER, "role", P.SEND_MESSAGES, "deny", "x", "x")
+        await self.sec.channel_permission(1, ADMIN, 101, ADMIN, "member", P.MANAGE_MESSAGES, "allow", "x", "self")
+        self.assertIn("role_change", [k for k, _ in self.notes])
