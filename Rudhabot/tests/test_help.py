@@ -43,6 +43,23 @@ class HelpDataTests(CogTestCase):
             samples = __import__("re").findall(r"`/([^`]+)`", field.value)
             self.assertTrue(all(a.casefold() <= b.casefold() for a, b in zip(samples, samples[1:])), field.name)
 
+    def test_long_sections_are_split_into_pages_covering_every_command_once(self):
+        from rudhabot.views.help import PER_PAGE, section_pages
+        for key, *_, names in SECTIONS:
+            seen = []
+            for page in range(section_pages(key)):
+                fields = render(key, page)[0].fields
+                self.assertLessEqual(len(fields), PER_PAGE, key)
+                seen += [f.name for f in fields]
+            self.assertEqual(len(seen), len(names), key)
+            self.assertEqual(len(set(seen)), len(seen), key)
+        self.assertGreater(section_pages("security"), 1)
+        embed, view = render("security", 1)
+        self.assertIn("(2/", embed.title)
+        self.assertTrue(any(isinstance(i, NavButton) and i.target == "security" for i in view.children))
+        ids = [i.item.custom_id for i in render("security", section_pages("security") - 1)[1].children]
+        self.assertEqual(len(ids), len(set(ids)))                          # unique custom ids even on the last page
+
     def test_only_the_main_page_embeds_the_dri_banner(self):
         from rudhabot.ui.theme import BOTICON
         from rudhabot.views.help import HELP_IMAGE

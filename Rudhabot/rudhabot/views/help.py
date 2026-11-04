@@ -16,7 +16,7 @@ from discord import ButtonStyle, Interaction, ui
 
 from rudhabot.ui.theme import BOTICON, COMPONENT_FALLBACK, TCG, Colors
 
-PER_PAGE = 6
+PER_PAGE = 8                 # commands per page, in sections and in the full list
 COLOR = Colors.HELP
 ABOUT = ("**Rudhabot** is a bot specialized for the Rudharta Discord server, with features tuned for the community's "
          "needs. **Rudhabot** is developed by the Digital Research Institute, and as such is the property of the Kingdom "
@@ -103,28 +103,37 @@ def _field(embed: discord.Embed, command: dict) -> None:
 # ------------------------------------------------------------------ embeds
 def overview_embed() -> discord.Embed:
     embed = discord.Embed(title=f"{BOTICON} HELP", color=COLOR,
-                          description=ABOUT + "\n\nPick a section below, or press **Full list** to see every command. "
+                          description=ABOUT + "\n\nPick a section below, or press **Full list** for every command. "
                                               "Tip: `/ask` answers questions in plain words.")
     embed.set_thumbnail(url=THUMBNAIL)
     commands = _by_name()
     for key, title, emoji, summary, names in SECTIONS:
-        ordered = alphabetical(names)
-        sample = " ".join(f"`/{n.split(' |')[0]}`" for n in ordered[:4]) + (" …" if len(ordered) > 4 else "")
-        embed.add_field(name=f"{emoji} {title} ({sum(1 for n in names if n in commands)})", value=f"{summary}\n{sample}",
-                        inline=True)
+        count = sum(1 for n in names if n in commands)
+        embed.add_field(name=f"{emoji} {title}", value=f"{summary} · {count}", inline=True)
     embed.set_footer(text=f"{len(commands)} commands in {len(SECTIONS)} sections")
     return embed
 
 
-def section_embed(key: str) -> discord.Embed:
-    title, emoji, summary, names = SECTION_BY_KEY[key]
+def _section_commands(key: str) -> list[dict]:
     commands = _by_name()
-    embed = discord.Embed(title=f"{emoji} {title}", description=summary, color=COLOR)
-    for name in alphabetical(names):
-        if name in commands:
-            _field(embed, commands[name])
+    return [commands[n] for n in alphabetical(SECTION_BY_KEY[key][3]) if n in commands]
+
+
+def section_pages(key: str) -> int:
+    return max(1, math.ceil(len(_section_commands(key)) / PER_PAGE))
+
+
+def section_embed(key: str, page: int = 0) -> discord.Embed:
+    title, emoji, summary, _ = SECTION_BY_KEY[key]
+    pages = section_pages(key)
+    page = max(0, min(page, pages - 1))
+    embed = discord.Embed(title=f"{emoji} {title}" + (f" ({page + 1}/{pages})" if pages > 1 else ""),
+                          description=summary, color=COLOR)
+    for command in _section_commands(key)[page * PER_PAGE:(page + 1) * PER_PAGE]:
+        _field(embed, command)
     position = [k for k, *_ in SECTIONS].index(key) + 1
-    embed.set_footer(text=f"Section {position}/{len(SECTIONS)} · use the menu to switch sections")
+    embed.set_footer(text=f"Section {position}/{len(SECTIONS)}" + (f" · page {page + 1}/{pages}" if pages > 1 else "")
+                          + " · use the menu to switch sections")
     return embed
 
 
@@ -180,7 +189,7 @@ class SectionSelect(ui.DynamicItem[ui.Select], template=r"help:menu"):
         await _show(interaction, embed, view)
 
 
-class NavButton(ui.DynamicItem[ui.Button], template=r"help:(?P<target>home|full):(?P<page>\d+)"):
+class NavButton(ui.DynamicItem[ui.Button], template=r"help:(?P<target>[a-z_]+):(?P<page>\d+)"):
     def __init__(self, target: str, page: int = 0, label: str = "", disabled: bool = False, emoji: Optional[str] = None):
         super().__init__(ui.Button(label=label, emoji=emoji, disabled=disabled, style=ButtonStyle.primary
                                    if target == "full" else ButtonStyle.secondary, custom_id=f"help:{target}:{page}"))
@@ -195,19 +204,24 @@ class NavButton(ui.DynamicItem[ui.Button], template=r"help:(?P<target>home|full)
         await _show(interaction, embed, view)
 
 
+def _pager(view: ui.View, target: str, page: int, pages: int) -> None:
+    # custom ids must be unique within a message, so the prev/next ids differ even at the ends
+    view.add_item(NavButton(target, max(0, page - 1) if page > 0 else pages + 1, "◀ Previous", disabled=page == 0))
+    view.add_item(NavButton(target, page + 1 if page < pages - 1 else pages + 2, "Next ▶", disabled=page >= pages - 1))
+
+
 def help_view(current: str = "home", page: int = 0) -> ui.View:
     view = ui.View(timeout=None)
     view.add_item(SectionSelect(current))
     if current == "full":
-        pages = full_pages()
-        # custom ids must be unique within a message, so the prev/next ids differ even at the ends
-        view.add_item(NavButton("full", max(0, page - 1) if page > 0 else pages + 1, "◀ Previous", disabled=page == 0))
-        view.add_item(NavButton("full", page + 1 if page < pages - 1 else pages + 2, "Next ▶", disabled=page >= pages - 1))
+        _pager(view, "full", page, full_pages())
         view.add_item(NavButton("home", 0, "Overview", emoji="🏠"))
-    else:
-        view.add_item(NavButton("full", 0, "Full list", emoji="📖"))
-        if current != "home":
-            view.add_item(NavButton("home", 0, "Overview", emoji="🏠"))
+        return view
+    if current in SECTION_BY_KEY and section_pages(current) > 1:
+        _pager(view, current, page, section_pages(current))
+    view.add_item(NavButton("full", 0, "Full list", emoji="📖"))
+    if current != "home":
+        view.add_item(NavButton("home", 0, "Overview", emoji="🏠"))
     return view
 
 
@@ -217,7 +231,8 @@ def render(target: str, page: int = 0) -> tuple[discord.Embed, ui.View]:
         page = max(0, min(page, pages - 1))
         embed, view = create_help_embed(ordered_commands(), page, pages), help_view("full", page)
     elif target in SECTION_BY_KEY:
-        embed, view = section_embed(target), help_view(target)
+        page = max(0, min(page, section_pages(target) - 1))
+        embed, view = section_embed(target, page), help_view(target, page)
     else:
         return _with_image(overview_embed()), help_view("home")          # the banner is on the main page only
     return embed, view
