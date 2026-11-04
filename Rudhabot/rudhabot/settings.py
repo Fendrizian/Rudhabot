@@ -92,7 +92,7 @@ class LoanTerms:
     min_amount: int = 100
     max_days: int = 30
     min_days: int = 1
-    bankrupt_role_id: int = 1395412495254159371
+    bankrupt_role_id: int = 1567537952198762536
 
     @classmethod
     def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "LoanTerms":
