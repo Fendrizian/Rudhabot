@@ -126,6 +126,9 @@ class Outcome:
 
 
 Exemption = Callable[[str, int, str], bool]          # (kind: user|role|channel, id, detector) -> exempt?
+#: detectors answered by their own targeted actions (removing a slow-drip wave, probation for its accounts): they
+#: alert, but never raise the whole server's threat level, which would restrict every new member for hours
+LEVEL_NEUTRAL = frozenset({"slow_drip"})
 
 
 class GuildEngine:
@@ -324,7 +327,7 @@ class GuildEngine:
         families = len({i.family for i in active})
         target = suggested_level(self.breadth_severity(inc), families, nuke=inc.family == "nuke")
         if target <= self.threat.level:
-            self.threat.last_signal = now if inc.rule_severity >= 0.35 else self.threat.last_signal
+            self.threat.last_signal = now if self.level_severity(inc) >= 0.35 else self.threat.last_signal
             return None
         change = self.threat.raise_to(target, now, f"{inc.headline()} (incident {inc.id})", self.cfg["levels.auto_max"])
         if change is None:
@@ -337,7 +340,15 @@ class GuildEngine:
         whole server's guard, so member-driven incidents count fully only once several accounts are involved."""
         if inc.family in ("nuke", "integration"):
             return inc.rule_severity
-        return inc.rule_severity * min(1.0, 0.25 + 0.15 * len(inc.users))
+        return GuildEngine.level_severity(inc) * min(1.0, 0.25 + 0.15 * len(inc.users))
+
+    @staticmethod
+    def level_severity(inc: Incident) -> float:
+        """The rule severity without LEVEL_NEUTRAL detectors (the same combination as Incident.rule_severity)."""
+        if not any(d in LEVEL_NEUTRAL for d in inc.top):
+            return inc.rule_severity
+        scores = sorted((v for d, v in inc.top.items() if d not in LEVEL_NEUTRAL), reverse=True)[:5]
+        return 1 - math.prod(1 - v for v in scores) if scores else 0.0
 
     def _tag(self, plans: list[PlannedAction], signals: list[Signal], inc: Optional[Incident] = None) -> list[PlannedAction]:
         for plan in plans:

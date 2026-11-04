@@ -107,6 +107,13 @@ class Planner:
                 plans.append(PlannedAction("timeout", "auto", Tier.HELPER, "mass mentions from a new member",
                                            targets=[author], params={"seconds": MAX_AUTO_TIMEOUT_S},
                                            codes=["MSG_MENTION_BOMB"]))
+        drip = next((s for s in signals if s.detector == "slow_drip" and s.evidence.get("remove")), None)
+        if drip is not None and cfg["probation_role"] and cfg["auto.probation"]:
+            wave = [u for u in drip.evidence.get("authors", []) if self._fresh(f"probation:{u}", now, 86400)]
+            if wave:                                   # only the wave's accounts, not every new member
+                plans.append(PlannedAction("probation", "auto", Tier.HELPER, "part of a slow-drip raid", targets=wave,
+                                           params={"minutes": int(cfg["probation_minutes"])},
+                                           codes=["MSG_SLOW_DRIP"]))
         surge = next((s for s in signals if s.detector == "channel_surge"), None)
         if surge is not None and orders.slowmode_seconds and cfg["auto.slowmode"] and not cfg.protected(channel) \
                 and self._fresh(f"slowmode:{channel}", now, 120):

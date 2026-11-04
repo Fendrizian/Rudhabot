@@ -221,8 +221,10 @@ class DetectionTests(unittest.TestCase):
                 for i, text in enumerate(texts)]
         self.assertFalse(any(s.detector == "slow_drip" for o in outs[:2] for s in o.signals))   # 2 isn't a pattern
         drip = next(s for s in outs[2].signals if s.detector == "slow_drip")
-        self.assertEqual(drip.users, [800, 801, 802])
+        self.assertEqual(drip.evidence["authors"], [800, 801, 802])
+        self.assertEqual(drip.users, [802])                    # breadth builds as usual: no server-wide escalation
         self.assertEqual(len(drip.messages), 3)                                # every post in the wave, hours apart
+        self.assertLessEqual(self.engine.level, Level.ELEVATED)
         self.assertIn("cloudfall-rewards.shop", explain(drip.reasons[0].code, **dict(drip.reasons[0].facts)))
 
     def test_slow_drip_with_rotating_links_matches_on_the_message(self):
@@ -233,6 +235,8 @@ class DetectionTests(unittest.TestCase):
         self.assertTrue(drips)
         plans = [p for o in outs for p in o.plans]
         self.assertIn("delete_messages", [p.kind for p in plans])            # lures + weak TLD: removed
+        probation = {u for p in plans if p.kind == "probation" for u in p.targets}
+        self.assertEqual(probation, {820, 821, 822, 823})                    # the wave, and only the wave
 
     def test_slow_drip_ignores_everyday_sites_and_established_members(self):
         events = [msg(i, 840 + i, f"look at this https://x.com/someone/status/{i}", T0 + i * 3600, member_days=0.1)

@@ -116,8 +116,12 @@ All of these are deterministic rules with reason codes, so an alert says *what w
     stop looking. Three or more members who joined in the last day (`messages.drip_accounts`) posting the same
     unofficial site, or the same message around a rotating link, within 24 hours raise a phishing signal covering
     every post in the wave. Official and everyday sites (YouTube, X, Reddit, Imgur, ...) never count, nor do members
-    who have been here longer. The posts are removed only when the links carry another warning sign (a risky
-    domain, a lure like "free nitro") or the wave is two accounts past the bar; otherwise it's an alert.
+    who have been here longer.
+    - The wave is removed (each post once), and its accounts are put on probation, only when the links carry
+      another warning sign (a risky domain, a lure like "free nitro") or the wave is two accounts past the bar.
+      Otherwise it is an alert.
+    - It never raises the server's threat level by itself: the response is aimed at the wave, so other new members
+      aren't restricted for hours.
   - Relaxed channels (`channels.relaxed`, e.g. roleplay battles) get 3× the limits.
 - **Links (no fetching):**
   - look-alikes of protected brands (`dlscord`, `steamcomunnity`);
@@ -155,7 +159,7 @@ All of these are deterministic rules with reason codes, so an alert says *what w
 |---|---|
 | delete the flagged messages | automatic (live mode) |
 | slowmode on a surging channel (lifted automatically after 15 min) | automatic |
-| probation for risky joins (lifted automatically after `probation_minutes`) | automatic |
+| probation for risky joins, and for the accounts in a slow-drip wave (lifted automatically after `probation_minutes`) | automatic |
 | timeouts of at most 10 minutes for repeat spammers or mention bombs from new members | automatic |
 | **anti-nuke quarantine** of an account over its budget: its roles with dangerous permissions are removed, plus a 10-minute timeout. A bot over budget is kicked | automatic (the one exception for staff) |
 | containment in the same window: remove webhooks and bots that account added; undo dangerous grants to @everyone | automatic |

@@ -282,6 +282,7 @@ class MessageDetector:
         self._surge_reported: dict[int, float] = {}
         self._rate_updated: dict[int, float] = {}
         self.drip: dict[str, Window] = {}                     # site or link-message fingerprint -> new members' posts
+        self.drip_removed: dict = {}                          # posts already handed over for removal -> when
 
     def prune(self, now: float) -> None:
         if now - self._last_prune < 60:
@@ -294,6 +295,8 @@ class MessageDetector:
                 del table[key]
         for key in [k for k, w in self.drip.items() if not w.items or now - w.items[-1][0] > DRIP_WINDOW_S]:
             del self.drip[key]
+        for ref in [r for r, t in self.drip_removed.items() if now - t > DRIP_WINDOW_S]:
+            del self.drip_removed[ref]
         for author in list(self.dups):
             per = self.dups[author]
             for h in [h for h, w in per.items() if not w.items or now - w.items[-1][0] > 3600]:
@@ -476,12 +479,20 @@ class MessageDetector:
         # remove the posts when the links carry any other warning sign, or the wave is clearly bigger than the bar
         risky = links.score >= 0.3 or bool(links.lures) or len(authors) >= need + 2
         what = f"links to {key[5:]}" if key.startswith("site:") else "the same message around a link"
-        return Signal("slow_drip", "phishing", min(1.0, 0.5 + 0.05 * (len(authors) - need) + (0.1 if risky else 0.0)),
+        # each post is handed over for removal once (later signals in the wave don't delete it again)
+        pending = [r for _, (_, _, r) in posts if r not in self.drip_removed][-100:]
+        if risky:
+            for r in pending:
+                self.drip_removed[r] = now
+        # The signal names only this poster: a slow drip is answered by removing the wave and putting its accounts on
+        # probation, not by raising the whole server's threat level (which would restrict every new member for hours).
+        return Signal("slow_drip", "phishing", min(0.59, 0.5 + 0.01 * (len(authors) - need) + (0.04 if risky else 0.0)),
                       0.85 if risky else 0.7, now,
                       [Reason.of("MSG_SLOW_DRIP", accounts=len(authors), what=what, window="24 h")],
-                      users=sorted(authors), channels=sorted({c for _, (_, c, _) in posts}),
-                      messages=[r for _, (_, _, r) in posts][-100:],
-                      evidence={"key": key, "accounts": len(authors), "remove": risky}, snippet=snip)
+                      users=[msg.author_id], channels=[msg.channel_id],
+                      messages=pending or [ref],
+                      evidence={"key": key, "accounts": len(authors), "authors": sorted(authors)[:100],
+                                "remove": risky}, snippet=snip)
 
     def _channel(self, msg: Message, now: float, relax: float) -> Optional[Signal]:
         win = self.channels[msg.channel_id]
