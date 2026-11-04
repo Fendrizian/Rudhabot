@@ -19,6 +19,7 @@ CHANNEL_KEYS = {
     "birthdays": "birthday greetings and cake deliveries",
     "audit": "the economy audit log",
     "reviews": "Clairvoyance review signals",
+    "reports": "the weekly State of the Realm report",
 }
 ROLE_KEYS = {
     "admin": "administrators (alongside the Administrator permission)",

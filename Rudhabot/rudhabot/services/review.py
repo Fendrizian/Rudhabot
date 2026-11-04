@@ -44,8 +44,8 @@ class ReviewService:
     def refit(self) -> dict:
         """Fit the detector on the last 7 days of hourly windows from the ledger (blocking: run in a thread)."""
         cutoff = (self._clock.now() - timedelta(days=7)).isoformat()
-        entries = [e for e in self._ledger.read() if e.get("ts", "") >= cutoff]
-        fails = [f for f in self._failures.read() if f.get("ts", "") >= cutoff]
+        entries = list(_since(self._ledger, cutoff))
+        fails = list(_since(self._failures, cutoff))
         population = windows(entries, fails)
         fitted = self.detector.fit(population)
         log.info("anomaly model %s on %d hourly windows", "fitted" if fitted else "in cold start (rules only)", len(population))
@@ -161,3 +161,10 @@ class ReviewService:
         self.detector.threshold = round(min(high, max(low, threshold)), 3)
         self.calibration = {"resolved": len(resolved), "dismissed": dismissed, "threshold": self.detector.threshold}
         return self.calibration
+
+
+def _since(ledger, cutoff: str):
+    """Entries from `cutoff` on: the SQLite ledger's time index when it has one, otherwise a filtered read."""
+    if hasattr(ledger, "since"):
+        return ledger.since(cutoff)
+    return (e for e in ledger.read() if e.get("ts", "") >= cutoff)

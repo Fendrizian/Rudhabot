@@ -71,7 +71,7 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     ("banker", "Banker", "💼", "The banker role (and admins): look after member accounts",
      ("audit", "review list | resolve", "banker account", "banker card-hold | card-release", "banker loan-unban")),
     ("admin", "Admin", "🛠️", "Server administrators only",
-     ("add-money", "remove-money", "clairvoyance status | reload", "setup")),
+     ("add-money", "remove-money", "clairvoyance report", "clairvoyance status | reload", "setup")),
     ("moderation", "Moderation", "🛡️", "Warnings, timeouts, kicks, bans and the moderation log (staff)",
      ("warn", "timeout", "untimeout", "kick", "ban", "massban", "unban", "purge", "slowmode",
       "case view | edit | delete", "modlog", "Report to moderators")),
@@ -509,6 +509,11 @@ def get_commands_data():
             "description": "Add money to a user's account (Admin only: bankers can't create money)."
         },
         {
+            "name": "clairvoyance report",
+            "args": "",
+            "description": "The State of the Realm: the week across every system (economy trend and where money came from, security incidents and verdicts, community activity, Cloudfall, Clairvoyance's health, birthdays ahead). Also posted every Sunday evening to the reports channel."
+        },
+        {
             "name": "clairvoyance status | reload",
             "args": "[version]",
             "description": "Admin: every Clairvoyance model in one view (Cloudfall, intent router, anomaly monitor, security models, language model), what it has learned from this server's verdicts, and the Cloudfall model's quality, latency and health; reload or roll back."
@@ -521,7 +526,7 @@ def get_commands_data():
         {
             "name": "setup",
             "args": "[channels] [roles] [reset]",
-            "description": "The channels (notifications, lottery, birthdays, audit, reviews) and roles (admin, banker, bankrupt) Rudhabot uses here, in one place. Empty shows the current setup; changes apply at once. Changing the admin role needs the Administrator permission."
+            "description": "The channels (notifications, lottery, birthdays, audit, reviews, reports) and roles (admin, banker, bankrupt) Rudhabot uses here, in one place. Empty shows the current setup; changes apply at once. Changing the admin role needs the Administrator permission."
         },
         {
             "name": "lottery",

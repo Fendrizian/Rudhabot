@@ -44,6 +44,7 @@ class Paths:
     failures: str = "failures.jsonl"        # failed interactions (input to anomaly detection)
     intent_outcomes: str = "intent_outcomes.json"   # suggestion counts (JSON backend only; no text)
     server_profile: str = "server_profile.json"     # /setup overrides (JSON backend only)
+    economy_daily: str = "economy_daily.json"       # daily economy snapshots (JSON backend only)
     database: str = "rudhabot.db"           # SQLite storage (RUDHABOT_STORAGE=sqlite, the default)
     backups: str = "backups"                # daily database backups
 
@@ -73,16 +74,19 @@ class Channels:
     birthdays: int = 1566283840350191646          # greetings and cake deliveries
     audit: int = 1215240269377830943              # the economy audit log (every money change)
     reviews: int = 1215240269377830943            # Clairvoyance review signals
+    reports: int = 1215240269377830943            # the weekly State of the Realm (follows the review channel)
 
     @classmethod
     def from_env(cls, environ: Optional[Mapping[str, str]] = None) -> "Channels":
         d = cls()
         audit = _id("RUDHABOT_AUDIT_CHANNEL_ID", d.audit, environ)
+        reviews = _id("RUDHABOT_REVIEW_CHANNEL_ID", audit, environ)
         return cls(notifications=_id("RUDHABOT_NOTIFICATIONS_CHANNEL_ID", d.notifications, environ),
                    lottery=_id("RUDHABOT_LOTTERY_CHANNEL_ID", d.lottery, environ),
                    birthdays=_id("RUDHABOT_BIRTHDAYS_CHANNEL_ID", d.birthdays, environ),
                    audit=audit,
-                   reviews=_id("RUDHABOT_REVIEW_CHANNEL_ID", audit, environ))      # follows the audit channel if unset
+                   reviews=reviews,                                     # follows the audit channel if unset
+                   reports=_id("RUDHABOT_REPORTS_CHANNEL_ID", reviews, environ))   # follows the review channel
 
 
 @dataclass(frozen=True)

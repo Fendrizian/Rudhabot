@@ -42,6 +42,13 @@ class Ledger:
                 except json.JSONDecodeError:
                     continue                     # a torn last line after a crash
 
+    def since(self, ts: str, until: Optional[str] = None) -> Iterator[dict]:
+        """Entries with `ts` >= the given ISO time (and < `until`), oldest first (a scan: the SQLite ledger indexes it)."""
+        for entry in self.read():
+            stamp = entry.get("ts", "")
+            if stamp >= ts and (until is None or stamp < until):
+                yield entry
+
     def tail(self, n: int = 20, user_id: Optional[str] = None) -> list[dict]:
         keep: deque = deque(maxlen=n)
         for entry in self.read():

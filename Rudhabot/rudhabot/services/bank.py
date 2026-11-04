@@ -186,6 +186,10 @@ class BankService:
         return target
 
     # ------------------------------------------------------------------ credit card
+    def credit_owed(self) -> int:
+        """Everything owed on credit cards across the server (stored profiles, read without refreshing them)."""
+        return sum(int((p.get("credit") or {}).get("balance", 0)) for p in self._data.value().values())
+
     def credit_available(self, profile: dict) -> int:
         return max(0, self.tier_of(profile).credit_limit - profile["credit"]["balance"])
 

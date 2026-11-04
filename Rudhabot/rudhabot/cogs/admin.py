@@ -76,13 +76,14 @@ class AdminCog(ServiceCog):
                     birthdays_channel: Optional[discord.TextChannel] = None,
                     audit_channel: Optional[discord.TextChannel] = None,
                     reviews_channel: Optional[discord.TextChannel] = None,
+                    reports_channel: Optional[discord.TextChannel] = None,
                     admin_role: Optional[discord.Role] = None, banker_role: Optional[discord.Role] = None,
                     bankrupt_role: Optional[discord.Role] = None,
-                    reset: Optional[Literal["notifications", "lottery", "birthdays", "audit", "reviews", "admin",
-                                            "banker", "bankrupt", "all"]] = None):
+                    reset: Optional[Literal["notifications", "lottery", "birthdays", "audit", "reviews", "reports",
+                                            "admin", "banker", "bankrupt", "all"]] = None):
         profile = self.services.profile
         wanted = {"notifications": notifications_channel, "lottery": lottery_channel, "birthdays": birthdays_channel,
-                  "audit": audit_channel, "reviews": reviews_channel, "admin": admin_role, "banker": banker_role,
+                  "audit": audit_channel, "reviews": reviews_channel, "reports": reports_channel, "admin": admin_role, "banker": banker_role,
                   "bankrupt": bankrupt_role}
         wanted = {k: v for k, v in wanted.items() if v is not None}
         problems = []

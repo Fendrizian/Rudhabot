@@ -1,4 +1,5 @@
-"""/clairvoyance: one view of every Clairvoyance model and what it learned here, plus model management (admins)."""
+"""/clairvoyance: one view of every Clairvoyance model and what it learned here, the weekly State of the Realm report,
+and model management (admins)."""
 from __future__ import annotations
 
 import discord
@@ -47,3 +48,12 @@ class ClairvoyanceCog(ServiceCog, commands.GroupCog, group_name="clairvoyance", 
         ok = self.services.clairvoyance.reload(version or None)
         text = f"✅ Loaded `{self.services.clairvoyance.version}`." if ok else f"⚠️ {self.services.clairvoyance.load_error}; using the heuristic."
         await interaction.response.send_message(text, ephemeral=True)
+
+    @app_commands.command(name="report", description="The State of the Realm: this week across every system (read-only)")
+    @admin_only()
+    async def report(self, interaction: discord.Interaction):
+        from rudhabot.ui.realm_embeds import report_embed
+        realm = self.services.realm
+        if realm.snapshot_due() is not None:
+            realm.take_snapshot()                 # make sure yesterday is in
+        await interaction.response.send_message(embed=report_embed(realm.report(interaction.guild_id)), ephemeral=True)

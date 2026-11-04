@@ -14,6 +14,7 @@ gacha.json
 reviews.json
 intent_outcomes.json
 server_profile.json
+economy_daily.json
 ledger.jsonl
 failures.jsonl
 rudhabot.db

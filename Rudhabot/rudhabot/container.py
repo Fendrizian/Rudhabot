@@ -36,6 +36,7 @@ from rudhabot.services.clairvoyance import ClairvoyanceService
 from rudhabot.services.lottery import LotteryService
 from rudhabot.services.permissions import AdminPolicy
 from rudhabot.services.profile import ServerProfile
+from rudhabot.services.realm import RealmService
 from rudhabot.services.sessions import GamblingSessions
 from rudhabot.services.shop import CafeMenu, ShopService
 from rudhabot.services.standing import StandingService
@@ -79,6 +80,7 @@ class Services:
     security: SecurityService
     standing: StandingService
     profile: ServerProfile
+    realm: RealmService
 
     @classmethod
     def build(cls, settings: Settings, client: discord.Client, *, clock: Clock | None = None,
@@ -120,7 +122,8 @@ class Services:
         security = _build_security(settings, storage, clock, client, assistant, lambda: profile.role("admin"))
         standing = StandingService(security, reviews, clock)       # one view of a member across every system
         security.protect = standing.protect
-        return cls(
+        realm = RealmService(value("economy_daily", paths.economy_daily, dict), clock)   # snapshots + weekly report
+        services = cls(
             settings=settings,
             clock=clock,
             rng=rng,
@@ -156,7 +159,10 @@ class Services:
             security=security,
             standing=standing,
             profile=profile,
+            realm=realm,
         )
+        realm.bind(services)
+        return services
 
 
 def _build_security(settings: Settings, storage: Storage, clock: Clock, client: discord.Client,

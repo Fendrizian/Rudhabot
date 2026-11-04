@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS kv (name TEXT PRIMARY KEY, value TEXT NOT NULL, updat
 CREATE TABLE IF NOT EXISTS ledger (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, user TEXT, ts TEXT, entry TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS ledger_by_user ON ledger (name, user, id);
+CREATE INDEX IF NOT EXISTS ledger_by_ts ON ledger (name, ts);
 """
 
 
@@ -317,6 +318,25 @@ class SqliteLedger:
         while True:                               # paged, so a long history never sits in memory at once
             rows = self.db.query("SELECT id, entry FROM ledger WHERE name=? AND id>? ORDER BY id LIMIT 2000",
                                  (self.name, last))
+            if not rows:
+                return
+            for row_id, text in rows:
+                last = row_id
+                try:
+                    yield json.loads(text)
+                except json.JSONDecodeError:
+                    continue
+
+    def since(self, ts: str, until: Optional[str] = None) -> Iterator[dict]:
+        """Entries with `ts` >= the given ISO time (and < `until`), oldest first, via the time index."""
+        last = 0
+        while True:
+            if until is None:
+                rows = self.db.query("SELECT id, entry FROM ledger WHERE name=? AND ts>=? AND id>? ORDER BY id "
+                                     "LIMIT 2000", (self.name, ts, last))
+            else:
+                rows = self.db.query("SELECT id, entry FROM ledger WHERE name=? AND ts>=? AND ts<? AND id>? ORDER BY "
+                                     "id LIMIT 2000", (self.name, ts, until, last))
             if not rows:
                 return
             for row_id, text in rows:

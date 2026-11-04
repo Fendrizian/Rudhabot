@@ -102,6 +102,7 @@ class AuditService:
         self._recent_all: deque = deque(maxlen=RECENT_GLOBAL)
         self._recent_by_user: dict[str, deque] = defaultdict(lambda: deque(maxlen=RECENT_PER_USER))
         self._indexed = False
+        self._indexed_store = type(ledger).__name__ == "SqliteLedger"     # tail() is an indexed query there
 
     def record(self, user_id, account: str, delta: int | float, balance_after: int | float,
                reason: Optional[str] = None, meta: Optional[dict] = None) -> Optional[dict]:
@@ -126,7 +127,7 @@ class AuditService:
             self.ledger.append(entry)
         except OSError:
             log.exception("AUDIT LEDGER WRITE FAILED for %s", entry)
-        if self._indexed:                                 # otherwise the first recent() reads it from the file
+        if self._indexed and not self._indexed_store:     # otherwise the first recent() reads it from the file
             self._index(entry)
         if self.channel_id:
             if len(self.pending) == self.pending.maxlen:
@@ -150,8 +151,13 @@ class AuditService:
         self._recent_by_user[entry.get("user")].append(entry)
 
     def recent(self, n: int = 20, user_id=None) -> list[dict]:
-        """The last `n` entries (oldest first), for one member or for everyone; at most RECENT_PER_USER /
-        RECENT_GLOBAL are kept in memory, the full history stays in the ledger file."""
+        """The last `n` entries (oldest first), for one member or for everyone, capped at RECENT_PER_USER /
+        RECENT_GLOBAL. The SQLite ledger answers from its index; the JSON ledger is read once into memory."""
+        if n <= 0:
+            return []
+        if self._indexed_store:
+            cap = RECENT_GLOBAL if user_id is None else RECENT_PER_USER
+            return self.ledger.tail(min(n, cap), None if user_id is None else str(user_id))
         if not self._indexed:
             for entry in self.ledger.read():
                 self._index(entry)
