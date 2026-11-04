@@ -10,7 +10,7 @@ from discord.ext import commands, tasks
 
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import not_in_game
-from rudhabot.domain.bank import TIERS, next_tier
+from rudhabot.domain.bank import TIERS
 from rudhabot.services.bank import BankRefused
 from rudhabot.ui.replies import respond
 from rudhabot.ui.theme import BANKICON, CLAIRVOYANCEICON, CURRENCY, Colors

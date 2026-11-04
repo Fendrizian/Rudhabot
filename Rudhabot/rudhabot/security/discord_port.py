@@ -111,6 +111,8 @@ def audit_event(entry: discord.AuditLogEntry, tier_of: Callable[[Optional[discor
         perms_before, perms_after = _perm(before, "allow") or 0, _perm(after, "allow")
         extra = entry.extra
         is_everyone = getattr(extra, "id", None) == guild.id
+    elif action == "role_create":
+        perms_before, perms_after = 0, _perm(after, "permissions")
     elif action == "member_role_update":
         roles_added = tuple(r.id for r in (getattr(after, "roles", None) or []))
         roles_removed = tuple(r.id for r in (getattr(before, "roles", None) or []))

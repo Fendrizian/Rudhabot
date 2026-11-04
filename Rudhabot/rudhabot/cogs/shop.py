@@ -11,12 +11,14 @@ from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import not_in_game
 from rudhabot.domain.fortunes import crack
 from rudhabot.services.lottery import TicketRefused
-from rudhabot.services.shop import SELL_RATIO, ShopRefused
+from rudhabot.services.shop import MAX_QUANTITY, SELL_RATIO, ShopRefused
 from rudhabot.ui import lottery_embeds
 from rudhabot.ui.replies import author_embed, error_embed, respond
 from rudhabot.ui.theme import BOXICON, CAFEICON, CURRENCY, Colors
 from rudhabot.views.birthday import BirthdayCakeModal
 from rudhabot.views.cafe import CafeBuyView, special_fields
+
+QUANTITY = app_commands.Range[int, 1, MAX_QUANTITY]
 from rudhabot.views.inventory import InventoryView, create_inventory_embed, inventory_pages
 from rudhabot.views.shop import ItemRow, shop_page
 
@@ -98,7 +100,7 @@ class ShopCog(ServiceCog):
     @app_commands.choices(pay_with=[app_commands.Choice(name="Wallet", value="wallet"),
                                     app_commands.Choice(name="Credit card", value="card")])
     @not_in_game()
-    async def buy(self, interaction: discord.Interaction, item: str, quantity: int = 1,
+    async def buy(self, interaction: discord.Interaction, item: str, quantity: QUANTITY = 1,
                   pay_with: Optional[app_commands.Choice[str]] = None):
         user, catalog = interaction.user, self.services.catalog
         canonical = catalog.resolve(item)
@@ -116,6 +118,7 @@ class ShopCog(ServiceCog):
                 "unknown_item": "❌ Item not found.",
                 "already_bought_special": f"❌ You can only buy one {emoji}**{title}** per month!",
                 "special_quantity": f"❌ You can only buy 1 {emoji}**{title}** per month!",
+                "too_many": f"❌ At most {MAX_QUANTITY:,} at a time.",
                 "sold_out": f"❌ {emoji}**{title}** is sold out!",
                 "insufficient_wallet": f"❌ You don't have enough money in your wallet to buy {quantity} of **{title}**.",
             }[refusal.code]
@@ -129,7 +132,7 @@ class ShopCog(ServiceCog):
     @app_commands.command(name="sell", description="Sell shop items for half their price.")
     @app_commands.describe(item="Name of the item to sell", quantity="Quantity to sell (default 1)")
     @not_in_game()
-    async def sell(self, interaction: discord.Interaction, item: str, quantity: int = 1):
+    async def sell(self, interaction: discord.Interaction, item: str, quantity: QUANTITY = 1):
         user, catalog = interaction.user, self.services.catalog
         canonical = catalog.resolve(item)
         if not canonical:
@@ -139,7 +142,8 @@ class ShopCog(ServiceCog):
         try:
             sale = self.services.shop.sell(user.id, canonical, quantity)
         except ShopRefused as refusal:
-            message = {"cannot_sell": f"❌ You can't sell **{emoji}{title}**",
+            message = {"too_many": f"❌ At most {MAX_QUANTITY:,} at a time.",
+                       "cannot_sell": f"❌ You can't sell **{emoji}{title}**",
                        "not_enough_items": f"❌ You don't have enough **{emoji}{title}** to sell."}[refusal.code]
             await respond(interaction, error_embed(message, user), ephemeral=True)
             return
@@ -171,7 +175,7 @@ class ShopCog(ServiceCog):
     @app_commands.command(name="use", description="Use an item from your inventory")
     @app_commands.describe(item="Name of the item to use", quantity="Quantity to use (default 1)")
     @not_in_game()
-    async def use(self, interaction: discord.Interaction, item: str, quantity: int = 1):
+    async def use(self, interaction: discord.Interaction, item: str, quantity: QUANTITY = 1):
         s, user = self.services, interaction.user
         canonical = s.catalog.resolve(item)
         if not canonical:

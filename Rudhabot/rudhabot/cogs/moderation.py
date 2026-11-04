@@ -137,12 +137,20 @@ class ModerationCog(ServiceCog):
         if not ids:
             return await self._say(interaction, "Nothing to do", "No valid user ids given.", Colors.FAIL)
         await interaction.response.defer(thinking=True)
-        result, cases = await self._run(interaction, "ban", ids, reason, delete_seconds=delete_hours * 3600)
-        if result is not None:
-            await self._say(interaction, f"🔨 Mass ban: {result.status}",
-                            f"{len(result.done)} banned, {len(result.failed)} not banned "
-                            f"(cases #{cases[0]['case_no']}-#{cases[-1]['case_no']})" if cases else result.detail,
-                            Colors.SUCCESS if result.ok else Colors.FAIL, ephemeral=False)
+        try:
+            out = await self.security.massban(interaction.guild.id, interaction.user.id, ids, reason,
+                                              delete_hours * 3600)
+        except Refused as refusal:
+            return await self._refused(interaction, refusal)
+        lines = [f"{len(out['banned'])} banned" + (f" (cases #{out['cases'][0]['case_no']}-#{out['cases'][-1]['case_no']})"
+                                                   if out["cases"] else "")]
+        if out["failed"]:
+            lines.append(f"{len(out['failed'])} not banned (staff, Rudhabot, or Discord refused)")
+        if out["awaiting"]:
+            lines.append(f"{out['awaiting']} established account(s) need a second Senior Moderator's approval "
+                         "in the alert channel")
+        await self._say(interaction, "🔨 Mass ban", "\n".join(lines), Colors.SUCCESS if out["banned"] else Colors.MODLOG,
+                        ephemeral=False)
 
     @app_commands.command(name="unban", description="Lift a ban (Senior Moderator)")
     @app_commands.guild_only()
@@ -236,6 +244,11 @@ class ModerationCog(ServiceCog):
             return await self._say(interaction, "Not reported", "You can't report that message.", Colors.UNAVAILABLE)
         from rudhabot.security.discord_port import message_event
         event = message_event(message, lambda m: self.security.tier_of(interaction.guild.id, m.id))
-        incident = await self.security.report(interaction.guild.id, interaction.user.id, event)
+        created = getattr(interaction.user, "created_at", None)
+        new = created is not None and (discord.utils.utcnow() - created).total_seconds() < 86400
+        try:
+            incident = await self.security.report(interaction.guild.id, interaction.user.id, event, reporter_new=new)
+        except Refused as refusal:
+            return await self._say(interaction, "Not reported", str(refusal), Colors.UNAVAILABLE)
         await self._say(interaction, "Thanks: reported", "The moderators have been told. Your name isn't shown to the "
                         "member you reported." + (f" (reference {incident})" if incident else ""), Colors.SUCCESS)

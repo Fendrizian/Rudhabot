@@ -6,7 +6,7 @@ useful one or two are returned.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from statistics import median
 
 from rudhabot.domain.bank import TIER_BY_KEY, TIERS

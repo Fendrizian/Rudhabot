@@ -100,10 +100,10 @@ class Briefer:
     def enabled(self) -> bool:
         return self.model is not None
 
-    async def _ask(self, prompt: str, guild_id: Optional[int]) -> Optional[str]:
+    async def _ask(self, prompt: str, guild_id: Optional[int], user_id: int = 0) -> Optional[str]:
         if self.model is None:
             return None
-        if self.limiter is not None and self.limiter.check(0, guild_id):
+        if self.limiter is not None and self.limiter.check(user_id, guild_id):     # each staff member's own quota
             return None
         try:
             if self.limiter is not None:
@@ -122,25 +122,27 @@ class Briefer:
             log.warning("security briefing fell back to the template (%s)", type(error).__name__)
         return None
 
-    async def summary(self, incident: dict, actions: list[dict], guild_id: Optional[int] = None) -> tuple[str, str]:
+    async def summary(self, incident: dict, actions: list[dict], guild_id: Optional[int] = None,
+                      user_id: int = 0) -> tuple[str, str]:
         """(text, source): a draft summary from the LLM, or the deterministic report."""
         data = json.dumps(facts(incident, actions), ensure_ascii=False)[:6000]
         text = await self._ask("Draft a short incident summary (at most 150 words) for the moderators: what was "
                                "observed, what Rudhabot did (by status), and what they should check next.\n<facts>\n"
-                               + data + "\n</facts>", guild_id)
+                               + data + "\n</facts>", guild_id, user_id)
         if text:
             return text, "llm"
         self.stats["fallback"] += 1
         return after_action(incident, actions), "template"
 
-    async def answer(self, question: str, status: dict, incidents: list[dict], guild_id: Optional[int] = None) -> tuple[str, str]:
+    async def answer(self, question: str, status: dict, incidents: list[dict], guild_id: Optional[int] = None,
+                     user_id: int = 0) -> tuple[str, str]:
         """Read-only Q&A over the current status and recent incidents (content-free facts only)."""
         data = json.dumps({"status": status, "recent_incidents": [facts(i, []) for i in incidents[:8]]},
                           ensure_ascii=False, default=str)[:7000]
         question = question.replace("</question>", "")[:500]
         text = await self._ask("Answer the moderator's question using only the data. If the data doesn't answer it, "
                                "say so and suggest which /security command would show it.\n<data>\n" + data +
-                               "\n</data>\n<question>\n" + question + "\n</question>", guild_id)
+                               "\n</data>\n<question>\n" + question + "\n</question>", guild_id, user_id)
         if text:
             return text, "llm"
         self.stats["fallback"] += 1

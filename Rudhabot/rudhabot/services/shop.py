@@ -11,6 +11,7 @@ from rudhabot.persistence.users import UserRepository
 
 SPECIAL_STOCK = 20          # starting (and displayed maximum) stock of every monthly special
 SELL_RATIO = 0.5
+MAX_QUANTITY = 1000      # per command: /use loops once per item, so a huge number would freeze the bot
 
 
 class ShopRefused(Exception):
@@ -93,6 +94,8 @@ class ShopService:
         Raises ShopRefused(code) when a rule says no."""
         if quantity < 1:
             raise ShopRefused("not_positive")
+        if quantity > MAX_QUANTITY:
+            raise ShopRefused("too_many")
         price = self.price_of(item)
         if price is None:
             raise ShopRefused("unknown_item")
@@ -132,6 +135,8 @@ class ShopService:
         return Purchase(item, quantity, total, special)
 
     def sell(self, user_id: int | str, item: str, quantity: int) -> Sale:
+        if quantity > MAX_QUANTITY:
+            raise ShopRefused("too_many")
         if item not in self._catalog.shop_items:
             raise ShopRefused("cannot_sell")
         account = self._users.get(user_id)

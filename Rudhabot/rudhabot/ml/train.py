@@ -38,7 +38,7 @@ from rudhabot.ml.features import DENSE_DIM, GLOB_DIM, N_CARDS, SLOT_FEATURES
 from rudhabot.ml.nn import ClairvoyanceNet, ClairvoyanceSlotNet, load_net
 from rudhabot.ml.model_store import ModelStore, _schema
 from rudhabot.ml.selfplay import PolicySpec, RecordSpec, arena, generate
-from rudhabot.tcg.cards import CARD_BY_ID, CARD_IDS
+from rudhabot.tcg.cards import CARD_IDS
 
 TRAIN_SEED_BASE = 0
 TEST_SEED_BASE = 9_000_000

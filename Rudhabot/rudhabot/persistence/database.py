@@ -372,7 +372,9 @@ class Storage:
         collection = self.db.collection(name)
         if not self.db.imported(name):
             mapping = _read_json(json_path)
-            if isinstance(mapping, dict) and mapping:
+            if mapping is UNREADABLE:
+                self._unreadable(name, json_path)
+            elif isinstance(mapping, dict) and mapping:
                 count = collection.import_mapping(mapping, json_path)
                 self.imports.append(f"{name}: {count} records from {os.path.basename(json_path)}")
             else:
@@ -386,12 +388,21 @@ class Storage:
         store = self.db.value(name, default_factory)
         if not self.db.imported(name):
             value = _read_json(json_path)
-            if value is not None and not store.exists():
+            if value is UNREADABLE:
+                self._unreadable(name, json_path)
+            elif value is not None and not store.exists():
                 store.import_value(value, json_path)
                 self.imports.append(f"{name} from {os.path.basename(json_path)}")
             else:
                 self.db.mark_imported(name, "(nothing to import)")
         return store
+
+    def _unreadable(self, name: str, path: str) -> None:
+        """A JSON file that exists but can't be parsed is NOT marked imported: the import is retried on every start
+        until the file is fixed, so a corrupt data.json can't silently become an empty economy for good."""
+        log.error("NOT importing %s into SQLite: the file exists but isn't valid JSON. Fix or remove it; the import "
+                  "is retried on the next start.", path)
+        self.imports.append(f"{name}: NOT imported, {os.path.basename(path)} is unreadable (retried next start)")
 
     def ledger(self, name: str, jsonl_path: str):
         from rudhabot.persistence.ledger import Ledger
@@ -432,16 +443,19 @@ class Storage:
             self.db.close()
 
 
+UNREADABLE = object()          # _read_json's answer for a file that exists but can't be parsed
+
+
 def _read_json(path: str) -> Any:
+    """The file's value; None if it is missing or empty; UNREADABLE if it exists but can't be read or parsed."""
     if not path or not os.path.exists(path):
         return None
     try:
         with open(path, encoding="utf-8") as handle:
             content = handle.read().strip()
         return json.loads(content) if content else None
-    except (OSError, json.JSONDecodeError):
-        log.warning("not importing %s: unreadable or not JSON", path)
-        return None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return UNREADABLE
 
 
 def _ledger_files(path: str) -> list[str]:

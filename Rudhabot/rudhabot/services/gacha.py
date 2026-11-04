@@ -9,7 +9,6 @@ from __future__ import annotations
 import random
 from collections import Counter
 from dataclasses import asdict
-from typing import Optional
 
 from rudhabot.clock import Clock
 from rudhabot.domain.gacha import (CONVERGENCE_MILESTONES, CRAFT_COST, DAILY_SHARDS, STANDARD, WISH_COST, Banner,

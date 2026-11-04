@@ -206,5 +206,5 @@ disk, so a restart no longer loses it, and failed deliveries are retried.
 
 ## Tunables (`settings.py`)
 
-Paths, channel IDs, loan terms, birthday gift/timezone, admin role. `Channels.birthdays` defaults to the notifications
-channel because the original code pointed at a placeholder ID that could never resolve; set it to your real channel.
+Paths, channel IDs, loan terms, birthday gift/timezone, admin, banker and bankrupt roles. Every id can be overridden
+from `.env` (see `.env.example`).

@@ -13,7 +13,6 @@ REASONS: dict[str, str] = {
     "JOIN_NEW_ACCOUNT": "account created {age} before joining",
     "JOIN_SPAMMER_FLAG": "Discord has flagged this account as a likely spammer",
     "JOIN_BAN_EVASION": "profile matches a banned account ({traits}); a possible match, not proof",
-    "JOIN_NATIVE_RAID": "Discord's own raid detection has also flagged this server",
     # messages
     "MSG_FLOOD": "{count} messages in {window}",
     "MSG_DUPLICATE": "the same message {count} times in {window}",
@@ -63,6 +62,7 @@ REASONS: dict[str, str] = {
     "NUKE_BUDGET": "{actor} made {count} high-impact changes in {window} ({actions}), over their limit of {budget}",
     "NUKE_WARNING": "{actor} has used {used} of their {budget}-point limit for high-impact changes in {window}",
     "PERM_ESCALATION_BROAD": "{actor} gave {target} dangerous permissions ({permissions})",
+    "ROLE_CREATED_DANGEROUS": "{actor} created a role with dangerous permissions ({permissions})",
     "PERM_ESCALATION_GRANT": "{actor} gave a member a role with dangerous permissions ({permissions})",
     "PERM_OVERWRITE_DANGEROUS": "{actor} gave {target} dangerous permissions in a channel ({permissions})",
     "CONFIG_WEAKENED": "{actor} weakened a server safety setting ({setting}: {before} -> {after})",

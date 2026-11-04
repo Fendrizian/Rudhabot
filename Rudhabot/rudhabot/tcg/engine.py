@@ -19,7 +19,7 @@ from typing import Callable, Iterable, Optional
 
 from rudhabot.tcg.cards import (ACTION, AFFLICTION, BOON, CARD_BY_ID, CHARACTER, COMMAND, COMPRESSED, CORRUPTION,
                                 EQUIPMENT, EVENT, LANDMARK, LIGHTNING, PRECIPITATION, PROTOCOL_BY_LEVEL, SKY, WEATHER)
-from rudhabot.tcg.state import Game, Player, Unit
+from rudhabot.tcg.state import Game, Unit
 
 MAX_ROUNDS = 40              # interp: safety valve, a match still running after 40 rounds is decided on Resolve
 MAX_ACTIONS_PER_TURN = 80    # interp: safety valve against zero-cost ability loops

@@ -50,6 +50,10 @@ Everything else runs on its own. Staff only need these:
 Approvals, containment notices, level changes and the digest arrive in the alert channel with buttons; nobody has to
 type a command for those.
 
+Changes to security are announced in the alert channel: every settings change shows who made it and what changed,
+in a warning colour when it weakens the defences (for example shadow mode, looser budgets, anti-nuke switches off,
+rollbacks), and so is every exemption.
+
 ## Clearance tiers
 
 | tier | name | military rank (flavour only) | can |
@@ -127,8 +131,15 @@ All of these are deterministic rules with reason codes, so an alert says *what w
   - **Other flagged changes:** giving members roles with dangerous permissions; dangerous channel overwrites for
     @everyone; weakening the verification level, 2FA requirement or explicit-media filter; removing or disabling
     AutoMod rules; adding bots; creating webhooks.
-  - Rudhabot's own actions never count, and allow-listed accounts are exempt.
-  - Clean up raids with `/massban`: it doesn't count against anyone's budget. Manual bans in Discord do count.
+  - Rudhabot's own automatic actions never count. Bots ranked above Rudhabot (for example Wick) are trusted like the
+    owner: their actions never count and they are never contained (Rudhabot couldn't act on them anyway). The health
+    check doesn't flag them either.
+  - A moderator's `/ban` or `/kick` through Rudhabot counts against *their* budget, so a hijacked account can't use the
+    bot to dodge it.
+  - `/massban` for raid clean-up: accounts in an open raid/spam incident, or that joined in the last day, are banned
+    at once and don't count. Up to 10 other accounts are banned and counted. More than that needs a second Senior
+    Moderator to approve.
+  - A role created with dangerous permissions is noticed at once, even if it is handed out a second later.
 - **Member reports:** the *Report to moderators* message command.
 
 ## What is done, and who decides
@@ -294,6 +305,12 @@ Changes are versioned (`/security settings key:rollback`, `/security settings ke
 - `levels.*`: the highest automatic level and the decay time.
 - `auto.*`: which automatic actions live mode may take, the timeout length, model corroboration.
 - `approvals.*`, `lockdown.*`, `retention.*`, `models.*`, `llm.summaries`.
+
+Staff tiers (`/security staff`) can't be given to @everyone or to an integration's role. Only the owner can map
+a role to Admin, or make a role held by 25+ members Moderator or higher.
+
+Exemptions (`/security exempt`): an anti-nuke exemption for a member or role needs an Admin, can't cover the person
+asking or a role they hold, and lasts at most 7 days.
 
 Lists: `links.deny`, `links.allow`, `channels.relaxed`, `channels.protected`, `channels.ignored`
 (`/security settings key:<list> value:+item / -item`). Time-limited exceptions (at most 90 days) for a user, role, channel or domain:

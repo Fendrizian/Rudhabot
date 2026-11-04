@@ -275,3 +275,117 @@ class RestoreAndModerationTests(SecurityServiceCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LoopholeRegressionTests(SecurityServiceCase):
+    """Round-3 review: ways a compromised staff account could disarm or route around the defences."""
+
+    async def test_staff_tiers_refuse_everyone_integrations_and_admin_without_the_owner(self):
+        with self.assertRaises(Refused):
+            self.service.set_staff_tier(1, ADMIN, 1, 4)                     # @everyone
+        with self.assertRaises(Refused):
+            self.service.set_staff_tier(1, ADMIN, 9, 2)                     # another bot's managed role
+        with self.assertRaises(Refused):
+            self.service.set_staff_tier(1, ADMIN, 3, 4)                     # Admin tier: owner only
+        with self.assertRaises(Refused):
+            self.service.set_staff_tier(1, ADMIN, 2, 2)                     # Citizen: 1150 members
+        self.service.set_staff_tier(1, ADMIN, 3, 2)
+        self.service.set_staff_tier(1, OWNER, 2, 1)
+        self.assertEqual(self.service.config(1)["tiers"], {"3": 2, "2": 1})
+
+    async def test_anti_nuke_exemptions_need_an_admin_never_cover_yourself_and_are_capped(self):
+        with self.assertRaises(Refused):
+            await self.service.add_exemption(1, SENIOR, "user", str(MOD), "antinuke", 30)
+        with self.assertRaises(Refused):
+            await self.service.add_exemption(1, ADMIN, "user", str(ADMIN), "all", 7)
+        with self.assertRaises(Refused):
+            await self.service.add_exemption(1, ADMIN, "role", "6", "antinuke", 7)        # a role they hold
+        text = await self.service.add_exemption(1, ADMIN, "user", str(MOD), "antinuke", 90)
+        self.assertIn("at most 7 days", text)
+        entry = self.service.store.allows(1)[0]
+        self.assertLessEqual(entry["expires"] - self.now, 7 * 86400 + 1)
+        self.assertTrue(any(k == "settings" and p["weakening"] for k, p in self.sent))   # announced
+        await self.service.add_exemption(1, SENIOR, "domain", "partner.example", "messages", 30)
+
+    async def test_weakening_settings_are_announced(self):
+        import asyncio
+        cfg = self.service.config(1).with_value("mode", "live")
+        self.service.save_config(1, cfg, ADMIN, "go live")
+        self.service.save_config(1, self.service.config(1).with_value("antinuke.budget_mod", 200), ADMIN, "x")
+        self.service.save_config(1, self.service.config(1).with_value("mode", "shadow"), ADMIN, "y")
+        await asyncio.sleep(0)
+        notices = [p for k, p in self.sent if k == "settings"]
+        self.assertEqual(len(notices), 3)
+        self.assertEqual(notices[0]["weakening"], [])
+        self.assertIn("antinuke.budget_mod loosened (8 -> 200)", notices[1]["weakening"])
+        self.assertTrue(any("shadow" in w for w in notices[2]["weakening"]))
+
+    async def test_massban_of_established_members_needs_a_second_approval(self):
+        established = [7000 + i for i in range(15)]
+        for uid in established:
+            self.fake.add_member(MemberModel(uid, (2,), joined_at=self.now - 90 * 86400))
+        newcomers = [8000 + i for i in range(5)]
+        for uid in newcomers:
+            self.fake.add_member(MemberModel(uid, (), joined_at=self.now - 600))
+        out = await self.service.massban(1, SENIOR, established + newcomers, "raid", 3600)
+        self.assertEqual(set(out["banned"]), set(newcomers))                # the raid accounts go at once
+        self.assertEqual(out["awaiting"], 15)
+        self.assertTrue(set(established).isdisjoint(self.fake.banned))
+        with self.assertRaises(Refused):
+            await self.service.approve(1, out["token"], SENIOR)             # not the requester
+        await self.service.approve(1, out["token"], ADMIN)
+        self.assertTrue(set(established) <= self.fake.banned)
+
+    async def test_bans_through_rudhabot_count_against_the_moderator(self):
+        self.configure(mode="live")
+        refused = 0
+        for uid in range(9100, 9114):
+            self.fake.add_member(MemberModel(uid, (2,), joined_at=self.now - 90 * 86400))
+            try:
+                await self.service.moderate(1, SENIOR, "ban", [uid], reason="x")
+            except Refused:
+                refused += 1                                                 # quarantined: no clearance left
+        self.assertNotIn(5, self.fake.members[SENIOR].roles)                # over budget: quarantined
+        self.assertGreater(refused, 0)
+
+    async def test_creating_an_admin_role_and_granting_it_trips_anti_nuke(self):
+        from rudhabot.security import perms as P
+        rt = self.service.runtime(1)
+        await self.service.handle(1, AuditEntry(1, "role_create", MOD, self.now, target_id=555, actor_tier=2,
+                                                perms_before=0, perms_after=P.ADMINISTRATOR))
+        self.assertEqual(rt.engine.antinuke.role_perms[555], P.ADMINISTRATOR)
+        await self.service.handle(1, AuditEntry(1, "member_role_update", MOD, self.now + 1, target_id=4242,
+                                                actor_tier=2, roles_added=(555,)))
+        self.assertTrue(any(i.family == "nuke" and MOD in i.users for i in rt.engine.incidents.values()))
+
+    async def test_member_reports_are_rate_limited_and_deduplicated(self):
+        first = await self.service.report(1, 5, self.message(1, 777, "free nitro here"))
+        again = await self.service.report(1, 6, self.message(1, 777, "free nitro here"))
+        self.assertEqual(first, again)                                       # the same message: one incident
+        for i in range(2, 6):
+            await self.service.report(1, 5, self.message(i, 777, f"spam {i}"))
+        with self.assertRaises(Refused):
+            await self.service.report(1, 5, self.message(9, 777, "one too many"))
+        alerts = [k for k, _ in self.sent if k == "incident"]
+        self.assertEqual(len(alerts), 1)
+
+    async def test_expired_slowmode_leaves_a_moderators_later_change_alone(self):
+        await self.service.slowmode(1, HELPER, 101, 30, revert_minutes=10)
+        await self.fake.set_slowmode(101, 120, "a moderator set it by hand")
+        self.clock.advance(minutes=11)
+        await self.service.tick()
+        self.assertEqual(self.fake.model().channel(101).slowmode, 120)
+
+    async def test_bots_ranked_above_rudhabot_are_trusted_like_the_owner(self):
+        from dataclasses import replace
+        from rudhabot.security.model import RoleModel
+        model = self.fake.model()
+        self.fake._model = replace(model, roles=model.roles + (RoleModel(60, "Wick", 11, 8, managed=True, bot_id=97),))
+        self.fake.add_member(MemberModel(97, (60,), bot=True))
+        self.service._refresh(self.rt)
+        self.configure(mode="live")
+        for k in range(10):
+            await self.service.handle(1, AuditEntry(1, "ban", 97, self.now + k, target_id=9000 + k, actor_bot=True))
+        self.assertEqual(self.rt.engine.incidents, {})                        # Wick's raid clean-up is not a nuke
+        score, findings = self.service.posture(1)
+        self.assertFalse(any("Wick" in f.title for f in findings))

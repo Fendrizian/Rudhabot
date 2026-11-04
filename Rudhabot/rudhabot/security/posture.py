@@ -89,7 +89,8 @@ def audit(guild: GuildModel, *, configured: dict, stale_staff: Iterable[int] = (
 
     # --------------------------------------------------------------- bots and integrations
     for role in guild.roles:
-        if role.managed and role.bot_id and role.bot_id != guild.bot_id and role.permissions & P.CRITICAL:
+        if role.managed and role.bot_id and role.bot_id != guild.bot_id and role.permissions & P.CRITICAL \
+                and role.position < bot_top:                 # a bot placed above Rudhabot is the owner's choice
             add("medium", f"Bot role '{role.name}' has dangerous permissions",
                 ", ".join(P.names(role.permissions & P.CRITICAL)[:5]),
                 "A compromised bot can nuke the server: give each bot only what it needs.")

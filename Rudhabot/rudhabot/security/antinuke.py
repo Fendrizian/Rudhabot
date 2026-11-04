@@ -103,6 +103,18 @@ class AntiNuke:
                     w = 1000.0 if critical else 6.0          # handing everyone the keys trips any budget at once
                 else:
                     w = 3.0 if critical else 1.0
+        elif entry.action == "role_create" and entry.perms_after is not None:
+            if entry.target_id:
+                self.role_perms[entry.target_id] = entry.perms_after      # known at once, before any refresh
+                self.role_members.setdefault(entry.target_id, 0)
+            dangerous = entry.perms_after & P.CRITICAL
+            if dangerous:
+                w = 3.0
+                signals.append(Signal("escalation", "nuke", 0.55, 0.85, entry.ts,
+                                      [Reason.of("ROLE_CREATED_DANGEROUS", actor=actor,
+                                                 permissions=", ".join(P.names(dangerous)[:4]))],
+                                      users=[entry.actor_id], actor=entry.actor_id,
+                                      evidence={"role": entry.target_id, "gained": dangerous}))
         elif entry.action == "member_role_update" and entry.roles_added:
             gained = 0
             for role_id in entry.roles_added:

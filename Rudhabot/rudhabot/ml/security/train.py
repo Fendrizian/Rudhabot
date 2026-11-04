@@ -125,17 +125,9 @@ def evaluate_heads(net, data, rows) -> dict:
 def _server(job):
     seed, days, families, members, with_models, model_dir = job
     incident_model = message_model = None
-    if with_models:                                   # (the two names are rebound to the real scorers here)
+    if with_models:
         from rudhabot.ml.security.serving import SecurityModels
-        models = SecurityModels(model_dir).load()
-
-        def incident_model(vec):
-            s = models.incident_scores(vec)
-            return s["p"], s["family"], s["confident"]
-
-        def message_model(text):
-            s = models.message_scores(text)
-            return (s["scam"], s["spam"]) if not s["uncertain"] else (0.0, 0.0)
+        message_model, incident_model = SecurityModels(model_dir).load().scorers()
     results = run_server(seed, days, families=families, members=members, incident_model=incident_model,
                          message_model=message_model, collect=not with_models)
     X = np.asarray([v for r in results for v in r.features], np.float32) if not with_models else None

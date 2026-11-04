@@ -25,7 +25,7 @@ async def no_sleep(_):
     return None
 
 
-class SecurityCommandTests(CogTestCase):
+class _SecurityCase(CogTestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         self.fake = demo_guild()
@@ -44,6 +44,8 @@ class SecurityCommandTests(CogTestCase):
     async def cmd(self, name, user_id, group=None, **kw):
         return await self.run_command(name, self.users.get(user_id) or FakeUser(user_id), self.guild, group=group, **kw)
 
+
+class SecurityCommandTests(_SecurityCase):
     async def test_status_is_staff_only(self):
         it = await self.cmd("security", MOD, group="status")
         self.assertIn("Security status", it.last_embed.title)
@@ -229,3 +231,32 @@ class LogScrubbingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Round3CogTests(_SecurityCase):
+    async def test_drills_are_one_at_a_time_with_a_cooldown(self):
+        first = await self.cmd("security", MOD, group="tools", action="drill", scenario="mention_bomb")
+        self.assertIn("Drill", first.last_embed.title)
+        again = await self.cmd("security", MOD, group="tools", action="drill", scenario="mention_bomb")
+        self.assertIn("One drill at a time", again.last_embed.title)
+
+    async def test_the_llm_quota_is_per_staff_member(self):
+        seen = []
+
+        class Limiter:
+            semaphore = __import__("asyncio").Semaphore(1)
+
+            def check(self, user_id, guild_id):
+                seen.append(user_id)
+                return "limited"
+        self.sec.briefer.model, self.sec.briefer.limiter = object(), Limiter()
+        await self.cmd("security", MOD, group="ask", question="anything going on?")
+        self.assertEqual(seen, [MOD])
+
+    async def test_shop_quantities_are_capped(self):
+        from rudhabot.services.shop import MAX_QUANTITY, ShopRefused
+        with self.assertRaises(ShopRefused) as ctx:
+            self.s.shop.buy(self.alice.id, "fortune cookie", MAX_QUANTITY + 1)
+        self.assertEqual(ctx.exception.code, "too_many")
+        with self.assertRaises(ShopRefused):
+            self.s.shop.sell(self.alice.id, "fortune cookie", MAX_QUANTITY + 1)

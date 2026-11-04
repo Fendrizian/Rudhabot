@@ -51,15 +51,9 @@ def run_drill(scenario: str, config: SecurityConfig, seed: int | None = None, mo
             (plans if p.authority == "auto" else proposals)[p.kind] += max(1, len(p.targets))
         return out
     engine.observe = observe
-    message_model = incident_model = None
-    if models is not None and getattr(models, "message_ready", False) and cfg["models.message"]:
-        def message_model(text):
-            s = models.message_scores(text)
-            return (0.0, 0.0) if s["uncertain"] else (s["scam"], s["spam"])
-    if models is not None and getattr(models, "incident_ready", False) and cfg["models.incident"]:
-        def incident_model(vec):
-            s = models.incident_scores(vec)
-            return s["p"], s["family"], s["confident"]
+    message_model, incident_model = models.scorers() if models is not None else (None, None)
+    message_model = message_model if cfg["models.message"] else None
+    incident_model = incident_model if cfg["models.incident"] else None
     result = run_day(engine, window, collect=False, message_model=message_model, incident_model=incident_model)
     a = result.attacks[0]
     lines = [f"**Scenario:** {DESCRIPTIONS.get(scenario, scenario)} "

@@ -220,3 +220,19 @@ class MaintenanceCogTests(__import__("tests.cog_case", fromlist=["CogTestCase"])
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CorruptImportTests(_Tmp):
+    def test_a_corrupt_json_file_is_not_marked_imported_and_is_retried(self):
+        with open(self.p("data.json"), "w", encoding="utf-8") as handle:
+            handle.write('{"1": {"wallet": 5')                              # cut off mid-write
+        storage = Storage.open("sqlite", self.p("rudhabot.db"))
+        self.addCleanup(storage.close)
+        storage.docs("accounts", self.p("data.json"))
+        self.assertFalse(storage.db.imported("accounts"))
+        self.assertTrue(any("NOT imported" in line for line in storage.imports))
+        with open(self.p("data.json"), "w", encoding="utf-8") as handle:
+            json.dump({"1": {"wallet": 5, "bank": 0}}, handle)                 # fixed: imported on the next start
+        again = Storage("sqlite", storage.db)
+        users = UserRepository(again.docs("accounts", self.p("data.json")), ["SCAY"])
+        self.assertEqual(users.get(1)["wallet"], 5)

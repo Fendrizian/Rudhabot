@@ -7,7 +7,6 @@ from typing import Optional
 import discord
 
 from rudhabot.domain.catalog import ItemCatalog
-from rudhabot.domain.lottery import TicketSpec
 from rudhabot.services.lottery import LotteryResult
 from rudhabot.ui.replies import author_embed
 from rudhabot.ui.theme import CURRENCY, Colors

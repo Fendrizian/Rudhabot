@@ -24,7 +24,7 @@ from rudhabot.ml.nn import _Net
 from rudhabot.ml.model_store import ArtifactError, ModelStore
 from rudhabot.ml.policy import BlendEvaluator, HeuristicEvaluator, NetEvaluator, choose, score_actions, terminal_value
 from rudhabot.tcg import engine as E
-from rudhabot.tcg.cards import CARD_BY_ID, CARD_IDS, CARD_INDEX
+from rudhabot.tcg.cards import CARD_IDS, CARD_INDEX
 from rudhabot.tcg.decks import ARCHETYPES
 from rudhabot.tcg.state import Game
 

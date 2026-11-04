@@ -147,7 +147,7 @@ class JoinDetector:
     def note_ban(self, user_id: int, name: str = "", avatar_key: Optional[str] = None) -> None:
         if avatar_key:
             self.banned[f"a:{avatar_key}"] = user_id
-        stem = _stem(name)
+        stem = name_stem(name)
         if len(stem) >= 5:
             self.banned[f"n:{stem}"] = user_id
         while len(self.banned) > 20000:
@@ -158,7 +158,7 @@ class JoinDetector:
             return []                          # bots are judged from the audit log (who added them)
         now = join.ts
         self.baseline.observe(now)
-        me = _Joiner(join.user_id, now, join.created_at, join.has_avatar, name_shape(join.name), _stem(join.name),
+        me = _Joiner(join.user_id, now, join.created_at, join.has_avatar, name_shape(join.name), name_stem(join.name),
                      join.avatar_key, join.invite_code)
         self.recent.append(me)
         window = float(cfg["joins.cohort_window_s"])
@@ -254,7 +254,7 @@ class JoinDetector:
         return {"baseline": self.baseline.to_dict()}
 
 
-def _stem(name: str) -> str:
+def name_stem(name: str) -> str:
     """A name with digits, separators and look-alike letters removed ('xX_Gh0st_1234' -> 'xxghost')."""
     return "".join(ch for ch in skeleton(name) if ch.isalpha())[:24]
 

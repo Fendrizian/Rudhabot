@@ -19,8 +19,8 @@ class MaintenanceCog(ServiceCog):
         self._last_backup_day = None
 
     async def cog_load(self) -> None:
-        if self.storage.imports:
-            log.info("imported into SQLite: %s", "; ".join(self.storage.imports))
+        for line in self.storage.imports:
+            (log.error if "NOT imported" in line else log.info)("SQLite import: %s", line)
         self.backups.start()
 
     async def cog_unload(self) -> None:

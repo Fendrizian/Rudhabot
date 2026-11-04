@@ -9,9 +9,7 @@ Model  refitted from the last 7 days of the ledger at startup and every 6 hours 
 """
 from __future__ import annotations
 
-import json
 import logging
-import os
 import uuid
 from collections import defaultdict, deque
 from datetime import datetime, timedelta

@@ -19,15 +19,15 @@ from datetime import timezone
 from typing import Awaitable, Callable, Optional
 
 from rudhabot.persistence.security import SecurityStore
+from rudhabot.services.security_recovery import RecoveryMixin
 from rudhabot.security import snapshots as snap
 from rudhabot.security.actions import ActionFailed, ActionResult, Executor, GuildPort, Pacer
 from rudhabot.security.briefing import Briefer, after_action
 from rudhabot.security.clearance import Refused, Tier, check, resolve_tier
-from rudhabot.security.detectors import _stem
+from rudhabot.security.detectors import name_stem
 from rudhabot.security.engine import RULES_VERSION, GuildEngine, Incident, Outcome
 from rudhabot.security.events import AuditEntry, Message, Tick
 from rudhabot.security.levels import Level
-from rudhabot.security.lockdown import OverwriteChange, plan_lockdown, plan_restore
 from rudhabot.security.policy import SecurityConfig
 from rudhabot.security.posture import audit as posture_audit
 from rudhabot.security.responses import PlannedAction
@@ -43,6 +43,10 @@ STATE_EVERY_S = 300
 MODEL_EVERY_S = 60
 MAX_MODEL_QUEUE = 200
 STALE_STAFF_DAYS = 60
+REPORTS_PER_WINDOW = 5
+REPORT_WINDOW_S = 600
+MASSBAN_UNCHECKED = 10           # more established accounts than this in one /massban need a second approval
+ANTINUKE_EXEMPT_MAX_DAYS = 7
 
 
 @dataclass
@@ -61,9 +65,12 @@ class Runtime:
     last: dict = field(default_factory=dict)            # task name -> last run
     model_pending: int = 0
     refreshed_at: float = 0.0
+    reports: dict = field(default_factory=dict)         # reporter -> recent report times
+    trusted: set = field(default_factory=set)           # bots ranked above Rudhabot (trusted, never contained)
+    reported: dict = field(default_factory=dict)        # (channel, message) -> incident id
 
 
-class SecurityService:
+class SecurityService(RecoveryMixin):
     def __init__(self, store: SecurityStore, clock, *, admin_role_id: int = 0, models=None,
                  briefer: Optional[Briefer] = None, port_factory: Optional[Callable[[int], GuildPort]] = None,
                  bot_id: Callable[[], int] = lambda: 0, pacer_factory=Pacer):
@@ -138,6 +145,10 @@ class SecurityService:
         an.everyone_id = model.id
         an.bot_id = model.bot_id or an.bot_id
         rt.engine.bot_id = model.bot_id or rt.engine.bot_id
+        # bots the owner placed above Rudhabot (e.g. Wick) are trusted like the owner: Rudhabot couldn't contain them
+        # anyway, and their own raid clean-up must not look like a nuke
+        top = model.bot_top_position
+        rt.trusted = {m.id for m in model.members if m.bot and m.id != model.bot_id and model.top_position(m.id) > top}
         rt.refreshed_at = self.now()
 
     def _recorder(self, guild_id: int):
@@ -154,6 +165,8 @@ class SecurityService:
             rt.allows = self.store.allows(rt.guild_id, now)
             rt.allows_at = now
             rt.engine.extra_allow = {a["value"] for a in rt.allows if a["kind"] == "domain"}
+        if kind == "user" and ident in rt.trusted:
+            return True
         value = str(ident)
         for a in rt.allows:
             if a["kind"] == kind and a["value"] == value and (not a["detectors"] or detector in a["detectors"]
@@ -190,9 +203,10 @@ class SecurityService:
             return None
         if isinstance(event, Message) and event.author_tier >= 1:
             rt.seen[event.author_id] = event.ts
-        if isinstance(event, AuditEntry) and event.action in ("role_create", "role_update", "member_role_update") \
-                and self.now() - rt.refreshed_at > 5:
-            self._refresh(rt)                    # role permissions must be current to judge a grant
+        if isinstance(event, AuditEntry) and event.action in ("role_create", "role_update", "member_role_update"):
+            unknown = any(r not in rt.engine.antinuke.role_perms for r in event.roles_added)
+            if unknown or self.now() - rt.refreshed_at > 5:
+                self._refresh(rt)                # role permissions must be current to judge a grant
         try:
             out = rt.engine.observe(event)
         except Exception:
@@ -229,23 +243,44 @@ class SecurityService:
     async def note_ban(self, guild_id: int, user_id: int, name: str, avatar_key: Optional[str]) -> None:
         """Remember a banned account's profile fingerprint (avatar hash, name stem) for ban-evasion hints."""
         rt = self.runtime(guild_id)
-        stem = _stem(name)
+        stem = name_stem(name)
         self.store.add_fingerprint(guild_id, user_id, avatar_key, stem)
         if rt is not None:
             rt.engine.joins.note_ban(user_id, name, avatar_key)
 
-    async def report(self, guild_id: int, reporter_id: int, event: Message) -> Optional[str]:
-        """A member reported a message: an incident signal (never an automatic action on its own)."""
+    async def report(self, guild_id: int, reporter_id: int, event: Message,
+                     reporter_new: bool = False) -> Optional[str]:
+        """A member reported a message: an incident signal (never an automatic action on its own). Limited to
+        REPORTS_PER_WINDOW per member; a message already reported adds to its incident instead of alerting again; a
+        brand-new account's report is recorded without forcing an alert. Raises Refused when over the limit."""
         rt = self.runtime(guild_id)
         if rt is None:
             return None
+        now = self.now()
+        recent = [t for t in rt.reports.get(reporter_id, []) if now - t < REPORT_WINDOW_S]
+        if len(recent) >= REPORTS_PER_WINDOW:
+            raise Refused("You've sent a lot of reports in the last few minutes; the moderators have them. "
+                          "Please try again later.")
+        rt.reports[reporter_id] = recent + [now]
+        key = (event.channel_id, event.message_id)
+        known = rt.reported.get(key)
+        if known is not None:
+            inc = rt.engine.incidents.get(known)
+            if inc is not None:
+                inc.counts["member_report"] = inc.counts.get("member_report", 0) + 1
+                rt.dirty.add(inc.id)
+            return known
         sig = Signal("member_report", "spam", 0.45, 0.7, event.ts, [Reason.of("MSG_REPORTED", count=1)],
                      users=[event.author_id], channels=[event.channel_id],
                      messages=[(event.channel_id, event.message_id)], evidence={"reporter": reporter_id},
                      snippet=event.content[:200] if event.content else None)
         out = rt.engine._absorb([sig], event.ts)
-        await self._outcome(rt, out, force_alert=True)
+        await self._outcome(rt, out, force_alert=not reporter_new)
         incident = (out.opened or out.updated or [None])[0]
+        if incident is not None:
+            rt.reported[key] = incident.id
+            if len(rt.reported) > 5000:
+                rt.reported.pop(next(iter(rt.reported)))
         return incident.id if incident else None
 
     # ================================================================ outcomes
@@ -340,7 +375,8 @@ class SecurityService:
             for channel_id in result.done:
                 if revert:
                     previous = result.data.get("previous", {}).get(str(channel_id), 0)
-                    self.store.set_timer(rt.guild_id, "slowmode", channel_id, now + revert, {"previous": previous})
+                    self.store.set_timer(rt.guild_id, "slowmode", channel_id, now + revert,
+                                         {"previous": previous, "set": int(plan.params.get("seconds", 0))})
         elif plan.kind == "quarantine":
             for user_id in result.done:
                 removed = result.data.get("removed", {}).get(str(user_id), {})
@@ -463,155 +499,10 @@ class SecurityService:
         await self._notify("approval_update", guild_id, {"token": token, "status": "denied", "by": user_id})
         return "Declined. Nothing was changed."
 
-    # ================================================================ lockdowns
-    def _lockdown_plan(self, rt: Runtime, plan: PlannedAction):
-        locked = {c for l in self.store.active_lockdowns(rt.guild_id) for c in l["channels"]}
-        protected = set(rt.config["channels.protected"]) | {rt.config["alert_channel"], rt.config["modlog_channel"]}
-        return plan_lockdown(rt.port.model(), plan.params.get("scope", "channels"), plan.targets,
-                             role_tiers=rt.config["tiers"], protected=protected, locked_elsewhere=locked)
-
-    async def request_lockdown(self, guild_id: int, requester: int, scope: str, channels: list[int], minutes: int,
-                               reason: str) -> tuple[str, list[str]]:
-        rt = self.runtime(guild_id)
-        self.require(guild_id, requester, "lockdown_request")
-        minutes = max(5, min(int(minutes or rt.config["lockdown.default_minutes"]), int(rt.config["lockdown.max_minutes"])))
-        if scope != "server" and not channels:
-            raise Refused("Choose the channels (or a category) to lock, or the whole server.")
-        plan = PlannedAction("lockdown", "approve2" if rt.config["approvals.two_person"] else "confirm", Tier.SENIOR,
-                             reason or "manual lockdown", targets=list(channels), params={"scope": scope, "minutes": minutes})
-        lp = self._lockdown_plan(rt, plan)
-        if not lp.changes:
-            raise Refused("Nothing to lock: those channels are already locked, protected or not lockable.")
-        token = await self.request_approval(rt, plan, requested_by=requester)
-        return token, lp.preview(rt.port.model())
-
-    async def apply_lockdown(self, rt: Runtime, plan: PlannedAction, actor_id: Optional[int],
-                             approvers: list) -> ActionResult:
-        lp = self._lockdown_plan(rt, plan)
-        if not lp.changes:
-            return ActionResult("skipped", "nothing to lock")
-        try:
-            self.take_snapshot(rt.guild_id, "before lockdown")
-        except Exception:
-            log.exception("snapshot before lockdown failed")
-        minutes = int(plan.params.get("minutes", rt.config["lockdown.default_minutes"]))
-        expires = self.now() + minutes * 60
-        lock_id = self.store.add_lockdown(rt.guild_id, lp.scope, lp.channel_ids, expires,
-                                          approvers[0] if approvers else (actor_id or 0),
-                                          approvers[-1] if len(approvers) > 1 else actor_id,
-                                          [c.to_dict() for c in lp.changes], lp.manual, plan.incident_id)
-        self.store.set_timer(rt.guild_id, "lockdown", lock_id, expires)
-        done, failed = 0, []
-        reason = f"Rudhabot lockdown #{lock_id}: {plan.reason}"[:480]
-        for change in lp.changes:
-            await rt.executor.pacer.wait()
-            try:
-                await rt.port.set_overwrite(change.channel_id, change.target_id, change.target_type, *change.after, reason)
-                done += 1
-            except ActionFailed as error:
-                failed.append(f"channel {change.channel_id}: {error}")
-        manual = lp.manual + failed
-        self.store.update_lockdown(lock_id, status="active", manual=manual)
-        report = {"id": lock_id, "changed": done, "failed": len(failed), "manual": manual, "expires": expires,
-                  "channels": len(lp.channel_ids), "scope": lp.scope}
-        await self._notify("lockdown", rt.guild_id, {"event": "applied", **report})
-        status = "confirmed" if done and not failed else "partial" if done else "failed"
-        return ActionResult(status, f"lockdown #{lock_id}: {done} change(s), {len(failed)} failed", data=report)
-
-    async def lift_lockdown(self, guild_id: int, lockdown_id: int, by: Optional[int], reason: str = "lifted") -> dict:
-        rt = self.runtime(guild_id)
-        lock = self.store.lockdown(lockdown_id)
-        if rt is None or lock is None or lock["guild_id"] != guild_id:
-            raise Refused("No such lockdown.")
-        if lock["status"] not in ("applying", "active", "lifting"):
-            raise Refused(f"Lockdown #{lockdown_id} is already {lock['status']}.")
-        if by is not None:
-            self.require(guild_id, by, "lockdown_lift")
-        self.store.update_lockdown(lockdown_id, status="lifting")
-        changes = [OverwriteChange.from_dict(c) for c in lock["changes"]]
-        restore, manual = plan_restore(rt.port.model(), changes)
-        done = 0
-        for change in restore:
-            await rt.executor.pacer.wait()
-            allow, deny = change.before or (0, 0)
-            try:
-                await rt.port.set_overwrite(change.channel_id, change.target_id, change.target_type, allow, deny,
-                                            f"Rudhabot: lifting lockdown #{lockdown_id} ({reason})"[:480])
-                done += 1
-            except ActionFailed as error:
-                manual.append(f"channel {change.channel_id}: couldn't restore ({error}); set it back by hand")
-        report = {"id": lockdown_id, "restored": done, "manual": manual, "reason": reason}
-        self.store.update_lockdown(lockdown_id, status="lifted" if not manual else "lifted_partial",
-                                   lifted_at=self.now(), lifted_by=by, report=report)
-        for timer in self.store.timers(guild_id):
-            if timer["kind"] == "lockdown" and timer["target"] == lockdown_id:
-                self.store.clear_timer(timer["id"])
-        await self._notify("lockdown", guild_id, {"event": "lifted", **report})
-        return report
-
-    # ================================================================ snapshots and restore
-    def take_snapshot(self, guild_id: int, reason: str) -> int:
-        rt = self.runtime(guild_id)
-        snap_id = self.store.add_snapshot(guild_id, snap.capture(rt.port.model()), reason)
-        rt.last["snapshot"] = self.now()
-        return snap_id
-
-    async def request_restore(self, guild_id: int, requester: int, snapshot_id: Optional[int]) -> tuple[str, list[str]]:
-        rt = self.runtime(guild_id)
-        self.require(guild_id, requester, "snapshot")
-        data = self.store.snapshot(guild_id, snapshot_id)
-        if data is None:
-            raise Refused("There is no snapshot yet. Use /security tools action:take snapshot.")
-        plan = PlannedAction("restore", "approve2" if rt.config["approvals.two_person"] else "confirm", Tier.ADMIN,
-                             f"restore from snapshot #{data['id']}", params={"snapshot_id": data["id"]})
-        preview = self.preview(rt, plan)
-        token = await self.request_approval(rt, plan, requested_by=requester)
-        return token, preview
-
-    async def apply_restore(self, rt: Runtime, plan: PlannedAction, actor_id: Optional[int]) -> ActionResult:
-        data = self.store.snapshot(rt.guild_id, plan.params.get("snapshot_id"))
-        if data is None:
-            return ActionResult("failed", "snapshot not found")
-        model = rt.port.model()
-        rp = snap.diff(data["data"], model)
-        if rp.empty:
-            return ActionResult("skipped", "the server already matches the snapshot")
-        reason = f"Rudhabot restore from snapshot #{data['id']}"
-        role_map: dict[int, int] = {}
-        channel_map: dict[int, int] = {}
-        done, failed = [], []
-        for step in rp.steps:
-            await rt.executor.pacer.wait()
-            try:
-                d = step.data
-                if step.kind == "create_role":
-                    role_map[int(d["old_id"])] = await rt.port.create_role(d, reason)
-                elif step.kind == "edit_role":
-                    await rt.port.edit_role_permissions(int(d["role_id"]), int(d["permissions"]), reason)
-                elif step.kind == "create_channel":
-                    category = d.get("category_id")
-                    category = channel_map.get(category, category) if category else None
-                    overwrites = snap.remap_overwrites(d.get("overwrites", []), role_map)
-                    channel_map[int(d["old_id"])] = await rt.port.create_channel(d, category, overwrites, reason)
-                elif step.kind == "set_overwrite":
-                    target = role_map.get(int(d["target_id"]), int(d["target_id"]))
-                    await rt.port.set_overwrite(int(d["channel_id"]), target, d["target_type"], int(d["allow"]),
-                                                int(d["deny"]), reason)
-                elif step.kind == "edit_setting":
-                    await rt.port.edit_setting(d["setting"], int(d["value"]), reason)
-                done.append(step.description)
-            except ActionFailed as error:
-                failed.append((step.description, str(error)))
-        result = ActionResult("confirmed" if done and not failed else "partial" if done else "failed",
-                              f"{len(done)} step(s) done, {len(failed)} failed", done, failed,
-                              data={"notes": rp.notes, "roles": {str(k): v for k, v in role_map.items()},
-                                    "channels": {str(k): v for k, v in channel_map.items()}})
-        await self._notify("restore", rt.guild_id, {"result": result.to_dict(), "snapshot": data["id"]})
-        return result
-
     # ================================================================ moderation commands
     async def moderate(self, guild_id: int, actor_id: int, kind: str, targets: list[int], *, reason: str,
-                       seconds: int = 0, delete_seconds: int = 0) -> tuple[ActionResult, list[dict]]:
+                       seconds: int = 0, delete_seconds: int = 0,
+                       count_budget: bool = True) -> tuple[ActionResult, list[dict]]:
         rt = self.runtime(guild_id)
         if rt is None:
             raise Refused("Security isn't available in this server.")
@@ -627,7 +518,61 @@ class SecurityService:
             case = self.store.add_case(guild_id, kind, user_id, actor_id, plan.reason, duration_s=seconds or None)
             cases.append(case)
             await self._notify("case", guild_id, {"case": case})
+            if kind in ("ban", "kick") and count_budget:
+                await self._count_as(rt, actor_id, kind, user_id)
         return result, cases
+
+    async def _count_as(self, rt: Runtime, actor_id: int, action: str, target_id: Optional[int]) -> None:
+        """Rudhabot's own audit-log entries are exempt from anti-nuke, so a moderator's ban or kick through Rudhabot
+        is counted as *their* action: a hijacked account can't use the bot to dodge its budget."""
+        try:
+            await self.handle(rt.guild_id, AuditEntry(rt.guild_id, action, actor_id, self.now(), target_id=target_id,
+                                                      actor_tier=int(self.tier_of(rt.guild_id, actor_id))))
+        except Exception:
+            log.exception("could not count a moderation action against its moderator")
+
+    def raid_accounts(self, guild_id: int) -> set[int]:
+        """Accounts involved in an open raid/spam/phishing incident."""
+        rt = self.runtime(guild_id)
+        return {u for i in rt.engine.incidents.values() if i.family in ("raid", "spam", "phishing") for u in i.users}
+
+    async def massban(self, guild_id: int, actor_id: int, user_ids: list[int], reason: str,
+                      delete_seconds: int) -> dict:
+        """Raid clean-up: raid accounts (in an open incident, or joined in the last day) are banned at once and don't
+        count against anyone. Up to MASSBAN_UNCHECKED other accounts are banned too, counted against the moderator's
+        anti-nuke budget; more than that need a second Senior Moderator to approve."""
+        rt = self.runtime(guild_id)
+        if rt is None:
+            raise Refused("Security isn't available in this server.")
+        self.require(guild_id, actor_id, "bulk_ban")
+        raid = self.raid_accounts(guild_id)
+        now = self.now()
+        for uid in user_ids:
+            member = rt.port.member(uid)
+            if member is not None and member.joined_at and now - member.joined_at < 86400:
+                raid.add(uid)
+        fast = [u for u in user_ids if u in raid]
+        others = [u for u in user_ids if u not in raid]
+        out = {"banned": [], "failed": [], "cases": [], "awaiting": 0, "token": None}
+        if fast:
+            result, cases = await self.moderate(guild_id, actor_id, "ban", fast, reason=reason,
+                                                delete_seconds=delete_seconds, count_budget=False)
+            out["banned"] += result.done
+            out["failed"] += result.failed
+            out["cases"] += cases
+        if others and len(others) <= MASSBAN_UNCHECKED:
+            result, cases = await self.moderate(guild_id, actor_id, "ban", others, reason=reason,
+                                                delete_seconds=delete_seconds)
+            out["banned"] += result.done
+            out["failed"] += result.failed
+            out["cases"] += cases
+        elif others:
+            plan = PlannedAction("ban", "approve2", Tier.SENIOR,
+                                 f"mass ban of {len(others)} established account(s): {reason}"[:300], targets=others,
+                                 params={"delete_seconds": delete_seconds})
+            out["token"] = await self.request_approval(rt, plan, requested_by=actor_id)
+            out["awaiting"] = len(others)
+        return out
 
     async def warn(self, guild_id: int, actor_id: int, target_id: int, reason: str) -> dict:
         tier = self.require(guild_id, actor_id, "warn")
@@ -660,7 +605,7 @@ class SecurityService:
         if result.ok and revert_minutes:
             previous = result.data.get("previous", {}).get(str(channel_id), 0)
             self.store.set_timer(guild_id, "slowmode", channel_id, self.now() + revert_minutes * 60,
-                                 {"previous": previous})
+                                 {"previous": previous, "set": int(seconds)})
         return result
 
     async def release_quarantine(self, guild_id: int, actor_id: int, user_id: int) -> str:
@@ -724,13 +669,79 @@ class SecurityService:
 
     # ================================================================ configuration and levels
     def save_config(self, guild_id: int, config: SecurityConfig, by: int, note: str) -> SecurityConfig:
+        """Save a new version and tell staff what changed (and whether it weakened the defences): a hijacked admin
+        account can't quietly switch security off."""
         rt = self.runtime(guild_id)
+        old = rt.config if rt is not None else self.config(guild_id)
         version = self.store.save_config(guild_id, {k: v for k, v in config.to_dict().items()}, by, note)
         fresh = SecurityConfig(config.to_dict(), version)
         if rt is not None:
             rt.config = fresh
             rt.engine.cfg = fresh
+        changes = old.diff(fresh)
+        if changes:
+            weakening = weakening_changes(changes) + (["rolled back to an older version"]
+                                                      if note.startswith("rollback") else [])
+            self._spawn(self._notify("settings", guild_id, {"by": by, "version": version, "note": note,
+                                                            "changes": {k: [str(a), str(b)] for k, (a, b) in
+                                                                        list(changes.items())[:12]},
+                                                            "weakening": weakening}))
         return fresh
+
+    def _spawn(self, coro) -> None:
+        try:
+            task = asyncio.get_running_loop().create_task(coro)
+        except RuntimeError:                      # no loop (scripts, some tests): nothing to post to anyway
+            coro.close()
+            return
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    def set_staff_tier(self, guild_id: int, actor_id: int, role_id: int, tier: int) -> SecurityConfig:
+        """Map a role to a clearance tier. Never @everyone or an integration's role; the Admin tier, and Moderator or
+        above for a role held by 25+ members, only by the server owner."""
+        actor_tier = self.require(guild_id, actor_id, "clearance")
+        rt = self.runtime(guild_id)
+        model = rt.port.model()
+        role = model.role(role_id)
+        if role is None:
+            raise Refused("That role doesn't exist any more.")
+        if role.id == model.id:
+            raise Refused("@everyone can't be given a staff tier: every member would get it.")
+        if role.managed:
+            raise Refused("A role managed by an integration (a bot, boosts) can't be given a staff tier.")
+        if tier >= Tier.ADMIN and actor_tier < Tier.OWNER:
+            raise Refused("Only the server owner can give a role the Admin tier.")
+        if tier >= Tier.MODERATOR and role.member_count >= 25 and actor_tier < Tier.OWNER:
+            raise Refused(f"'{role.name}' is held by {role.member_count} members; only the server owner can make such "
+                          "a broad role staff.")
+        return self.save_config(guild_id, self.config(guild_id).with_tier(role_id, tier or None), actor_id,
+                                f"staff {role_id}={tier}")
+
+    async def add_exemption(self, guild_id: int, actor_id: int, kind: str, value: str, checks: str,
+                            days: int) -> str:
+        """A time-limited exemption. Anti-nuke exemptions for members and roles need an Admin, can't cover the person
+        asking, last at most ANTINUKE_EXEMPT_MAX_DAYS, and every exemption is announced."""
+        tier = self.require(guild_id, actor_id, "allowlist")
+        rt = self.runtime(guild_id)
+        antinuke = checks in ("antinuke", "all") and kind in ("user", "role")
+        if antinuke:
+            if tier < Tier.ADMIN:
+                raise Refused("Exempting staff or roles from anti-nuke needs Admin clearance.")
+            access = rt.port.access(actor_id)
+            if (kind == "user" and int(value) == actor_id) or (kind == "role" and access and int(value) in access[0]):
+                raise Refused("You can't exempt yourself (or a role you hold) from anti-nuke.")
+            days = min(days, ANTINUKE_EXEMPT_MAX_DAYS)
+        expires = self.now() + days * 86400
+        self.store.add_allow(guild_id, kind, value, [checks], expires, actor_id, "")
+        rt.allows_at = 0
+        await self._notify("settings", guild_id, {"by": actor_id, "version": rt.config.version,
+                                                  "note": f"exemption: {kind} {value} skips {checks} checks",
+                                                  "changes": {"exemption": ["", f"{kind} {value} ({checks}, {days} d)"]},
+                                                  "weakening": [f"{kind} {value} exempt from {checks} checks"]
+                                                  if checks in ("antinuke", "all") else []})
+        return f"{kind} `{value}` skips {checks} checks until <t:{int(expires)}:R>" + (
+            f" (anti-nuke exemptions last at most {ANTINUKE_EXEMPT_MAX_DAYS} days)" if antinuke else "")
 
     def config(self, guild_id: int) -> SecurityConfig:
         rt = self.runtime(guild_id)
@@ -827,6 +838,11 @@ class SecurityService:
         if rt is None:
             return
         if timer["kind"] == "slowmode":
+            channel = rt.port.model().channel(timer["target"])
+            ours = timer["data"].get("set")
+            if channel is not None and ours is not None and channel.slowmode != int(ours):
+                log.info("slowmode in %s was changed by staff since; leaving it", timer["target"])
+                return
             try:
                 await rt.port.set_slowmode(timer["target"], int(timer["data"].get("previous", 0)),
                                            "Rudhabot: temporary slowmode over")
@@ -884,21 +900,22 @@ class SecurityService:
                                                 "probation_role": cfg["probation_role"], "mode": cfg["mode"]},
                              stale_staff=stale, staff_ids=staff)
 
-    async def incident_report(self, guild_id: int, incident_id: str, use_llm: bool = True) -> tuple[str, str]:
+    async def incident_report(self, guild_id: int, incident_id: str, use_llm: bool = True,
+                              user_id: int = 0) -> tuple[str, str]:
         rt = self.runtime(guild_id)
         inc = self._incident(rt, incident_id)
         if inc is None:
             raise Refused("No such incident.")
         actions = self.store.actions_for_incident(guild_id, incident_id)
         if use_llm and rt.config["llm.summaries"] and self.briefer.enabled:
-            return await self.briefer.summary(inc.to_dict(), actions, guild_id)
+            return await self.briefer.summary(inc.to_dict(), actions, guild_id, user_id)
         return after_action(inc.to_dict(), actions), "template"
 
-    async def ask(self, guild_id: int, question: str) -> tuple[str, str]:
+    async def ask(self, guild_id: int, question: str, user_id: int = 0) -> tuple[str, str]:
         status = self.status(guild_id)
         incidents = self.store.incidents(guild_id, limit=8)
         return await self.briefer.answer(question, {k: v for k, v in status.items() if k != "health"}, incidents,
-                                         guild_id)
+                                         guild_id, user_id)
 
     async def shutdown(self) -> None:
         for rt in self.runtimes.values():
@@ -911,3 +928,36 @@ class SecurityService:
                 self.store.touch_seen(rt.guild_id, rt.seen)
             except Exception:
                 log.exception("saving security state on shutdown failed")
+
+
+#: settings whose higher value is a looser defence, and booleans whose switching off is
+LOOSER_WHEN_HIGHER = ("joins.min_joins", "joins.surge_ratio", "joins.cohort_min", "messages.flood_count",
+                      "messages.dup_count", "messages.coord_accounts", "messages.mention_limit",
+                      "messages.mention_window_limit", "messages.relaxed_factor", "links.delete_score",
+                      "files.delete_score", "antinuke.window_s", "antinuke.budget_mod", "antinuke.budget_senior",
+                      "antinuke.budget_admin", "levels.decay_minutes")
+LOOSER_WHEN_LOWER = ("levels.auto_max", "approvals.expire_minutes")
+LOOSER_LISTS_GROW = ("links.allow", "channels.ignored", "channels.relaxed")
+
+
+def weakening_changes(changes: dict) -> list[str]:
+    """Plain-language list of the changes in `changes` (key -> (old, new)) that weaken the defences."""
+    out = []
+    for key, (old, new) in changes.items():
+        if key == "mode" and new == "shadow":
+            out.append("automatic responses switched off (shadow mode)")
+        elif isinstance(old, bool) and old and not new and key.startswith(("antinuke.", "auto.", "approvals.")):
+            out.append(f"{key} switched off")
+        elif key in LOOSER_WHEN_HIGHER and isinstance(new, (int, float)) and new > old:
+            out.append(f"{key} loosened ({old} -> {new})")
+        elif key in LOOSER_WHEN_LOWER and isinstance(new, (int, float)) and new < old:
+            out.append(f"{key} loosened ({old} -> {new})")
+        elif key in LOOSER_LISTS_GROW and len(new or []) > len(old or []):
+            out.append(f"{key}: entries added")
+        elif key == "links.deny" and len(new or []) < len(old or []):
+            out.append("links.deny: entries removed")
+        elif key == "tiers":
+            raised = [r for r, t in (new or {}).items() if t > (old or {}).get(r, 0)]
+            if raised:
+                out.append(f"staff tier raised for {len(raised)} role(s)")
+    return out

@@ -277,5 +277,19 @@ def restore_embed(payload: dict) -> discord.Embed:
     return embed
 
 
+def settings_embed(p: dict) -> discord.Embed:
+    weak = p.get("weakening") or []
+    embed = discord.Embed(title=("⚠️ Security weakened" if weak else "⚙️ Security settings changed")
+                          + f" (v{p.get('version', '?')})", color=Colors.THREAT_ELEVATED if weak else Colors.SECURITY,
+                          description=f"By <@{p['by']}>: {p.get('note', '')}"[:1000])
+    lines = [f"`{k}`: {a or '—'} → {b}" for k, (a, b) in p.get("changes", {}).items()]
+    if lines:
+        embed.add_field(name="Changes", value="\n".join(lines)[:1024], inline=False)
+    if weak:
+        embed.add_field(name="Weakens the defences", value="\n".join(f"• {w}" for w in weak)[:1024], inline=False)
+    embed.set_footer(text="If this wasn't planned: /security settings key:rollback")
+    return embed
+
+
 def simple(title: str, text: str, color: int = Colors.SECURITY) -> discord.Embed:
     return discord.Embed(title=title, description=text[:4000], color=color)

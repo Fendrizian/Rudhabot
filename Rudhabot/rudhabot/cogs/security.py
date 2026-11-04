@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Literal, Optional
 
 import discord
@@ -26,6 +27,7 @@ from rudhabot.views.security import DYNAMIC_ITEMS, approval_view, incident_view,
 
 log = logging.getLogger("rudhabot.security")
 REASON = app_commands.Range[str, 1, 300]
+DRILL_COOLDOWN_S = 60
 
 
 class SecurityCog(ServiceCog):
@@ -38,6 +40,8 @@ class SecurityCog(ServiceCog):
         self.sec.notify = self.notify
         self.incident_posts: dict[str, tuple[int, int]] = {}
         self.approval_posts: dict[str, dict] = {}
+        self._drills_running: set[int] = set()
+        self._drill_last: dict[int, float] = {}
         self._warned: set[int] = set()
 
     async def cog_load(self) -> None:
@@ -163,6 +167,8 @@ class SecurityCog(ServiceCog):
             await self._post(alert, guild_id, embed=E.containment_embed(payload["plan"], payload["result"]))
         elif kind == "restore":
             await self._post(alert, guild_id, embed=E.restore_embed(payload))
+        elif kind == "settings":
+            await self._post(alert, guild_id, embed=E.settings_embed(payload))
 
     def _ranked(self, guild_id: int, incidents: list[dict]) -> list[dict]:
         """Most likely real first: the alert ranker when it is on and loaded, otherwise severity."""
@@ -273,7 +279,7 @@ class SecurityCog(ServiceCog):
         if action == "report":
             await interaction.response.defer(ephemeral=True, thinking=True)
             try:
-                text, source = await self.sec.incident_report(gid, incident_id)
+                text, source = await self.sec.incident_report(gid, incident_id, user_id=interaction.user.id)
             except Refused as refusal:
                 return await self._ephemeral(interaction, "No such incident", str(refusal), Colors.FAIL)
             return await self._ephemeral(interaction, f"📋 Incident {incident_id}"
@@ -351,7 +357,7 @@ class SecurityCog(ServiceCog):
         if not await self._guarded(interaction, "ask"):
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
-        text, source = await self.sec.ask(interaction.guild.id, question)
+        text, source = await self.sec.ask(interaction.guild.id, question, interaction.user.id)
         await self._ephemeral(interaction, "Security Q&A" + (" (AI, read-only)" if source == "llm" else ""), text)
 
     # ================================================================ set-up (Admins)
@@ -401,9 +407,10 @@ class SecurityCog(ServiceCog):
             t = self.sec.tier_of(gid, member.id)
             return await self._ephemeral(interaction, "Staff tier", f"{member.mention}: **{t.label}** ({t.rank})")
         if role is not None and tier is not None:
-            if not await self._guarded(interaction, "clearance"):
-                return
-            cfg = self._save(interaction, self.sec.config(gid).with_tier(role.id, tier or None), f"staff {role.id}={tier}")
+            try:
+                cfg = self.sec.set_staff_tier(gid, interaction.user.id, role.id, tier)
+            except Refused as refusal:
+                return await self._ephemeral(interaction, "⛔ Not done", str(refusal), Colors.UNAVAILABLE)
             label = "no tier" if not tier else f"{Tier(tier).label} ({Tier(tier).rank})"
             return await self._ephemeral(interaction, f"Saved (v{cfg.version})", f"{role.mention}: {label}")
         cfg = self.sec.config(gid)
@@ -483,23 +490,24 @@ class SecurityCog(ServiceCog):
             return await self._ephemeral(interaction, "Exemptions", "\n".join(
                 f"{a['kind']} `{a['value']}` · {', '.join(a['detectors'])} · until {E.ts(a['expires'])}" for a in rows)
                 or "None.")
-        if not await self._guarded(interaction, "allowlist"):
-            return
         store_kind = "user" if kind == "member" else kind
         value = value.strip().strip("<@&#!>").lower()
         if store_kind != "domain" and not value.isdigit():
             return await self._ephemeral(interaction, "Not an id", "Give a mention or a numeric id.", Colors.FAIL)
         if days == 0:
+            if not await self._guarded(interaction, "allowlist"):
+                return
             removed = [a for a in self.sec.store.allows(gid) if a["kind"] == store_kind and a["value"] == value]
             for a in removed:
                 self.sec.store.remove_allow(gid, a["id"])
             self.sec.runtime(gid).allows_at = 0
             return await self._ephemeral(interaction, "Exemption removed" if removed else "Nothing to remove",
                                          f"{kind} `{value}`")
-        expires = self.sec.now() + days * 86400
-        self.sec.store.add_allow(gid, store_kind, value, [checks], expires, interaction.user.id, "")
-        self.sec.runtime(gid).allows_at = 0
-        await self._ephemeral(interaction, "Exempted", f"{kind} `{value}` skips {checks} checks until {E.ts(expires)}")
+        try:
+            text = await self.sec.add_exemption(gid, interaction.user.id, store_kind, value, checks, days)
+        except Refused as refusal:
+            return await self._ephemeral(interaction, "⛔ Not done", str(refusal), Colors.UNAVAILABLE)
+        await self._ephemeral(interaction, "Exempted", text)
 
     @security.command(name="tools", description="Health check, drills, snapshots, restore, AutoMod, verification, models")
     @app_commands.describe(action="What to do", scenario="For a drill: which attack to rehearse",
@@ -520,11 +528,20 @@ class SecurityCog(ServiceCog):
         if action == "drill":
             if not await self._guarded(interaction, "drill"):
                 return
-            await interaction.response.defer(ephemeral=True, thinking=True)
-            from rudhabot.security.drill import run_drill
-            scenario = scenario or "join_raid"
-            models = self.sec.models if self.sec.models is not None and self.sec.models.loaded else None
-            report = await asyncio.to_thread(run_drill, scenario, self.sec.config(gid), None, models)
+            last = self._drill_last.get(interaction.user.id, 0.0)
+            if gid in self._drills_running or time.monotonic() - last < DRILL_COOLDOWN_S:
+                return await self._ephemeral(interaction, "One drill at a time",
+                                             "A drill is running, or you ran one less than a minute ago.")
+            self._drills_running.add(gid)
+            self._drill_last[interaction.user.id] = time.monotonic()
+            try:
+                await interaction.response.defer(ephemeral=True, thinking=True)
+                from rudhabot.security.drill import run_drill
+                scenario = scenario or "join_raid"
+                models = self.sec.models if self.sec.models is not None and self.sec.models.loaded else None
+                report = await asyncio.to_thread(run_drill, scenario, self.sec.config(gid), None, models)
+            finally:
+                self._drills_running.discard(gid)
             return await interaction.followup.send(embed=E.simple(f"🎯 Drill: {scenario.replace('_', ' ')}", report,
                                                                   Colors.SECURITY), ephemeral=True)
         if action == "take snapshot":

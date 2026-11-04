@@ -77,7 +77,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
     @app_commands.choices(deck=ARCHETYPE_CHOICES)
     async def starter(self, interaction: discord.Interaction, deck: app_commands.Choice[str]):
         try:
-            profile = self.tcg.claim_starter(interaction.user.id, deck.value)
+            self.tcg.claim_starter(interaction.user.id, deck.value)
         except TcgError as error:
             return await _reply(interaction, _note(str(error), Colors.FAIL))
         arche = ARCHETYPES[deck.value]

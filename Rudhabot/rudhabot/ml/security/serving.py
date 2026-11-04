@@ -171,6 +171,18 @@ class SecurityModels:
         except Exception:
             return None
 
+    def scorers(self) -> tuple:
+        """(message_model, incident_model) callables in the shape the wargame and drills use, or None for a model
+        that isn't loaded. Uncertain message readings count as nothing, exactly as in the bot."""
+        def message(text):
+            s = self.message_scores(text)
+            return (0.0, 0.0) if s["uncertain"] else (s["scam"], s["spam"])
+
+        def incident(vec):
+            s = self.incident_scores(vec)
+            return s["p"], s["family"], s["confident"]
+        return (message if self.message_ready else None), (incident if self.incident_ready else None)
+
     def status(self, config=None) -> dict:
         def state(name, ready, key):
             if config is not None and not config[key]:

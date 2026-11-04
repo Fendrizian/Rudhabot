@@ -213,7 +213,7 @@ class Executor:
                 done.append(user_id)
             except ActionFailed as error:
                 failed.append((user_id, str(error)))
-        status = "confirmed" if done and not failed else "partial" if done else "failed"
+        status = outcome_status(done, failed)
         return ActionResult(status, f"{len(done)} done, {len(failed)} not done", done, failed)
 
     async def _run(self, plan: PlannedAction, actor_id: Optional[int], ctx: dict) -> ActionResult:
@@ -231,7 +231,7 @@ class Executor:
                     deleted += await port.delete_messages(channel_id, ids, reason)
                 except ActionFailed as error:
                     failed.append((channel_id, str(error)))
-            status = "confirmed" if deleted and not failed else "partial" if deleted else "failed"
+            status = outcome_status(deleted, failed)
             return ActionResult(status, f"{deleted} message(s) deleted", [deleted], failed)
         if kind == "timeout":
             seconds = int(plan.params["seconds"])
@@ -267,7 +267,7 @@ class Executor:
                     banned, refused = await port.ban(allowed[i:i + 200], reason, int(plan.params.get("delete_seconds", 0)))
                     done += banned
                     failed += [(u, "Discord refused") for u in refused]
-            status = "confirmed" if done and not failed else "partial" if done else "failed"
+            status = outcome_status(done, failed)
             return ActionResult(status, f"{len(done)} banned", done, failed)
         if kind == "unban":
             done, failed = [], []
@@ -278,7 +278,7 @@ class Executor:
                     done.append(user_id)
                 except ActionFailed as error:
                     failed.append((user_id, str(error)))
-            return ActionResult("confirmed" if done and not failed else "partial" if done else "failed",
+            return ActionResult(outcome_status(done, failed),
                                 f"{len(done)} unbanned", done, failed)
         if kind == "slowmode":
             seconds = int(plan.params.get("seconds", 0))
@@ -290,7 +290,7 @@ class Executor:
                     done.append(channel_id)
                 except ActionFailed as error:
                     failed.append((channel_id, str(error)))
-            return ActionResult("confirmed" if done and not failed else "partial" if done else "failed",
+            return ActionResult(outcome_status(done, failed),
                                 f"slowmode {seconds}s on {len(done)} channel(s)", done, failed, data={"previous": previous})
         if kind == "quarantine":
             return await self._quarantine(plan, actor_id, reason, ctx)
@@ -303,7 +303,7 @@ class Executor:
                     done.append(hook)
                 except ActionFailed as error:
                     failed.append((hook, str(error)))
-            return ActionResult("confirmed" if done and not failed else "partial" if done else "failed",
+            return ActionResult(outcome_status(done, failed),
                                 f"{len(done)} webhook(s) removed", done, failed)
         if kind == "revert_permissions":
             guild = port.model()
@@ -323,7 +323,7 @@ class Executor:
                     done.append(role_id)
                 except ActionFailed as error:
                     failed.append((role_id, str(error)))
-            return ActionResult("confirmed" if done and not failed else "partial" if done else "failed",
+            return ActionResult(outcome_status(done, failed),
                                 f"permissions reverted on {len(done)} role(s)", done, failed, data={"before": before})
         if kind in ("pause_invites", "pause_dms"):
             minutes = max(1, min(1440, int(plan.params.get("minutes", 60))))
@@ -368,8 +368,13 @@ class Executor:
                 done.append(user_id)
             except ActionFailed as error:
                 failed.append((user_id, str(error)))
-        status = "confirmed" if done and not failed else "partial" if done else "failed"
+        status = outcome_status(done, failed)
         return ActionResult(status, f"{len(done)} account(s) quarantined", done, failed, data={"removed": removed_by_user})
+
+
+def outcome_status(done, failed) -> str:
+    """confirmed when everything worked, partial when some did, failed when nothing did."""
+    return "confirmed" if done and not failed else "partial" if done else "failed"
 
 
 def _reason(plan: PlannedAction, actor_id: Optional[int]) -> str:
