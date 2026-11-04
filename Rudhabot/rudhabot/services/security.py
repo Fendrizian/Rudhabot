@@ -74,11 +74,11 @@ class Runtime:
 
 
 class SecurityService(RecoveryMixin):
-    def __init__(self, store: SecurityStore, clock, *, admin_role_id: int = 0, models=None,
+    def __init__(self, store: SecurityStore, clock, *, admin_role_id=0, models=None,
                  briefer: Optional[Briefer] = None, port_factory: Optional[Callable[[int], GuildPort]] = None,
                  bot_id: Callable[[], int] = lambda: 0, pacer_factory=Pacer):
         self.store, self.clock = store, clock
-        self.admin_role_id = admin_role_id
+        self._admin_role_id = admin_role_id         # an id, or a live read from the server profile
         self.models = models
         self.briefer = briefer or Briefer()
         self.port_factory = port_factory
@@ -93,6 +93,11 @@ class SecurityService(RecoveryMixin):
         self._tasks: set = set()                 # strong references: the loop only holds tasks weakly
 
     # ================================================================ plumbing
+    @property
+    def admin_role_id(self) -> int:
+        role = self._admin_role_id
+        return int(role() if callable(role) else role)
+
     def now(self) -> float:
         return self.clock.now(timezone.utc).timestamp()
 
@@ -780,6 +785,14 @@ class SecurityService(RecoveryMixin):
                                                                         list(changes.items())[:12]},
                                                             "weakening": weakening}))
         return fresh
+
+    def profile_changed(self, guild_id: int, by: int, changes: dict) -> None:
+        """A /setup change to a role that grants authority is posted to the alert channel like a settings change."""
+        weakening = [f"the {key} role changed: members of the new role get its authority" for key in changes
+                     if key in ("admin", "banker")]
+        self._spawn(self._notify("settings", guild_id, {"by": by, "version": "profile", "note": "server profile (/setup)",
+                                                        "changes": {k: [str(a), str(b)] for k, (a, b) in changes.items()},
+                                                        "weakening": weakening}))
 
     def _spawn(self, coro) -> None:
         try:

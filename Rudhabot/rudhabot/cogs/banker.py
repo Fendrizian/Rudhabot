@@ -37,7 +37,7 @@ class BankerCog(ServiceCog, commands.GroupCog, group_name="banker", group_descri
         log.info("banker %s: %s for %s (%s)", interaction.user.id, action, target.id, reason)
         embed = discord.Embed(title=f"{BANKICON} Banker action", description=text, color=Colors.BANK)
         embed.set_footer(text=f"by {interaction.user} ({interaction.user.id})")
-        await self.services.messenger.post(self.services.settings.channels.audit, embed=embed,
+        await self.services.messenger.post(self.services.profile.channel("audit"), embed=embed,
                                            allowed_mentions=discord.AllowedMentions.none())
 
     async def _refuse(self, interaction: discord.Interaction, message: str) -> None:
@@ -102,7 +102,7 @@ class BankerCog(ServiceCog, commands.GroupCog, group_name="banker", group_descri
 
     async def _remove_bankrupt_role(self, guild, user_id: int) -> None:
         member = guild.get_member(user_id) if guild else None
-        role = guild.get_role(self.services.settings.loans.bankrupt_role_id) if member else None
+        role = guild.get_role(self.services.profile.role("bankrupt")) if member else None
         if member and role and role in getattr(member, "roles", ()):
             try:
                 await member.remove_roles(role)

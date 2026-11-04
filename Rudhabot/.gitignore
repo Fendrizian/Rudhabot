@@ -13,6 +13,7 @@ stocks.json
 gacha.json
 reviews.json
 intent_outcomes.json
+server_profile.json
 ledger.jsonl
 failures.jsonl
 rudhabot.db

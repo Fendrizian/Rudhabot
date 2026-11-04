@@ -23,6 +23,12 @@ class RudhaTree(app_commands.CommandTree):
     """Turns check failures into the standard messages and keeps unexpected errors from going unanswered."""
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        services = getattr(interaction.client, "services", None)
+        home = services.settings.home_guild_id if services is not None else 0
+        if home and interaction.guild_id and interaction.guild_id != home:
+            await self._tell(interaction, "Rudhabot serves one server only, so its commands don't work here.",
+                             Colors.UNAVAILABLE)
+            return False
         # runs in the same task as the command, so every money change it makes is labelled "/command"
         command = interaction.command
         set_context(f"/{command.qualified_name}" if command else "slash command", interaction.user.id, "command")
@@ -70,8 +76,21 @@ class RudhaBot(commands.Bot):
 
     @property
     def primary_guild(self) -> Optional[discord.Guild]:
-        """The server the background jobs act in (the first one the bot joined)."""
+        """The home server: where the background jobs act and the cross-system views look."""
         return self.get_guild(self.guild_id) if self.guild_id else None
+
+    def _find_home(self) -> Optional[int]:
+        """RUDHABOT_GUILD_ID; else the server that holds the configured audit/notification channels; else the only
+        (or first) server the bot is in."""
+        home = self.services.settings.home_guild_id
+        if home:
+            return home
+        profile = self.services.profile
+        for key in ("audit", "notifications", "birthdays", "lottery"):
+            channel = self.get_channel(profile.channel(key))
+            if channel is not None and getattr(channel, "guild", None) is not None:
+                return channel.guild.id
+        return self.guilds[0].id if self.guilds else None
 
     async def setup_hook(self) -> None:
         from rudhabot.cogs.registry import ALL_COGS      # imported late: cogs import this package's services
@@ -85,17 +104,35 @@ class RudhaBot(commands.Bot):
             self.services.storage.close()
 
     async def on_ready(self) -> None:
-        if self.guilds:
-            self.guild_id = self.guilds[0].id
-            log.info("using guild %s", self.guild_id)
+        self.guild_id = self._find_home()
+        if self.guild_id:
+            log.info("home server %s", self.guild_id)
         log.info("logged in as %s (ID: %s)", self.user, self.user.id)
+        home = self.services.settings.home_guild_id
+        others = [g for g in self.guilds if home and g.id != home]
+        if others:
+            log.warning("Rudhabot is in %d other server(s) %s; its commands are refused there",
+                        len(others), [g.id for g in others])
         if self._commands_synced:                         # on_ready also fires after every reconnect
             return
         try:
-            await self.tree.sync()
-            if self.guild_id:
-                await self.tree.sync(guild=discord.Object(id=self.guild_id))   # clears stale guild-scoped copies
+            if home:
+                # one server: register the commands there (they appear at once) and none globally (nothing twice)
+                guild = discord.Object(id=home)
+                self.tree.copy_global_to(guild=guild)
+                await self.tree.sync(guild=guild)
+                await self.http.bulk_upsert_global_commands(self.application_id, payload=[])
+            else:
+                await self.tree.sync()
+                if self.guild_id:
+                    await self.tree.sync(guild=discord.Object(id=self.guild_id))   # clears stale guild-scoped copies
             self._commands_synced = True
-            log.info("slash commands synced")
+            log.info("slash commands synced%s", f" to server {home}" if home else "")
         except Exception:
             log.exception("syncing slash commands failed")
+
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        home = self.services.settings.home_guild_id
+        if home and guild.id != home:
+            log.warning("added to server %s (%s), which isn't the home server: commands are refused there",
+                        guild.id, guild.name)

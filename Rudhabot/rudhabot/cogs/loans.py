@@ -131,7 +131,7 @@ class LoansCog(ServiceCog):
     # ----------------------------------------------------------- background jobs
     def _notification_channel(self):
         guild = self.bot.primary_guild
-        return guild, (guild.get_channel(self.services.settings.channels.notifications) if guild else None)
+        return guild, (guild.get_channel(self.services.profile.channel("notifications")) if guild else None)
 
     @tasks.loop(minutes=5)
     async def settle_loans(self):
@@ -175,7 +175,7 @@ class LoansCog(ServiceCog):
         if not guild:
             return
         member = guild.get_member(user_id)
-        role = guild.get_role(self.services.settings.loans.bankrupt_role_id) if member else None
+        role = guild.get_role(self.services.profile.role("bankrupt")) if member else None
         if member and role:
             try:
                 await member.add_roles(role)

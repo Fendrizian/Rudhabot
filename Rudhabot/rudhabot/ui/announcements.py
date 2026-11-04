@@ -1,6 +1,8 @@
 """Public announcements: lottery jackpots, birthday greetings and delivered cake messages."""
 from __future__ import annotations
 
+from typing import Callable, Union
+
 import discord
 
 from rudhabot.domain.catalog import ItemCatalog
@@ -13,10 +15,15 @@ from rudhabot.ui.theme import CURRENCY, Colors
 
 
 class Announcer:
-    def __init__(self, messenger: Messenger, channels: Channels, catalog: ItemCatalog):
+    def __init__(self, messenger: Messenger, channels: Union[Channels, Callable[[], Channels]], catalog: ItemCatalog):
+        """`channels`: fixed, or a callable returning the current ones (the server profile, so /setup applies live)."""
         self._messenger = messenger
-        self._channels = channels
+        self._source = channels
         self._catalog = catalog
+
+    @property
+    def _channels(self) -> Channels:
+        return self._source() if callable(self._source) else self._source
 
     async def jackpot(self, user_id: int, spec: TicketSpec, count: int = 1) -> bool:
         embed = discord.Embed(

@@ -17,5 +17,5 @@ class LotteryCog(ServiceCog):
         s = self.services
         inventory = self.users.get(interaction.user.id).get("inventory", {})
         embed = lottery_embeds.lottery_info(s.lottery.specs, s.catalog, inventory, s.lottery.recent_jackpots(5),
-                                            s.settings.channels.lottery)
+                                            s.profile.channel("lottery"))
         await respond(interaction, embed)

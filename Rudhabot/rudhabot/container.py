@@ -35,6 +35,7 @@ from rudhabot.services.loans import LoanService
 from rudhabot.services.clairvoyance import ClairvoyanceService
 from rudhabot.services.lottery import LotteryService
 from rudhabot.services.permissions import AdminPolicy
+from rudhabot.services.profile import ServerProfile
 from rudhabot.services.sessions import GamblingSessions
 from rudhabot.services.shop import CafeMenu, ShopService
 from rudhabot.services.standing import StandingService
@@ -77,6 +78,7 @@ class Services:
     storage: Storage
     security: SecurityService
     standing: StandingService
+    profile: ServerProfile
 
     @classmethod
     def build(cls, settings: Settings, client: discord.Client, *, clock: Clock | None = None,
@@ -89,6 +91,7 @@ class Services:
         catalog = ItemCatalog()
         storage = Storage.open(settings.storage, paths.database)       # SQLite file, or the JSON files
         docs, value = storage.docs, storage.value
+        profile = ServerProfile(value("server_profile", paths.server_profile, dict), settings, clock)   # /setup
 
         # the audit trail comes first: every repository that holds money reports to it
         audit = AuditService(storage.ledger("economy_ledger", paths.ledger), clock, settings.channels.audit)
@@ -114,7 +117,7 @@ class Services:
         tcg.bank = bank
 
         assistant = _build_assistant(settings, tcg, clairvoyance)
-        security = _build_security(settings, storage, clock, client, assistant)
+        security = _build_security(settings, storage, clock, client, assistant, lambda: profile.role("admin"))
         standing = StandingService(security, reviews, clock)       # one view of a member across every system
         security.protect = standing.protect
         return cls(
@@ -126,7 +129,7 @@ class Services:
             menu=menu,
             shop=shop,
             sessions=GamblingSessions(),
-            admin=AdminPolicy(settings.admin_role_id, settings.banker_role_id),
+            admin=AdminPolicy(lambda: profile.role("admin"), lambda: profile.role("banker")),
             loans=LoanService(users, settings.loans, clock),
             crypto=CryptoMarket(PriceBook(value("crypto_prices", paths.crypto, lambda: starting_prices(symbols))),
                                 coins, users, rng),
@@ -139,7 +142,7 @@ class Services:
             mystery_box=MysteryBox(catalog.mystery_box_pool(), rng=rng),
             messenger=messenger,
             loan_notices=LoanNotifier(messenger),
-            announcer=Announcer(messenger, settings.channels, catalog),
+            announcer=Announcer(messenger, lambda: profile.channels, catalog),
             clairvoyance=clairvoyance,
             tcg=tcg,
             assistant=assistant,
@@ -152,11 +155,12 @@ class Services:
             storage=storage,
             security=security,
             standing=standing,
+            profile=profile,
         )
 
 
 def _build_security(settings: Settings, storage: Storage, clock: Clock, client: discord.Client,
-                    assistant: Assistant) -> SecurityService:
+                    assistant: Assistant, admin_role=None) -> SecurityService:
     """Security keeps its records in SQLite even when the economy uses JSON files (RUDHABOT_STORAGE=json)."""
     import os
     from rudhabot.ml.security.serving import SecurityModels
@@ -170,7 +174,8 @@ def _build_security(settings: Settings, storage: Storage, clock: Clock, client: 
     models = SecurityModels(os.path.join(settings.ai.models_dir, "security"), enabled=enabled)
     briefer = Briefer(assistant.model, assistant.limiter)
     automod_counts: dict[int, int] = {}
-    return SecurityService(store, clock, admin_role_id=settings.admin_role_id, models=models, briefer=briefer,
+    return SecurityService(store, clock, admin_role_id=admin_role or settings.admin_role_id, models=models,
+                           briefer=briefer,
                            port_factory=lambda gid: DiscordGuildPort(client, gid, lambda: automod_counts.get(gid, 0)),
                            bot_id=lambda: client.user.id if client.user else 0)
 

@@ -59,7 +59,7 @@ class AuditCog(ServiceCog):
 
     async def flush(self) -> None:
         """Post queued audit entries (up to 20 per embed, 3 embeds per run) and any new review signals."""
-        channels = self.services.settings.channels
+        channels = self.services.profile.channels
         for _ in range(3):
             batch = self.audit.drain(20)
             if not batch:

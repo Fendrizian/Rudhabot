@@ -43,6 +43,7 @@ class Paths:
     reviews: str = "reviews.json"           # Clairvoyance review signals
     failures: str = "failures.jsonl"        # failed interactions (input to anomaly detection)
     intent_outcomes: str = "intent_outcomes.json"   # suggestion counts (JSON backend only; no text)
+    server_profile: str = "server_profile.json"     # /setup overrides (JSON backend only)
     database: str = "rudhabot.db"           # SQLite storage (RUDHABOT_STORAGE=sqlite, the default)
     backups: str = "backups"                # daily database backups
 
@@ -163,6 +164,9 @@ class Settings:
     storage: str = field(default_factory=lambda: (os.environ.get("RUDHABOT_STORAGE") or "sqlite").strip().lower())
     admin_role_id: int = field(default_factory=lambda: _id("RUDHABOT_ADMIN_ROLE_ID", 1142722971606200460))
     banker_role_id: int = field(default_factory=lambda: _id("RUDHABOT_BANKER_ROLE_ID", 1566271529245999255))  # cogs/banker.py
+    # the one server Rudhabot serves: commands sync there instantly and other servers are politely refused. Unset =
+    # the server that holds the configured audit channel (or the only server the bot is in); nothing is refused.
+    home_guild_id: int = field(default_factory=lambda: _id("RUDHABOT_GUILD_ID", 0))
 
 
 def load_env_file(path: str = ".env", environ=os.environ) -> list[str]:

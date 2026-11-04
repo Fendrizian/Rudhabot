@@ -290,8 +290,10 @@ def restore_embed(payload: dict) -> discord.Embed:
 
 def settings_embed(p: dict) -> discord.Embed:
     weak = p.get("weakening") or []
+    version = p.get("version", "?")
     embed = discord.Embed(title=("⚠️ Security weakened" if weak else "⚙️ Security settings changed")
-                          + f" (v{p.get('version', '?')})", color=Colors.THREAT_ELEVATED if weak else Colors.SECURITY,
+                          + (f" (v{version})" if isinstance(version, int) else f" ({version})"),
+                          color=Colors.THREAT_ELEVATED if weak else Colors.SECURITY,
                           description=f"By <@{p['by']}>: {p.get('note', '')}"[:1000])
     lines = [f"`{k}`: {a or '—'} → {b}" for k, (a, b) in p.get("changes", {}).items()]
     if lines:
