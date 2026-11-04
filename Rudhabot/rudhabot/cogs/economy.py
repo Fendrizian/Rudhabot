@@ -8,7 +8,7 @@ import discord
 from discord import app_commands
 
 from rudhabot.cogs.base import ServiceCog
-from rudhabot.cogs.checks import not_in_game
+from rudhabot.cogs.checks import economy_hold, not_in_game
 from rudhabot.domain.amounts import AmountError, parse_amount
 from rudhabot.domain.cooldown import CRIME, DAILY, ROB, WORK, Cooldown, format_remaining
 from rudhabot.ui.replies import respond
@@ -141,6 +141,10 @@ class EconomyCog(ServiceCog):
         if getattr(target, "bot", False):
             await respond(interaction, _plain(interaction.user, "❌ Bots don't carry wallets."), ephemeral=True)
             return
+        held = economy_hold(interaction, target)
+        if held:
+            await respond(interaction, _plain(interaction.user, held, Colors.UNAVAILABLE), ephemeral=True)
+            return
         attacker, victim = self.users.get(interaction.user.id), self.users.get(target.id)
         now = self._now_utc()
         remaining = ROB.remaining(attacker, now)
@@ -211,6 +215,10 @@ class EconomyCog(ServiceCog):
         if getattr(target, "bot", False):
             await respond(interaction, _plain(interaction.user, "❌ Bots don't have wallets: the money would be lost."),
                           ephemeral=True)
+            return
+        held = economy_hold(interaction, target)
+        if held:
+            await respond(interaction, _plain(interaction.user, held, Colors.UNAVAILABLE), ephemeral=True)
             return
         sender = self.users.get(interaction.user.id)
         try:

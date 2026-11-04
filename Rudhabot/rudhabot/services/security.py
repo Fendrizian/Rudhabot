@@ -13,8 +13,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
+import time
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timezone
 from typing import Awaitable, Callable, Optional
 
@@ -69,6 +70,7 @@ class Runtime:
     reports: dict = field(default_factory=dict)         # reporter -> recent report times
     trusted: set = field(default_factory=set)           # bots ranked above Rudhabot (trusted, never contained)
     reported: dict = field(default_factory=dict)        # (channel, message) -> incident id
+    activity: Counter = field(default_factory=Counter)  # (member, UTC day) -> messages, flushed with the state
 
 
 class SecurityService(RecoveryMixin):
@@ -84,6 +86,8 @@ class SecurityService(RecoveryMixin):
         self.pacer_factory = pacer_factory
         self.runtimes: dict[int, Runtime] = {}
         self.notify: Optional[Notify] = None
+        # (guild, member) -> why automatic restrictions should be left to staff (member standing sets this)
+        self.protect: Optional[Callable[[int, int], Optional[str]]] = None
         self.health = Counter()
         self._model_sem = asyncio.Semaphore(2)
         self._tasks: set = set()                 # strong references: the loop only holds tasks weakly
@@ -203,8 +207,11 @@ class SecurityService(RecoveryMixin):
         rt = self.runtime(guild_id)
         if rt is None:
             return None
-        if isinstance(event, Message) and event.author_tier >= 1:
-            rt.seen[event.author_id] = event.ts
+        if isinstance(event, Message):
+            if event.author_tier >= 1:
+                rt.seen[event.author_id] = event.ts
+            if not event.author_bot and event.webhook_id is None:
+                rt.activity[(event.author_id, time.strftime("%Y-%m-%d", time.gmtime(event.ts)))] += 1
         if isinstance(event, AuditEntry) and event.action in ("role_create", "role_update", "member_role_update"):
             unknown = any(r not in rt.engine.antinuke.role_perms for r in event.roles_added)
             if unknown or self.now() - rt.refreshed_at > 5:
@@ -325,8 +332,29 @@ class SecurityService(RecoveryMixin):
         inc.snippets = []                      # persisted to the snippet table (with its own retention)
         rt.dirty.discard(inc.id)
 
+    def _spare_trusted(self, rt: Runtime, plan: PlannedAction) -> tuple[PlannedAction, list[int]]:
+        """Automatic timeouts and probation skip members in good standing; staff are asked instead."""
+        if self.protect is None or plan.authority != "auto" or plan.kind not in ("timeout", "probation"):
+            return plan, []
+        spared = [u for u in plan.targets if self.protect(rt.guild_id, u)]
+        if not spared:
+            return plan, []
+        return replace(plan, targets=[u for u in plan.targets if u not in spared]), spared
+
     async def _dispatch(self, rt: Runtime, plan: PlannedAction) -> None:
         inc = self._incident(rt, plan.incident_id)
+        plan, spared = self._spare_trusted(rt, plan)
+        if spared:
+            self.health["spared_trusted"] += len(spared)
+            if inc is not None:
+                inc.note(self.now(), "standing", f"{len(spared)} trusted member(s) spared an automatic "
+                         f"{plan.kind}: left to staff")
+                rt.dirty.add(inc.id)
+            if plan.kind == "timeout":
+                await self._dispatch(rt, replace(plan, authority="confirm", targets=spared,
+                                                 reason=plan.reason + " (a trusted member: staff decide)"))
+            if not plan.targets:
+                return
         if plan.authority == "auto":
             result = await self.run_plan(rt, plan, actor_id=None)
             if inc is not None:
@@ -547,6 +575,22 @@ class SecurityService(RecoveryMixin):
         cal = self.calibration(rt.guild_id)
         rt.engine.message_bar, rt.engine.incident_bar = cal["message_bar"], cal["incident_bar"]
         return cal
+
+    # ================================================================ economy holds
+    def economy_hold(self, guild_id: int, user_id: int, joined_at: Optional[float] = None) -> Optional[str]:
+        """Why money can't move to or from this member right now, or None. Quarantine and probation freeze transfers
+        (no laundering through a contained account); during a raid (threat level 3+) so do accounts that joined in
+        the last 24 hours."""
+        rt = self.runtimes.get(guild_id) or self.runtime(guild_id)
+        if rt is None:
+            return None
+        if user_id in rt.quarantined:
+            return "quarantined by security"
+        if self.store.on_probation(guild_id, user_id):
+            return "on security probation"
+        if int(rt.engine.level) >= 3 and joined_at is not None and self.now() - joined_at < 86400:
+            return f"joined in the last 24 hours during a raid alert (threat level {int(rt.engine.level)})"
+        return None
 
     # ================================================================ moderation commands
     async def moderate(self, guild_id: int, actor_id: int, kind: str, targets: list[int], *, reason: str,
@@ -863,6 +907,7 @@ class SecurityService(RecoveryMixin):
             self.store.set_state(rt.guild_id, "engine", rt.engine.state())
             self.store.touch_seen(rt.guild_id, rt.seen)
             rt.seen = {}
+            self._flush_activity(rt)
             self._refresh(rt)
         if self._due(rt, "digest", DIGEST_EVERY_S, now) and rt.digest:
             items = []
@@ -982,8 +1027,13 @@ class SecurityService(RecoveryMixin):
                         self._flush_incident(rt, inc)
                 self.store.set_state(rt.guild_id, "engine", rt.engine.state())
                 self.store.touch_seen(rt.guild_id, rt.seen)
+                self._flush_activity(rt)
             except Exception:
                 log.exception("saving security state on shutdown failed")
+
+    def _flush_activity(self, rt: Runtime) -> None:
+        counts, rt.activity = rt.activity, Counter()
+        self.store.add_activity(rt.guild_id, counts)
 
 
 #: settings whose higher value is a looser defence, and booleans whose switching off is

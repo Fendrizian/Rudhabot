@@ -73,7 +73,9 @@ class SecurityCommandTests(_SecurityCase):
         self.assertTrue(any("Case #1" in t for t in titles))
         self.assertTrue(any("Case #2" in t for t in titles))
         it = await self.cmd("modlog", HELPER, user=SimpleNamespace(id=4242, name="spammer"))
-        self.assertIn("#2", it.last_embed.description)
+        self.assertIn("#2", it.text())                                   # the member file lists the cases
+        self.assertIn("Standing", it.last_embed.description)
+        self.assertIn("2 moderation case(s)", it.text())
 
     async def test_lockdown_request_and_approval_buttons(self):
         target = SimpleNamespace(id=101)

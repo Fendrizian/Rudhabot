@@ -71,8 +71,19 @@ class AuditCog(ServiceCog):
         self.reviews.sweep()                              # activity skipped by the once-a-minute limit
         while self.reviews.pending:
             signal = self.reviews.pending.popleft()
-            await self.services.messenger.post(channels.reviews, embed=review_embed(signal),
+            await self.services.messenger.post(channels.reviews, embed=review_embed(signal, self._cross_refs(signal)),
                                                allowed_mentions=discord.AllowedMentions.none())
+
+    def _cross_refs(self, signal: dict) -> list[str]:
+        """The member's standing and security record next to an economy signal (staff see the whole picture)."""
+        guild_id = self.bot.guild_id
+        if not guild_id:
+            return []
+        try:
+            return self.services.standing.cross_refs_for_signal(guild_id, signal)
+        except Exception:
+            log.exception("cross-references for review signal %s failed", signal.get("id"))
+            return []
 
     @tasks.loop(hours=6)
     async def refitter(self) -> None:
@@ -126,7 +137,9 @@ def _signal_text(s: dict) -> str:
             f"**{s['status']}**\n" + "\n".join(f"• {r}" for r in s["reasons"]))
 
 
-def review_embed(signal: dict) -> discord.Embed:
+def review_embed(signal: dict, refs: Optional[list[str]] = None) -> discord.Embed:
     embed = discord.Embed(title=f"{CLAIRVOYANCEICON} Clairvoyance review signal", description=_signal_text(signal), color=Colors.CLAIRVOYANCE)
+    if refs:
+        embed.add_field(name="Cross-references", value="\n".join(refs)[:1024], inline=False)
     embed.set_footer(text="Unusual activity worth a look. Nothing was changed. Resolve with /review resolve.")
     return brand(embed, "anomaly monitor")

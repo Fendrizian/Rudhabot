@@ -3,7 +3,7 @@ act on anyone of equal or higher rank, records a numbered case in the moderation
 Discord accepted.
 
 /warn  /timeout  /untimeout  /kick  /ban  /massban  /unban  /purge  /slowmode
-/case view | edit | delete       /modlog <member>
+/case view | edit | delete       /modlog <member> (the member file: standing, cases, incidents, signals, holds)
 "Report to moderators" (message context menu): any member can flag a message for staff.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from discord import app_commands
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.security.clearance import Refused, check
 from rudhabot.security.reasons import duration
-from rudhabot.ui.security_embeds import case_embed, simple
+from rudhabot.ui.security_embeds import case_embed, member_file_embed, simple
 from rudhabot.ui.theme import Colors
 
 log = logging.getLogger("rudhabot.moderation")
@@ -227,16 +227,19 @@ class ModerationCog(ServiceCog):
         await self._say(interaction, "Case removed" if removed else "No such case",
                         f"Case #{number} {'was deleted' if removed else 'does not exist'}.")
 
-    @app_commands.command(name="modlog", description="A member's moderation history (Helpers and above)")
+    @app_commands.command(name="modlog", description="A member's file: standing, cases, incidents and holds (Helpers+)")
     @app_commands.guild_only()
     async def modlog(self, interaction: discord.Interaction, user: discord.User):
         try:
             self._need(interaction, "view_cases")
         except Refused as refusal:
             return await self._refused(interaction, refusal)
-        cases = self.security.store.cases_for(interaction.guild.id, user.id, 15)
-        lines = [f"`#{c['case_no']}` {c['kind']} · <t:{int(c['created'])}:d> · {c['reason'][:80]}" for c in cases]
-        await self._say(interaction, f"📋 Moderation history: {user.name}", "\n".join(lines) or "No cases.")
+        gid = interaction.guild.id
+        joined = getattr(user, "joined_at", None)
+        joined_ts = joined.timestamp() if joined else None
+        standing = self.services.standing.of(gid, user.id, joined_ts)
+        hold = self.security.economy_hold(gid, user.id, joined_ts)
+        await interaction.response.send_message(embed=member_file_embed(user, standing, hold), ephemeral=True)
 
     # ------------------------------------------------------------------ member reports
     async def report_message(self, interaction: discord.Interaction, message: discord.Message):

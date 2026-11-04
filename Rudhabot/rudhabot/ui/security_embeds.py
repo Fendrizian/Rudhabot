@@ -304,3 +304,26 @@ def settings_embed(p: dict) -> discord.Embed:
 
 def simple(title: str, text: str, color: int = Colors.SECURITY) -> discord.Embed:
     return discord.Embed(title=title, description=text[:4000], color=color)
+
+
+def member_file_embed(user, standing, hold: Optional[str]) -> discord.Embed:
+    """`/modlog`: one member across every system: standing (and why), cases, incidents, anomaly signals, holds."""
+    embed = discord.Embed(title=f"📋 Member file: {user.name}", color=Colors.MODLOG,
+                          description=f"<@{user.id}> (`{user.id}`)\n**Standing:** {standing.line()}"
+                                      + (f" · {standing.restricted}" if standing.restricted else ""))
+    embed.add_field(name="Why", value="\n".join(f"• {f}" for f in standing.factors)[:1024] or "—", inline=False)
+    cases = [f"`#{c['case_no']}` {c['kind']} · <t:{int(c['created'])}:d> · {(c.get('reason') or '')[:70]}"
+             for c in standing.cases]
+    embed.add_field(name="Moderation (6 months)", value="\n".join(cases)[:1024] or "No cases.", inline=False)
+    if standing.incidents:
+        verdicts = {"real": " · judged real", "false": " · false alarm"}
+        embed.add_field(name="Security incidents (90 days)", value="\n".join(
+            f"{FAMILY_ICONS.get(i['family'], '•')} `{i['id']}` {i['family']} · {ts(i['last'])}"
+            f"{verdicts.get(i['verdict'], '')}" for i in standing.incidents[:8])[:1024], inline=False)
+    if standing.signals:
+        embed.add_field(name="Economy anomaly signals", value="\n".join(
+            f"`{s['id']}` {s['status']} · {s['kind']} · {s['hour']}" for s in standing.signals[:6])[:1024],
+            inline=False)
+    embed.add_field(name="Economy", value=f"⛔ on hold: {hold}" if hold else "No holds.", inline=False)
+    embed.set_footer(text="Counts only: Rudhabot never keeps message content for standing.")
+    return embed

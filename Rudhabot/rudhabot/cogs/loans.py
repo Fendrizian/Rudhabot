@@ -8,7 +8,7 @@ from discord import app_commands
 from discord.ext import tasks
 
 from rudhabot.cogs.base import ServiceCog
-from rudhabot.cogs.checks import not_in_game
+from rudhabot.cogs.checks import economy_hold, not_in_game
 from rudhabot.services.loans import AutoPaid, LoanRefused
 from rudhabot.ui.replies import respond
 from rudhabot.ui.theme import CURRENCY, LOANDUEICON, Colors
@@ -41,6 +41,10 @@ class LoansCog(ServiceCog):
     @app_commands.describe(amount="Amount to borrow (100–10000ra)", days="Number of days to repay (1–30)")
     @not_in_game()
     async def loan(self, interaction: discord.Interaction, amount: int, days: int):
+        held = economy_hold(interaction)
+        if held:
+            await respond(interaction, _embed(interaction.user, held, Colors.UNAVAILABLE), ephemeral=True)
+            return
         await interaction.response.defer()
         terms = self.services.settings.loans
         try:

@@ -386,7 +386,7 @@ def get_commands_data():
         {
             "name": "send",
             "args": "<user> <amount|all>",
-            "description": "Give money from your wallet to another user."
+            "description": "Give money from your wallet to another user. Paused for accounts security has on probation or in quarantine."
         },
         {
             "name": "shop",
@@ -596,7 +596,7 @@ def get_commands_data():
         {
             "name": "modlog",
             "args": "<user>",
-            "description": "A member's moderation history."
+            "description": "A member's file: standing (new, regular, established or trusted, and why), moderation cases, security incidents, economy anomaly signals and any economy hold."
         },
         {
             "name": "Report to moderators",

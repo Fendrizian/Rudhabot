@@ -1,5 +1,6 @@
-"""Security records in the SQLite database: configuration versions, moderation cases, incidents, actions, approvals,
-lockdowns, snapshots, probation, quarantine, timers, allowlist entries, staff activity and ban fingerprints.
+"""Security records in the SQLite database: configuration versions, moderation cases, incidents (and which members
+each involved), actions, approvals, lockdowns, snapshots, probation, quarantine, timers, allowlist entries, staff
+activity, ban fingerprints, staff verdicts and daily per-member message *counts* (for member standing).
 
 Every table is scoped by guild id. Message text is never stored here except flagged-message snippets (at most 200
 characters, deleted after `retention.snippet_days`); closed incidents are deleted after `retention.incident_days`.
@@ -52,7 +53,17 @@ CREATE TABLE IF NOT EXISTS sec_verdicts (guild_id INTEGER, incident_id TEXT, ver
     family TEXT, detectors TEXT, model INTEGER, PRIMARY KEY (guild_id, incident_id));
 CREATE TABLE IF NOT EXISTS sec_fingerprints (guild_id INTEGER, user_id INTEGER, avatar_key TEXT, name_stem TEXT,
     created REAL, PRIMARY KEY (guild_id, user_id));
+CREATE TABLE IF NOT EXISTS sec_incident_users (guild_id INTEGER, user_id INTEGER, incident_id TEXT, last REAL,
+    PRIMARY KEY (guild_id, user_id, incident_id));
+CREATE TABLE IF NOT EXISTS member_activity (guild_id INTEGER, user_id INTEGER, day TEXT, messages INTEGER,
+    PRIMARY KEY (guild_id, user_id, day));
+CREATE INDEX IF NOT EXISTS member_activity_day ON member_activity (guild_id, day);
 """
+ACTIVITY_KEEP_DAYS = 180         # daily message counts (never content) are kept this long
+
+
+def _day(ts: float) -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime(ts))
 
 
 def _j(value: Any) -> str:
@@ -76,6 +87,19 @@ class SecurityStore:
             for statement in _SCHEMA.strip().split(";"):
                 if statement.strip():
                     cur.execute(statement)
+        self._backfill_incident_users()
+
+    def _backfill_incident_users(self) -> None:
+        """Incidents stored before the member index existed get indexed once."""
+        if self.db.meta("sec_incident_users") is not None:
+            return
+        rows = self.db.query("SELECT guild_id, id, last, data FROM sec_incidents")
+        with self.db.transaction() as cur:
+            for guild_id, incident_id, last, data in rows:
+                for user_id in (_l(data, {}) or {}).get("users", [])[:200]:
+                    cur.execute("INSERT OR IGNORE INTO sec_incident_users VALUES (?, ?, ?, ?)",
+                                (guild_id, int(user_id), incident_id, last))
+        self.db.set_meta("sec_incident_users", "1")
 
     def now(self) -> float:
         return self._now()
@@ -162,6 +186,10 @@ class SecurityStore:
                         "severity=excluded.severity, data=excluded.data",
                         (guild_id, data["id"], data["opened"], data["last"], data.get("closed_at"), data["status"],
                          data["family"], data.get("severity", 0.0), _j(data)))
+            for user_id in (data.get("users") or [])[:200]:
+                cur.execute("INSERT INTO sec_incident_users VALUES (?, ?, ?, ?) ON CONFLICT(guild_id, user_id, "
+                            "incident_id) DO UPDATE SET last=excluded.last", (guild_id, int(user_id), data["id"],
+                                                                             data["last"]))
             for s in snippets:
                 cur.execute("INSERT OR IGNORE INTO sec_snippets (guild_id, incident_id, channel_id, message_id, "
                             "author_id, text, created) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -194,6 +222,18 @@ class SecurityStore:
         with self.db.transaction() as cur:
             cur.execute("DELETE FROM sec_incidents WHERE guild_id=? AND id=?", (guild_id, incident_id))
             cur.execute("DELETE FROM sec_snippets WHERE guild_id=? AND incident_id=?", (guild_id, incident_id))
+            cur.execute("DELETE FROM sec_incident_users WHERE guild_id=? AND incident_id=?", (guild_id, incident_id))
+
+    def incidents_for(self, guild_id: int, user_id: int, since: float = 0.0, limit: int = 20) -> list[dict]:
+        """Incidents that involved this member (newest first), with staff's verdict when there is one."""
+        rows = self.db.query(
+            "SELECT i.id, i.family, i.severity, i.status, i.last, v.verdict FROM sec_incident_users u "
+            "JOIN sec_incidents i ON i.guild_id=u.guild_id AND i.id=u.incident_id "
+            "LEFT JOIN sec_verdicts v ON v.guild_id=u.guild_id AND v.incident_id=u.incident_id "
+            "WHERE u.guild_id=? AND u.user_id=? AND u.last>=? ORDER BY u.last DESC LIMIT ?",
+            (guild_id, user_id, since, limit))
+        return [{"id": i, "family": f, "severity": sev, "status": st, "last": last, "verdict": v}
+                for i, f, sev, st, last, v in rows]
 
     def redact_snippets(self, guild_id: int, incident_id: str) -> int:
         with self.db.transaction() as cur:
@@ -364,6 +404,9 @@ class SecurityStore:
         rows = self.db.query("SELECT guild_id, user_id, role_id FROM sec_probation WHERE until<=?", (now,))
         return [{"guild_id": g, "user_id": u, "role_id": r} for g, u, r in rows]
 
+    def on_probation(self, guild_id: int, user_id: int) -> bool:
+        return bool(self.db.query("SELECT 1 FROM sec_probation WHERE guild_id=? AND user_id=?", (guild_id, user_id)))
+
     def end_probation(self, guild_id: int, user_id: int) -> None:
         self.db.execute("DELETE FROM sec_probation WHERE guild_id=? AND user_id=?", (guild_id, user_id))
 
@@ -465,6 +508,29 @@ class SecurityStore:
     def remove_fingerprint(self, guild_id: int, user_id: int) -> None:
         self.db.execute("DELETE FROM sec_fingerprints WHERE guild_id=? AND user_id=?", (guild_id, user_id))
 
+    # ================================================================ member activity (daily counts, never content)
+    def add_activity(self, guild_id: int, counts: dict) -> None:
+        """`counts`: {(user_id, "YYYY-MM-DD"): messages}."""
+        if not counts:
+            return
+        with self.db.transaction() as cur:
+            cur.executemany("INSERT INTO member_activity VALUES (?, ?, ?, ?) ON CONFLICT(guild_id, user_id, day) "
+                            "DO UPDATE SET messages=messages+excluded.messages",
+                            [(guild_id, u, day, n) for (u, day), n in counts.items()])
+
+    def activity(self, guild_id: int, user_id: int, since_day: str) -> dict:
+        row = self.db.query("SELECT COUNT(*), COALESCE(SUM(messages), 0), MIN(day) FROM member_activity "
+                            "WHERE guild_id=? AND user_id=? AND day>=?", (guild_id, user_id, since_day))[0]
+        first = self.db.query("SELECT MIN(day) FROM member_activity WHERE guild_id=? AND user_id=?",
+                              (guild_id, user_id))[0][0]
+        return {"active_days": row[0], "messages": row[1], "first_day": first}
+
+    def activity_totals(self, guild_id: int, since_day: str) -> list[dict]:
+        """Per day: members who posted and messages posted (for reports)."""
+        rows = self.db.query("SELECT day, COUNT(*), SUM(messages) FROM member_activity WHERE guild_id=? AND day>=? "
+                             "GROUP BY day ORDER BY day", (guild_id, since_day))
+        return [{"day": d, "members": m, "messages": n} for d, m, n in rows]
+
     # ================================================================ staff verdicts (Clairvoyance learns from them)
     def set_verdict(self, guild_id: int, incident_id: str, verdict: str, by: int, family: str,
                     detectors: list[str], model: bool) -> None:
@@ -491,6 +557,10 @@ class SecurityStore:
                 cur.execute("DELETE FROM sec_incidents WHERE guild_id=? AND id=?", (guild_id, incident_id))
                 cur.execute("DELETE FROM sec_snippets WHERE guild_id=? AND incident_id=?", (guild_id, incident_id))
                 cur.execute("DELETE FROM sec_actions WHERE guild_id=? AND incident_id=?", (guild_id, incident_id))
+                cur.execute("DELETE FROM sec_incident_users WHERE guild_id=? AND incident_id=?",
+                            (guild_id, incident_id))
+            cutoff_day = _day(now - ACTIVITY_KEEP_DAYS * 86400)
+            cur.execute("DELETE FROM member_activity WHERE guild_id=? AND day<?", (guild_id, cutoff_day))
             cur.execute("DELETE FROM sec_approvals WHERE guild_id=? AND status NOT IN ('pending', 'half') AND created<?",
                         (guild_id, now - 30 * 86400))
             cur.execute("DELETE FROM sec_allow WHERE guild_id=? AND expires<?", (guild_id, now - 30 * 86400))

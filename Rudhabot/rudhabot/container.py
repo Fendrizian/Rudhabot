@@ -37,6 +37,7 @@ from rudhabot.services.lottery import LotteryService
 from rudhabot.services.permissions import AdminPolicy
 from rudhabot.services.sessions import GamblingSessions
 from rudhabot.services.shop import CafeMenu, ShopService
+from rudhabot.services.standing import StandingService
 from rudhabot.services.tcg import TcgService, TcgTerms
 from rudhabot.settings import OPENAI_KEY_ENV_VAR, Settings
 from rudhabot.ui.announcements import Announcer
@@ -75,6 +76,7 @@ class Services:
     intents: IntentRouter
     storage: Storage
     security: SecurityService
+    standing: StandingService
 
     @classmethod
     def build(cls, settings: Settings, client: discord.Client, *, clock: Clock | None = None,
@@ -112,6 +114,9 @@ class Services:
         tcg.bank = bank
 
         assistant = _build_assistant(settings, tcg, clairvoyance)
+        security = _build_security(settings, storage, clock, client, assistant)
+        standing = StandingService(security, reviews, clock)       # one view of a member across every system
+        security.protect = standing.protect
         return cls(
             settings=settings,
             clock=clock,
@@ -145,7 +150,8 @@ class Services:
             reviews=reviews,
             intents=IntentRouter(_intent_model(ai.models_dir), value("intent_outcomes", paths.intent_outcomes, dict)),
             storage=storage,
-            security=_build_security(settings, storage, clock, client, assistant),
+            security=security,
+            standing=standing,
         )
 
 

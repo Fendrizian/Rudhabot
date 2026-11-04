@@ -127,6 +127,9 @@ class SecurityCog(ServiceCog):
                 inc["snippets"] = self.sec.store.snippets(guild_id, inc["id"])
             # alerts are shown by severity: on the benchmark the ranker only beats severity on digest-level flags
             embed = E.incident_embed(inc, payload.get("level", 1), payload.get("live", False))
+            refs = self._cross_refs(guild_id, inc)
+            if refs:
+                embed.add_field(name="Cross-references", value="\n".join(refs)[:1024], inline=False)
             ref = self.incident_posts.get(inc["id"])
             if payload.get("new") or ref is None:
                 msg = await self._post(alert, guild_id, embed=embed, view=incident_view(inc["id"]))
@@ -170,6 +173,16 @@ class SecurityCog(ServiceCog):
             await self._post(alert, guild_id, embed=E.restore_embed(payload))
         elif kind == "settings":
             await self._post(alert, guild_id, embed=E.settings_embed(payload))
+
+    def _cross_refs(self, guild_id: int, inc: dict) -> list[str]:
+        """What member standing and the anomaly monitor know about the (first few) members in an alert."""
+        if len(inc.get("users") or []) > 10:            # a raid wave: no single member's history is the story
+            return []
+        try:
+            return self.services.standing.cross_refs_for_incident(guild_id, inc)
+        except Exception:
+            log.exception("cross-references for incident %s failed", inc.get("id"))
+            return []
 
     def _ranked(self, guild_id: int, incidents: list[dict]) -> list[dict]:
         """Most likely real first: the alert ranker when it is on and loaded, otherwise severity."""
