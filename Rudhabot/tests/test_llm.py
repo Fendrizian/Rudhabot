@@ -155,13 +155,22 @@ class EnvAndClientTests(unittest.IsolatedAsyncioTestCase):
         import discord
         from rudhabot.container import Services
         from rudhabot.settings import Settings
+        import tempfile
+        from rudhabot.settings import Paths
         client = discord.Client(intents=discord.Intents.default())
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        settings = Settings(ai=AISettings(), paths=Paths.in_directory(tmp.name))   # never write into the repo
         with mock.patch.dict(os.environ, {"OPENAI_API_KEY": ""}):
-            off = Services.build(Settings(ai=AISettings()), client).assistant
+            services = Services.build(settings, client)
+            self.addCleanup(services.storage.close)
+            off = services.assistant
         self.assertFalse(off.enabled)
         self.assertIn("OPENAI_API_KEY", off.disabled_reason)
         with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
-            on = Services.build(Settings(ai=AISettings()), client).assistant
+            services = Services.build(settings, client)
+            self.addCleanup(services.storage.close)
+            on = services.assistant
         self.assertTrue(on.enabled)
         self.assertEqual(on.model.reasoning_effort, "low")              # gpt-5.x: thinking kept short by default
 

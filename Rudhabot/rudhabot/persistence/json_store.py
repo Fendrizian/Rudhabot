@@ -94,7 +94,9 @@ class OwnedJson:
             self._signature = self._disk_signature()
         return self._value
 
-    def persist(self) -> None:
+    def persist(self, *keys: str) -> None:
+        """Write the value to disk. `keys` (the top-level keys that changed) are accepted for interface parity with
+        the SQLite owner, which writes only those; a JSON file is always rewritten whole."""
         self.store.save(self._value)
         self._signature = self._disk_signature()
 

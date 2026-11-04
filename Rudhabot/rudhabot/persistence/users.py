@@ -8,7 +8,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Any, Iterable, Iterator, Mapping, Optional
 
-from rudhabot.persistence.json_store import JsonStore, OwnedJson, json_copy
+from rudhabot.persistence.database import owned
+from rudhabot.persistence.json_store import json_copy
 
 #: Fields `update()` may set. Anything else is a programming error.
 ACCOUNT_FIELDS = frozenset({
@@ -30,9 +31,11 @@ def money_snapshot(account: Optional[Mapping]) -> dict[str, float]:
 class UserRepository:
     """Every write reports its money changes to `audit` (an AuditService), whichever command or job made it."""
 
-    def __init__(self, store: JsonStore, coin_symbols: Iterable[str], audit=None):
+    def __init__(self, store, coin_symbols: Iterable[str], audit=None):
+        """`store` is a JsonStore (data.json) or a SQLite Collection; either way the accounts are parsed once and
+        every write goes straight to disk (with SQLite, only the changed account is written)."""
         self._store = store
-        self._data = OwnedJson(store)          # parsed once; every write still goes straight to disk
+        self._data = owned(store)
         self._coin_symbols = tuple(coin_symbols)
         self.audit = audit
 
@@ -61,7 +64,7 @@ class UserRepository:
             dirty = True
         account["wallet"], account["bank"] = wallet, bank
         if dirty:
-            self._data.persist()
+            self._data.persist(uid)
         return json_copy(account)
 
     def all(self) -> dict[str, dict]:
@@ -90,7 +93,7 @@ class UserRepository:
             # copy containers: the caller's dict must not alias the stored one
             account[name] = int(value) if name in ("wallet", "bank") else json_copy(value)
         data[uid] = account
-        self._data.persist()
+        self._data.persist(uid)
         self._report(uid, before, money_snapshot(account))
 
     def save_all(self, data: Mapping[str, dict]) -> None:
@@ -146,7 +149,7 @@ class UserRepository:
         data = self._data.value()
         account = data.setdefault(uid, self._blank_account())
         account.setdefault("monthly_purchases", {}).setdefault(key, []).append(item)
-        self._data.persist()
+        self._data.persist(uid)
 
     # --------------------------------------------------------------- internals
     def _blank_account(self) -> dict:

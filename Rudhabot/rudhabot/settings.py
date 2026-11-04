@@ -42,6 +42,8 @@ class Paths:
     gacha: str = "gacha.json"               # the weekly Skyfall Convergence meter
     reviews: str = "reviews.json"           # Clairvoyance review signals
     failures: str = "failures.jsonl"        # failed interactions (input to anomaly detection)
+    database: str = "rudhabot.db"           # SQLite storage (RUDHABOT_STORAGE=sqlite, the default)
+    backups: str = "backups"                # daily database backups
 
     @classmethod
     def in_directory(cls, directory: str) -> "Paths":
@@ -157,6 +159,7 @@ class Settings:
     birthdays: BirthdayTerms = field(default_factory=BirthdayTerms)
     ai: AISettings = field(default_factory=AISettings.from_env)
     page_size: int = 5
+    storage: str = field(default_factory=lambda: (os.environ.get("RUDHABOT_STORAGE") or "sqlite").strip().lower())
     admin_role_id: int = field(default_factory=lambda: _id("RUDHABOT_ADMIN_ROLE_ID", 1142722971606200460))
     banker_role_id: int = field(default_factory=lambda: _id("RUDHABOT_BANKER_ROLE_ID", 1566271529245999255))  # cogs/banker.py
 

@@ -76,6 +76,12 @@ class RudhaBot(commands.Bot):
         for cog in ALL_COGS:
             await self.add_cog(cog(self))
 
+    async def close(self) -> None:
+        try:
+            await super().close()
+        finally:
+            self.services.storage.close()
+
     async def on_ready(self) -> None:
         if self.guilds:
             self.guild_id = self.guilds[0].id

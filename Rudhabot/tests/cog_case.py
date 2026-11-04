@@ -26,6 +26,7 @@ class CogTestCase(unittest.IsolatedAsyncioTestCase):
         await self.bot._async_setup_hook()      # what login() does before setup_hook (initialises the ready-event)
         await self.bot.setup_hook()
         self.s = self.bot.services
+        self.addCleanup(self.s.storage.close)
         # nothing may touch the network: capture every DM / channel post instead
         self.s.messenger.post = AsyncMock(return_value=True)
         self.s.messenger.dm = AsyncMock(return_value=True)

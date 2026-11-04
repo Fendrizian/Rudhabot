@@ -15,7 +15,8 @@ from typing import Optional
 
 from rudhabot.clock import Clock
 from rudhabot.domain.bank import TIER_BY_KEY, TIERS, Tier, accrue, month_key, next_tier, roll_statement
-from rudhabot.persistence.json_store import JsonStore, OwnedJson, json_copy
+from rudhabot.persistence.database import owned
+from rudhabot.persistence.json_store import json_copy
 from rudhabot.persistence.users import UserRepository
 from rudhabot.services.audit import audit_context
 
@@ -33,9 +34,9 @@ def blank_profile(today_iso: str) -> dict:
 
 
 class BankService:
-    def __init__(self, store: JsonStore, users: UserRepository, clock: Clock, audit=None):
+    def __init__(self, store, users: UserRepository, clock: Clock, audit=None):
         self._store, self._users, self._clock, self._audit = store, users, clock, audit
-        self._data = OwnedJson(store)
+        self._data = owned(store)               # bank.json, or the `bank` SQLite collection
 
     # ------------------------------------------------------------------ profile plumbing
     def _today(self):
@@ -62,12 +63,12 @@ class BankService:
         self._refresh(uid, profile)
         if stored is not None and profile != stored:
             data[uid] = json_copy(profile)
-            self._data.persist()
+            self._data.persist(uid)
         return profile
 
     def _commit(self, uid: str, profile: dict) -> None:
         self._data.value()[uid] = json_copy(profile)
-        self._data.persist()
+        self._data.persist(uid)
 
     def _record(self, uid: str, account: str, delta, after, reason: Optional[str] = None) -> None:
         if self._audit is not None:

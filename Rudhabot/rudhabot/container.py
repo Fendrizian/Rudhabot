@@ -16,12 +16,11 @@ from rudhabot.llm.assistant import Assistant
 from rudhabot.llm.knowledge import KnowledgeBase
 from rudhabot.llm.limits import RateLimiter
 from rudhabot.persistence.birthdays import BirthdayRegistry, CelebrationLog
-from rudhabot.persistence.json_store import JsonStore
-from rudhabot.persistence.ledger import Ledger
+from rudhabot.persistence.database import Storage
 from rudhabot.persistence.lottery import LotteryLedger, empty_ledger
 from rudhabot.persistence.prices import PriceBook, starting_prices
 from rudhabot.persistence.specials import SpecialStockRepository, initial_stocks
-from rudhabot.persistence.tcg import TcgRepository, empty_matches
+from rudhabot.persistence.tcg import TcgRepository
 from rudhabot.persistence.users import UserRepository
 from rudhabot.ml.intent import MODEL_FILE as INTENT_MODEL_FILE, IntentRouter
 from rudhabot.services.audit import AuditService
@@ -73,6 +72,7 @@ class Services:
     gacha: GachaService
     reviews: ReviewService
     intents: IntentRouter
+    storage: Storage
 
     @classmethod
     def build(cls, settings: Settings, client: discord.Client, *, clock: Clock | None = None,
@@ -83,25 +83,29 @@ class Services:
         coins = DEFAULT_COINS
         symbols = [c.symbol for c in coins]
         catalog = ItemCatalog()
+        storage = Storage.open(settings.storage, paths.database)       # SQLite file, or the JSON files
+        docs, value = storage.docs, storage.value
 
         # the audit trail comes first: every repository that holds money reports to it
-        audit = AuditService(Ledger(paths.ledger), clock, settings.channels.audit)
-        reviews = ReviewService(JsonStore(paths.reviews, dict), audit.ledger, Ledger(paths.failures), clock)
+        audit = AuditService(storage.ledger("economy_ledger", paths.ledger), clock, settings.channels.audit)
+        reviews = ReviewService(value("reviews", paths.reviews, dict), audit.ledger,
+                                storage.ledger("failures", paths.failures), clock)
         audit.listeners.append(reviews.on_audit)
-        users = UserRepository(JsonStore(paths.data, dict), symbols, audit=audit)
-        stocks = SpecialStockRepository(JsonStore(paths.specials, lambda: initial_stocks(catalog.special_item_names(), 20)))
+        users = UserRepository(docs("accounts", paths.data), symbols, audit=audit)
+        stocks = SpecialStockRepository(value("specials", paths.specials,
+                                              lambda: initial_stocks(catalog.special_item_names(), 20)))
         menu = CafeMenu(catalog, stocks, clock)
         messenger = Messenger(client)
         ai = settings.ai
         clairvoyance = ClairvoyanceService(ai.models_dir, enabled=ai.clairvoyance_enabled, version=ai.clairvoyance_version,
                                rng=random.Random(rng.random()))
-        tcg_repo = TcgRepository(JsonStore(paths.tcg, dict), JsonStore(paths.tcg_matches, empty_matches))
+        tcg_repo = TcgRepository(docs("tcg_profiles", paths.tcg), docs("tcg_matches", paths.tcg_matches))
         tcg = TcgService(tcg_repo, users, clock, rng, TcgTerms.from_env(), clairvoyance=clairvoyance)
-        bank = BankService(JsonStore(paths.bank, dict), users, clock, audit)
-        exchange = StockExchange(JsonStore(paths.stocks, lambda: initial_state(clock.now().isoformat(timespec="seconds"))),
+        bank = BankService(docs("bank", paths.bank), users, clock, audit)
+        exchange = StockExchange(value("stocks", paths.stocks, lambda: initial_state(clock.now().isoformat(timespec="seconds"))),
                                  users, clock, random.Random(rng.random()), audit)
         shop = ShopService(catalog, menu, users, stocks, bank=bank, exchange=exchange)
-        gacha = GachaService(tcg_repo, JsonStore(paths.gacha, dict), users, clock, rng, audit, bank)
+        gacha = GachaService(tcg_repo, value("gacha", paths.gacha, dict), users, clock, rng, audit, bank)
         tcg.gacha = gacha
         tcg.bank = bank
 
@@ -116,10 +120,12 @@ class Services:
             sessions=GamblingSessions(),
             admin=AdminPolicy(settings.admin_role_id, settings.banker_role_id),
             loans=LoanService(users, settings.loans, clock),
-            crypto=CryptoMarket(PriceBook(JsonStore(paths.crypto, lambda: starting_prices(symbols))), coins, users, rng),
-            lottery=LotteryService(users, LotteryLedger(JsonStore(paths.lottery, empty_ledger)), Lottery(rng=rng), clock),
-            birthdays=BirthdayService(BirthdayRegistry(JsonStore(paths.birthday_registry, dict)),
-                                      CelebrationLog(JsonStore(paths.birthday_log, list, indent=2)),
+            crypto=CryptoMarket(PriceBook(value("crypto_prices", paths.crypto, lambda: starting_prices(symbols))),
+                                coins, users, rng),
+            lottery=LotteryService(users, LotteryLedger(value("lottery", paths.lottery, empty_ledger)), Lottery(rng=rng),
+                                   clock),
+            birthdays=BirthdayService(BirthdayRegistry(value("birthday_registry", paths.birthday_registry, dict)),
+                                      CelebrationLog(value("birthday_log", paths.birthday_log, list, indent=2)),
                                       users, settings.birthdays, clock),
             slots=SlotMachine(rng=rng),
             mystery_box=MysteryBox(catalog.mystery_box_pool(), rng=rng),
@@ -135,6 +141,7 @@ class Services:
             gacha=gacha,
             reviews=reviews,
             intents=IntentRouter(_intent_model(ai.models_dir)),
+            storage=storage,
         )
 
 
