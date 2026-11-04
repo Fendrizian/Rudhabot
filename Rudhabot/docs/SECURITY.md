@@ -243,33 +243,6 @@ It receives only content-free facts: reason codes, counts, times, action statuse
 snippets and no member data. Its output is labelled as a draft, has mentions neutralised, and is never used to take
 an action. It has no tools. If it is unavailable or rate-limited, the deterministic report is used.
 
-## Temporary role tools
-
-For when staff can't manage roles in Discord themselves (Rudhabot's role sits above theirs). The commands:
-- `/role add` and `/role remove` give or take a role;
-- `/role move` places a role at a position, or just above or below another role;
-- `/role perms` turns one permission on or off for a role, or shows its permissions. It can also edit @everyone
-  and other bots' roles (never Rudhabot's own), but never gives @everyone a dangerous permission;
-- `/role channel` sets one permission (allow, deny or neutral) for a member or role in a channel or a whole
-  category, or shows their current overwrite there. Never gives @everyone a dangerous allow;
-- `/role list` shows the hierarchy with what Rudhabot can and can't manage, and whether Rudhabot itself still has
-  Manage Roles. Use it first when roles "stop working".
-
-The rules:
-- **Who:** Admin clearance, checked on every use. A quarantined account has none.
-- **Which roles:** only roles below Rudhabot's highest role; never @everyone or roles managed by integrations
-  (bots, boosts).
-- **Taking roles away:** nobody can take roles from someone of equal or higher rank, except the owner.
-- **Records:** every change is a mod-log case, and counts against the *requester's* anti-nuke budget (Rudhabot's
-  own actions are otherwise exempt), so the tools can't be used to hand out power unnoticed.
-- **Alerts:** granting a role with dangerous permissions, moving one up, or turning on a dangerous permission also
-  posts an alert. Turning on Administrator-class permissions for a broad role (25+ members) trips the requester's
-  anti-nuke budget at once.
-- **Switching off:** set `RUDHABOT_ROLE_TOOLS=0` and restart once the hierarchy is fixed.
-
-If Rudhabot itself has lost Manage Roles or its role was moved down, only the server owner can fix that, in
-*Server Settings → Roles*.
-
 ## Permissions Rudhabot needs
 
 Rudhabot has Administrator on this server. That works, but is broader than security needs (the posture check says

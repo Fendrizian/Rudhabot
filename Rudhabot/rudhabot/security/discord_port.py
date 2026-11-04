@@ -271,15 +271,6 @@ class DiscordGuildPort:
         except discord.HTTPException as error:
             raise self._fail(error) from None
 
-    async def move_role(self, role_id, position, reason):
-        role = self.guild.get_role(role_id)
-        if role is None:
-            raise ActionFailed("role not found")
-        try:
-            await self.guild.edit_role_positions(positions={role: int(position)}, reason=reason)
-        except discord.HTTPException as error:
-            raise self._fail(error) from None
-
     async def set_slowmode(self, channel_id, seconds, reason):
         channel = self._channel(channel_id)
         previous = int(getattr(channel, "slowmode_delay", 0) or 0)

@@ -71,7 +71,7 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     ("banker", "Banker", "💼", "The banker role (and admins): look after member accounts",
      ("audit", "review list | resolve", "banker account", "banker card-hold | card-release", "banker loan-unban")),
     ("admin", "Admin", "🛠️", "Server administrators only",
-     ("add-money", "remove-money", "clairvoyance status | reload", "role add | remove | move | perms | channel | list")),
+     ("add-money", "remove-money", "clairvoyance status | reload")),
     ("moderation", "Moderation", "🛡️", "Warnings, timeouts, kicks, bans and the moderation log (staff)",
      ("warn", "timeout", "untimeout", "kick", "ban", "massban", "unban", "purge", "slowmode",
       "case view | edit | delete", "modlog", "Report to moderators")),
@@ -690,10 +690,5 @@ def get_commands_data():
             "name": "security models",
             "args": "",
             "description": "Clairvoyance's security models: versions, health and how to switch each off."
-        },
-        {
-            "name": "role add | remove | move | perms | channel | list",
-            "args": "",
-            "description": "Temporary role tools (Admin): give or take a role, move it in the hierarchy, turn one of its permissions on or off, or set a member's or role's permission in a channel or category, through Rudhabot when your own role sits too low. Works only below Rudhabot's role; each change is a mod-log case and counts toward your anti-nuke budget. /role list shows the hierarchy and Rudhabot's own access."
         },
     ]

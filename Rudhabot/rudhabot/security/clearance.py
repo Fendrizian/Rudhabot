@@ -82,7 +82,6 @@ REQUIRED: dict[str, Tier] = {
     "ask": Tier.HELPER,
     "automod_sync": Tier.ADMIN,
     "verify_panel": Tier.ADMIN,
-    "role_manage": Tier.ADMIN,               # the temporary /role tools (assign, remove, move)
 }
 
 

@@ -164,10 +164,9 @@ def _build_security(settings: Settings, storage: Storage, clock: Clock, client: 
     models = SecurityModels(os.path.join(settings.ai.models_dir, "security"), enabled=enabled)
     briefer = Briefer(assistant.model, assistant.limiter)
     automod_counts: dict[int, int] = {}
-    role_tools = os.environ.get("RUDHABOT_ROLE_TOOLS", "1").strip().lower() not in ("0", "false", "off", "no")
     return SecurityService(store, clock, admin_role_id=settings.admin_role_id, models=models, briefer=briefer,
                            port_factory=lambda gid: DiscordGuildPort(client, gid, lambda: automod_counts.get(gid, 0)),
-                           bot_id=lambda: client.user.id if client.user else 0, role_tools=role_tools)
+                           bot_id=lambda: client.user.id if client.user else 0)
 
 
 def _intent_model(models_dir: str):
