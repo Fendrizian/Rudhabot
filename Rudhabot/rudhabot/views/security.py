@@ -5,6 +5,7 @@ replayed button can't do anything its presser couldn't do by command.
     sec:ok:<token> / sec:no:<token>     approve / decline a proposal
     sec:verify                         the verification panel's button
     sec:report:<incident id>           show the after-action report (staff only, private)
+    sec:verdict:<real|false>:<id>      staff judge an alert; Clairvoyance learns this server's bar from it
 """
 from __future__ import annotations
 
@@ -55,6 +56,25 @@ class ReportButton(ui.DynamicItem[ui.Button], template=r"sec:report:(?P<incident
         await interaction.client.get_cog("SecurityCog").on_report_button(interaction, self.incident_id)
 
 
+class VerdictButton(ui.DynamicItem[ui.Button], template=r"sec:verdict:(?P<v>real|false):(?P<incident>[0-9]{4,12})"):
+    """Staff tell Clairvoyance whether an alert was right; it learns this server's bar from the answers."""
+
+    def __init__(self, verdict: str, incident_id: str):
+        label, emoji, style = (("Real", "✅", ButtonStyle.secondary) if verdict == "real" else
+                               ("False alarm", "🙅", ButtonStyle.secondary))
+        super().__init__(ui.Button(label=label, emoji=emoji, style=style,
+                                   custom_id=f"sec:verdict:{verdict}:{incident_id}"))
+        self.verdict, self.incident_id = verdict, incident_id
+
+    @classmethod
+    async def from_custom_id(cls, interaction: discord.Interaction, item: ui.Button, match: re.Match[str], /):
+        return cls(match["v"], match["incident"])
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.client.get_cog("SecurityCog").on_verdict_button(interaction, self.incident_id,
+                                                                          self.verdict == "real")
+
+
 def approval_view(token: str, open_: bool = True) -> ui.View:
     view = ui.View(timeout=None)
     if open_:
@@ -66,6 +86,8 @@ def approval_view(token: str, open_: bool = True) -> ui.View:
 def incident_view(incident_id: str) -> ui.View:
     view = ui.View(timeout=None)
     view.add_item(ReportButton(incident_id))
+    view.add_item(VerdictButton("real", incident_id))
+    view.add_item(VerdictButton("false", incident_id))
     return view
 
 
@@ -75,4 +97,4 @@ def verify_view() -> ui.View:
     return view
 
 
-DYNAMIC_ITEMS = (ApprovalButton, VerifyButton, ReportButton)
+DYNAMIC_ITEMS = (ApprovalButton, VerifyButton, ReportButton, VerdictButton)

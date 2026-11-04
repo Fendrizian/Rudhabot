@@ -21,6 +21,7 @@ from rudhabot.cogs.base import ServiceCog
 from rudhabot.ml.intent import IntentRouter
 from rudhabot.ml.intent_data import INTENTS
 from rudhabot.services.audit import set_context
+from rudhabot.ui.branding import brand
 from rudhabot.ui.theme import Colors
 
 log = logging.getLogger("rudhabot.assistant")
@@ -47,6 +48,9 @@ class RunIntent(ui.DynamicItem[ui.Button], template=r"run:(?P<uid>\d+):(?P<inten
         if interaction.user.id != self.user_id:
             return await interaction.response.send_message(content="This suggestion was for someone else. Try `/ask` yourself!",
                                                            ephemeral=True)
+        router = getattr(getattr(interaction.client, "services", None), "intents", None)
+        if router is not None:
+            router.record("run", self.intent)
         await run_intent(interaction, self.intent)
 
 
@@ -86,6 +90,7 @@ def suggestion(router: IntentRouter, user_id: int, text: str):
         embed = discord.Embed(description=f"It looks like you want to **{description}**.", color=ASK_COLOR)
         view = ui.View(timeout=None)
         view.add_item(RunIntent(user_id, route.intent))
+        router.record("offered", route.intent)
     elif route.confidence >= IntentRouter.CLARIFY:
         options = [route.intent] + [i for i, p in route.alternatives if i != "chat" and p >= 0.08][:2]
         embed = discord.Embed(description="I'm not quite sure what you mean. Did you want to:\n"
@@ -94,10 +99,11 @@ def suggestion(router: IntentRouter, user_id: int, text: str):
         view = ui.View(timeout=None)
         for n, intent in enumerate(options):
             view.add_item(RunIntent(user_id, intent, primary=n == 0))
+        router.record("clarified", route.intent)
     else:
         return None
-    embed.set_footer(text=f"Understood by Clairvoyance (local, {route.confidence:.0%} sure) · or just ask me in more words")
-    return embed, view
+    embed.set_footer(text=f"understood locally, {route.confidence:.0%} sure · or just ask me in more words")
+    return brand(embed), view
 
 
 def answer_embed(answer, question: str) -> discord.Embed:

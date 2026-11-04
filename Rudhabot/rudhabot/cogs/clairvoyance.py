@@ -1,4 +1,4 @@
-"""/clairvoyance: health and model management for the in-house Clairvoyance model (administrators only)."""
+"""/clairvoyance: one view of every Clairvoyance model and what it learned here, plus model management (admins)."""
 from __future__ import annotations
 
 import discord
@@ -7,6 +7,7 @@ from discord.ext import commands
 
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import admin_only
+from rudhabot.ui.branding import brand
 from rudhabot.ui.theme import CLAIRVOYANCEICON, Colors
 
 
@@ -14,9 +15,11 @@ class ClairvoyanceCog(ServiceCog, commands.GroupCog, group_name="clairvoyance", 
     @app_commands.command(name="status", description="Model version, health, measured quality and live latency")
     @admin_only()
     async def status(self, interaction: discord.Interaction):
+        from rudhabot.ui.clairvoyance_embeds import status_embed
+        overview = status_embed(self.services, interaction.guild_id)
         clairvoyance = self.services.clairvoyance
         st = clairvoyance.status()
-        embed = discord.Embed(title=f"{CLAIRVOYANCEICON} Clairvoyance status", color=Colors.CLAIRVOYANCE)
+        embed = discord.Embed(title=f"{CLAIRVOYANCEICON} Cloudfall model details", color=Colors.CLAIRVOYANCE)
         embed.add_field(name="Model", value=f"`{st['model']}`" + ("" if st["ready"] else f"\n⚠️ {st['load_error']}"), inline=False)
         if st.get("params"):
             embed.add_field(name="Size", value=f"{st['params']:,} parameters", inline=True)
@@ -36,7 +39,7 @@ class ClairvoyanceCog(ServiceCog, commands.GroupCog, group_name="clairvoyance", 
         if a.last_error:
             state += f"\nlast error: `{a.last_error[:200]}`"
         embed.add_field(name="OpenAI assistant", value=(state + f"\ncalls: {a.stats}")[:1024], inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embeds=[overview, brand(embed, "Cloudfall")], ephemeral=True)
 
     @app_commands.command(name="reload", description="Reload the Clairvoyance model (optionally a specific version, for rollback)")
     @admin_only()

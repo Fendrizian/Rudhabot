@@ -90,7 +90,12 @@ class FakeInteraction:
     # ------------------------------------------------------------ convenience
     @property
     def embeds(self):
-        return [k["embed"] for _, k in self.log if k.get("embed") is not None]
+        out = []
+        for _, k in self.log:
+            if k.get("embed") is not None:
+                out.append(k["embed"])
+            out.extend(k.get("embeds") or [])
+        return out
 
     @property
     def last_embed(self):

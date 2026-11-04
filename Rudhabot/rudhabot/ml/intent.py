@@ -173,10 +173,14 @@ class IntentRouter:
     CONFIDENT = 0.60          # default: act on the top intent (offer it directly); models carry a measured value
     CLARIFY = 0.25            # below `confident` but above this: ask which of the top options was meant
 
-    def __init__(self, path: Optional[str] = None):
+    def __init__(self, path: Optional[str] = None, outcomes_store=None):
+        """`outcomes_store` (optional, a JsonStore/ValueStore) keeps counts of how suggestions were used: no text,
+        only which intent was offered, asked about or run."""
         self.net: Optional[IntentNet] = None
         self.error: Optional[str] = None
         self.confident = self.CONFIDENT
+        self._outcomes_store = outcomes_store
+        self.outcomes: dict = (outcomes_store.load() if outcomes_store is not None else {}) or {}
         if path:
             try:
                 self.net = IntentNet.load(path)
@@ -187,6 +191,18 @@ class IntentRouter:
     @property
     def ready(self) -> bool:
         return self.net is not None
+
+    def record(self, kind: str, intent: Optional[str] = None) -> None:
+        """kind: offered (a confident suggestion), clarified (a clarifying question), run (a suggestion was used)."""
+        self.outcomes[kind] = self.outcomes.get(kind, 0) + 1
+        if intent:
+            per = self.outcomes.setdefault("by_intent", {}).setdefault(intent, {})
+            per[kind] = per.get(kind, 0) + 1
+        if self._outcomes_store is not None:
+            try:
+                self._outcomes_store.save(self.outcomes)
+            except Exception:
+                pass                               # statistics must never break /ask
 
     def route(self, text: str) -> Optional[Route]:
         if self.net is None or not normalise(text):

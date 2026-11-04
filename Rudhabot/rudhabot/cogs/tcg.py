@@ -23,6 +23,7 @@ from rudhabot.tcg.rules_text import RULES
 from rudhabot.ui.tcg_embeds import (CLOUD, board_embed, card_embed, card_line, collection_embed, deck_embed,
                                     doctor_embed, hand_embed)
 from rudhabot.ui.theme import CLAIRVOYANCEICON, TCG, Colors
+from rudhabot.ui.branding import brand
 from rudhabot.views.tcg_match import (ChallengeView, DeckModal, MatchButton, MovePicker, PageButton, PickSelect,
                                      board_view)
 
@@ -491,7 +492,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             text = "\n".join(f"**{h.label}** · win {round(h.win * 100)}% ({h.delta * 100:+.0f})" for h in hints) or "No hint."
             embed = discord.Embed(title=f"{CLAIRVOYANCEICON} Clairvoyance's top moves", description=text, color=Colors.TCG_SKY)
             embed.set_footer(text=f"{self.clairvoyance.version} · estimates, not guarantees · only you can see this")
-            return await interaction.followup.send(embed=embed, ephemeral=True)
+            return await interaction.followup.send(embed=brand(embed, "coach"), ephemeral=True)
         acts = E.legal_actions(match.game)
         embed = _note(match.game.pending[0]["text"] if match.game.pending else "Choose your move.")
         picker = MovePicker(self, match_id, match.version, acts)

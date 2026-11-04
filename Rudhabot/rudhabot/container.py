@@ -143,7 +143,7 @@ class Services:
             stocks=exchange,
             gacha=gacha,
             reviews=reviews,
-            intents=IntentRouter(_intent_model(ai.models_dir)),
+            intents=IntentRouter(_intent_model(ai.models_dir), value("intent_outcomes", paths.intent_outcomes, dict)),
             storage=storage,
             security=_build_security(settings, storage, clock, client, assistant),
         )

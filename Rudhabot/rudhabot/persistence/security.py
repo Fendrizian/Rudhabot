@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS sec_allow (id INTEGER PRIMARY KEY AUTOINCREMENT, guil
 CREATE TABLE IF NOT EXISTS sec_state (guild_id INTEGER, key TEXT, value TEXT, updated REAL,
     PRIMARY KEY (guild_id, key));
 CREATE TABLE IF NOT EXISTS sec_seen (guild_id INTEGER, user_id INTEGER, last_seen REAL, PRIMARY KEY (guild_id, user_id));
+CREATE TABLE IF NOT EXISTS sec_verdicts (guild_id INTEGER, incident_id TEXT, verdict TEXT, by INTEGER, created REAL,
+    family TEXT, detectors TEXT, model INTEGER, PRIMARY KEY (guild_id, incident_id));
 CREATE TABLE IF NOT EXISTS sec_fingerprints (guild_id INTEGER, user_id INTEGER, avatar_key TEXT, name_stem TEXT,
     created REAL, PRIMARY KEY (guild_id, user_id));
 """
@@ -462,6 +464,19 @@ class SecurityStore:
 
     def remove_fingerprint(self, guild_id: int, user_id: int) -> None:
         self.db.execute("DELETE FROM sec_fingerprints WHERE guild_id=? AND user_id=?", (guild_id, user_id))
+
+    # ================================================================ staff verdicts (Clairvoyance learns from them)
+    def set_verdict(self, guild_id: int, incident_id: str, verdict: str, by: int, family: str,
+                    detectors: list[str], model: bool) -> None:
+        self.db.execute("INSERT INTO sec_verdicts VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(guild_id, incident_id) "
+                        "DO UPDATE SET verdict=excluded.verdict, by=excluded.by, created=excluded.created",
+                        (guild_id, incident_id, verdict, by, self.now(), family, _j(sorted(detectors)), int(model)))
+
+    def verdicts(self, guild_id: int, limit: int = 200) -> list[dict]:
+        rows = self.db.query("SELECT incident_id, verdict, by, created, family, detectors, model FROM sec_verdicts "
+                             "WHERE guild_id=? ORDER BY created DESC LIMIT ?", (guild_id, limit))
+        return [{"incident_id": i, "verdict": v, "by": b, "created": c, "family": f, "detectors": _l(d, []),
+                 "model": bool(m)} for i, v, b, c, f, d, m in rows]
 
     # ================================================================ retention
     def sweep(self, guild_id: int, snippet_days: int, incident_days: int, fingerprint_days: int = 365) -> dict:

@@ -42,6 +42,7 @@ class Paths:
     gacha: str = "gacha.json"               # the weekly Skyfall Convergence meter
     reviews: str = "reviews.json"           # Clairvoyance review signals
     failures: str = "failures.jsonl"        # failed interactions (input to anomaly detection)
+    intent_outcomes: str = "intent_outcomes.json"   # suggestion counts (JSON backend only; no text)
     database: str = "rudhabot.db"           # SQLite storage (RUDHABOT_STORAGE=sqlite, the default)
     backups: str = "backups"                # daily database backups
 

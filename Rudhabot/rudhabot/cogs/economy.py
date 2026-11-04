@@ -13,6 +13,7 @@ from rudhabot.domain.amounts import AmountError, parse_amount
 from rudhabot.domain.cooldown import CRIME, DAILY, ROB, WORK, Cooldown, format_remaining
 from rudhabot.ui.replies import respond
 from rudhabot.ui.theme import BANKICON, CLAIRVOYANCEICON, CURRENCY, Colors
+from rudhabot.ui.branding import brand
 from rudhabot.views.leaderboard import LeaderboardView, create_leaderboard_embed
 
 INVALID_AMOUNT = "❌ Invalid amount format. Use a number or 'all'."
@@ -79,8 +80,9 @@ class EconomyCog(ServiceCog):
         if own:                                   # personal tips stay private, even though the balance is public
             tips = insights_for(self.services, target.id, profile, banked)
             if tips:
-                await interaction.followup.send(embed=discord.Embed(title=f"{CLAIRVOYANCEICON} Clairvoyance", description="\n".join(tips),
-                                                                    color=Colors.BALANCE), ephemeral=True)
+                await interaction.followup.send(embed=brand(discord.Embed(
+                    title=f"{CLAIRVOYANCEICON} Clairvoyance", description="\n".join(tips), color=Colors.BALANCE),
+                    "private tips, only you can see them"), ephemeral=True)
 
     # ------------------------------------------------------------------ earning
     async def _on_cooldown(self, interaction, cooldown: Cooldown, account: dict, now, text: str, **fmt) -> bool:

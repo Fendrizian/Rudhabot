@@ -17,6 +17,7 @@ from discord.ext import tasks
 
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.cogs.checks import banker_only
+from rudhabot.ui.branding import brand
 from rudhabot.ui.theme import BANKICON, CLAIRVOYANCEICON, TCG, Colors
 
 log = logging.getLogger("rudhabot.audit")
@@ -105,7 +106,7 @@ class AuditCog(ServiceCog):
         embed = discord.Embed(title=f"{CLAIRVOYANCEICON} Review signals ({value})", color=Colors.CLAIRVOYANCE,
                               description="\n\n".join(_signal_text(s) for s in items)[:4096] or "Nothing to review.")
         embed.set_footer(text="Signals are for human review only: nothing is changed automatically.")
-        await interaction.response.send_message(embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+        await interaction.response.send_message(embed=brand(embed, "anomaly monitor"), ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
     @review.command(name="resolve", description="Mark a review signal dismissed or confirmed")
     @app_commands.choices(outcome=[app_commands.Choice(name="Dismiss (nothing wrong)", value="dismissed"),
@@ -128,4 +129,4 @@ def _signal_text(s: dict) -> str:
 def review_embed(signal: dict) -> discord.Embed:
     embed = discord.Embed(title=f"{CLAIRVOYANCEICON} Clairvoyance review signal", description=_signal_text(signal), color=Colors.CLAIRVOYANCE)
     embed.set_footer(text="Unusual activity worth a look. Nothing was changed. Resolve with /review resolve.")
-    return embed
+    return brand(embed, "anomaly monitor")

@@ -22,6 +22,7 @@ from rudhabot.cogs.base import ServiceCog
 from rudhabot.security.clearance import TIER_LABELS, Refused, Tier, check
 from rudhabot.security.policy import BY_KEY, LIST_KEYS, SETTINGS, SecurityConfig
 from rudhabot.ui import security_embeds as E
+from rudhabot.ui.branding import brand
 from rudhabot.ui.theme import Colors
 from rudhabot.views.security import DYNAMIC_ITEMS, approval_view, incident_view, verify_view
 
@@ -220,6 +221,16 @@ class SecurityCog(ServiceCog):
             return
         text = await self.sec.verify(interaction.guild.id, interaction.user.id)
         await self._ephemeral(interaction, "Verification", text)
+
+    async def on_verdict_button(self, interaction: discord.Interaction, incident_id: str, real: bool) -> None:
+        if interaction.guild is None:
+            return
+        try:
+            text = await self.sec.verdict(interaction.guild.id, incident_id, interaction.user.id, real)
+        except Refused as refusal:
+            return await self._ephemeral(interaction, "⛔ Not recorded", str(refusal), Colors.UNAVAILABLE)
+        await interaction.response.send_message(embed=brand(E.simple("Verdict recorded", text, Colors.SUCCESS),
+                                                            "learning from staff verdicts"), ephemeral=True)
 
     async def on_report_button(self, interaction: discord.Interaction, incident_id: str) -> None:
         try:
@@ -542,8 +553,10 @@ class SecurityCog(ServiceCog):
                 report = await asyncio.to_thread(run_drill, scenario, self.sec.config(gid), None, models)
             finally:
                 self._drills_running.discard(gid)
-            return await interaction.followup.send(embed=E.simple(f"🎯 Drill: {scenario.replace('_', ' ')}", report,
-                                                                  Colors.SECURITY), ephemeral=True)
+            embed = E.simple(f"🎯 Drill: {scenario.replace('_', ' ')}", report, Colors.SECURITY)
+            if models is not None:
+                brand(embed, "models included in the drill")
+            return await interaction.followup.send(embed=embed, ephemeral=True)
         if action == "take snapshot":
             if not await self._guarded(interaction, "snapshot"):
                 return
@@ -581,13 +594,8 @@ class SecurityCog(ServiceCog):
             return await self._ephemeral(interaction, "Posted", f"Verification panel posted in {channel.mention}.")
         if not await self._guarded(interaction, "posture"):
             return
-        status = self.sec.status(gid).get("models", {})
-        await self._ephemeral(interaction, "🔮 Clairvoyance (security)", "\n".join([
-            f"message model: {status.get('message', 'unavailable')}",
-            f"incident model: {status.get('incident', 'unavailable')}",
-            f"alert ranker: {status.get('ranker', 'unavailable')}",
-            f"versions: {', '.join(f'{k}={v}' for k, v in status.get('versions', {}).items()) or 'none'}",
-            "Models only add evidence or order the digest. Turn one off: `/security settings models.message off`."]))
+        from rudhabot.ui.clairvoyance_embeds import status_embed
+        await interaction.response.send_message(embed=status_embed(self.services, gid), ephemeral=True)
 
 
 # ---------------------------------------------------------------------------------------------- AutoMod

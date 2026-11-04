@@ -23,6 +23,7 @@ from rudhabot.persistence.ledger import Ledger
 log = logging.getLogger("rudhabot.review")
 COOLDOWN = timedelta(hours=6)
 REJUDGE_EVERY = timedelta(minutes=1)
+CALIBRATION_BOUNDS = (0.58, 0.74)    # how far moderators' verdicts may move the anomaly bar
 
 
 class ReviewService:
@@ -36,6 +37,8 @@ class ReviewService:
         self._dirty: set[str] = set()                     # users with activity not yet judged (rate-limited)
         self.pending: deque = deque(maxlen=200)                                       # signals waiting to be posted
         self.stats = {"judged": 0, "flags": 0}
+        self.calibration: dict = {}
+        self.recalibrate()
 
     # ------------------------------------------------------------------ model
     def refit(self) -> dict:
@@ -137,5 +140,24 @@ class ReviewService:
                 signal.update(status=status, resolved_by=str(moderator_id), note=note[:300],
                               resolved=self._clock.now().isoformat(timespec="seconds"))
                 self._store.save(data)
+                self.recalibrate(data)
                 return signal
         raise KeyError(signal_id)
+
+    def recalibrate(self, data: Optional[dict] = None) -> dict:
+        """Clairvoyance learns this server's bar from moderators' verdicts (no new weights). Over the last 60 resolved
+        *model* signals (rules are fixed): mostly dismissed raises the isolation-forest bar, mostly confirmed lowers
+        it, within CALIBRATION_BOUNDS and only once there are at least 5 verdicts."""
+        data = data if data is not None else self._store.load()
+        resolved = [s for s in data.get("signals", []) if s.get("status") in ("dismissed", "confirmed")
+                    and s.get("kind") != "rule"][-60:]
+        base = AnomalyDetector.THRESHOLD
+        dismissed = sum(1 for s in resolved if s["status"] == "dismissed")
+        threshold = base
+        if len(resolved) >= 5:
+            share = dismissed / len(resolved)
+            threshold = base + (0.12 * (share - 0.5) / 0.5 if share > 0.5 else -0.04 * (0.5 - share) / 0.5)
+        low, high = CALIBRATION_BOUNDS
+        self.detector.threshold = round(min(high, max(low, threshold)), 3)
+        self.calibration = {"resolved": len(resolved), "dismissed": dismissed, "threshold": self.detector.threshold}
+        return self.calibration

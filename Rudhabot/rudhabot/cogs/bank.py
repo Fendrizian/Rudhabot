@@ -14,6 +14,7 @@ from rudhabot.domain.bank import TIERS
 from rudhabot.services.bank import BankRefused
 from rudhabot.ui.replies import respond
 from rudhabot.ui.theme import BANKICON, CLAIRVOYANCEICON, CURRENCY, Colors
+from rudhabot.ui.branding import brand
 
 BANK_GREEN = Colors.BANK
 
@@ -114,6 +115,8 @@ class BankCog(ServiceCog, commands.GroupCog, group_name="bank", group_descriptio
             e.add_field(name=f"{CLAIRVOYANCEICON} Clairvoyance", value="\n".join(tips), inline=False)
         e.set_footer(text="Pay with /buy pay_with:card or /tcg wish shards pay_with:card · statements close on the 1st, due the 11th, "
                           "5% interest if late")
+        if tips:
+            brand(e, "private tips")
         await respond(interaction, e, ephemeral=True)
 
     @card.command(name="pay", description="Pay off your credit card")

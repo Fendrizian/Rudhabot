@@ -11,6 +11,7 @@ import discord
 from rudhabot.security.clearance import Tier
 from rudhabot.security.levels import Level, LABELS
 from rudhabot.security.reasons import explain
+from rudhabot.ui.branding import brand
 from rudhabot.ui.theme import Colors
 
 LEVEL_COLORS = {1: Colors.THREAT_NORMAL, 2: Colors.THREAT_ELEVATED, 3: Colors.THREAT_HIGH, 4: Colors.THREAT_SEVERE,
@@ -85,7 +86,13 @@ def incident_embed(incident: dict, level: int, live: bool, rank: Optional[tuple[
                         inline=False)
     versions = incident.get("versions", {})
     embed.set_footer(text=f"{FOOTER} · {versions.get('rules', '')} · config v{versions.get('config', 0)}")
+    if model_contributed(incident):
+        brand(embed, "model evidence included")
     return embed
+
+
+def model_contributed(incident: dict) -> bool:
+    return bool(incident.get("model_bonus")) or any(s.get("source") == "model" for s in incident.get("signals", []))
 
 
 def level_embed(old: int, new: int, reason: str, orders: dict, live: bool) -> discord.Embed:
@@ -238,8 +245,12 @@ def lockdown_embed(event: str, report: dict) -> discord.Embed:
 
 
 def digest_embed(incidents: list[dict]) -> discord.Embed:
+    ranked = any("_rank" in i for i in incidents)
     embed = discord.Embed(title="🗒️ Low-severity flags (last 10 minutes)", color=Colors.SECURITY,
-                          description="Too weak to alert on their own; listed for review.")
+                          description="Too weak to alert on their own; listed for review"
+                                      + (", most likely real first." if ranked else "."))
+    if ranked:
+        brand(embed, "ordered by the alert ranker")
     for inc in incidents[:10]:
         reasons = _reasons(inc, 2)
         priority = f" · priority {inc['_rank']:.0%}" if "_rank" in inc else ""

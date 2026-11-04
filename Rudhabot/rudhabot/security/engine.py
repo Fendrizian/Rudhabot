@@ -147,6 +147,8 @@ class GuildEngine:
         self.model_versions = model_versions or {}
         self._ids = itertools.count(1)
         self.counters = {"events": 0, "signals": 0, "plans": 0}
+        self.message_bar = 0.8              # confidence a model reading needs to count; raised by staff verdicts
+        self.incident_bar = 0.8
 
     # ------------------------------------------------------------------ persistence
     def state(self) -> dict:
@@ -205,13 +207,13 @@ class GuildEngine:
         """The message model's view of a message already handled by the rules. Advisory: it adds a model signal
         (which can raise an incident's severity by at most MODEL_BONUS_CAP), and can corroborate deleting a message
         that a rule already found a risky link in."""
-        if uncertain or max(scam, spam) < 0.8:
+        if uncertain or max(scam, spam) < self.message_bar:
             return Outcome()
         detector, code, score = ("model_scam", "MSG_MODEL_SCAM", scam) if scam >= spam else \
             ("model_spam", "MSG_MODEL_SPAM", spam)
         links = analyse_text(msg.content, self.cfg["links.deny"], set(self.cfg["links.allow"]) | self.extra_allow,
                              self.own_invites)
-        corroborated = scam >= 0.9 and bool(links.links) and not all(f.official for f in links.links)
+        corroborated = scam >= max(0.9, self.message_bar) and bool(links.links) and not all(f.official for f in links.links)
         sig = Signal(detector, "phishing" if detector == "model_scam" else "spam", 0.6, score, msg.ts,
                      [Reason.of(code, confidence=round(score, 2))], users=[msg.author_id], channels=[msg.channel_id],
                      messages=[(msg.channel_id, msg.message_id)], source="model",
@@ -375,10 +377,10 @@ class GuildEngine:
 
     def model_incident_signal(self, now: float, probability: float, family: str, confident: bool) -> Outcome:
         """The incident model's periodic view (advisory). Only a confident view becomes a signal."""
-        if not confident or probability < 0.8:
+        if not confident or probability < self.incident_bar:
             return Outcome()
         # a reading on its own only opens a (digest) incident when very confident; at 0.8+ it adds to open ones
         sig = Signal("incident_model", family if family in ("raid", "spam", "phishing", "nuke", "integration") else "raid",
                      0.5, probability, now, [Reason.of("MODEL_INCIDENT", family=family, confidence=round(probability, 2))],
                      source="model", evidence={"family": family, "p": round(probability, 3)})
-        return self._absorb([sig], now, allow_new=probability >= 0.9)
+        return self._absorb([sig], now, allow_new=probability >= max(0.9, self.incident_bar))

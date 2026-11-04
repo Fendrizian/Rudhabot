@@ -10,6 +10,7 @@ from rudhabot.tcg import engine as E
 from rudhabot.tcg.cards import CARD_BY_ID, CHARACTER, PROTOCOL_BY_LEVEL, Card
 from rudhabot.tcg.decks import ARCHETYPES
 from rudhabot.tcg.state import Game
+from rudhabot.ui.branding import brand
 from rudhabot.ui.theme import CLAIRVOYANCEICON, TCG, Colors
 
 CLOUD = Colors.TCG_BLUE        # the open sky: boards, cards, collection
@@ -44,7 +45,7 @@ def card_embed(card: Card, similar: list[tuple[str, float]] = ()) -> discord.Emb
         embed.add_field(name=f"{CLAIRVOYANCEICON} Clairvoyance: plays a similar role to",
                         value=", ".join(f"{CARD_BY_ID[c].name}" for c, _ in similar), inline=False)
     embed.set_footer(text="Asgrelia: Cloudfall · base set")
-    return embed
+    return brand(embed, "similar cards") if similar else embed
 
 
 def _unit_line(g: Game, slot: int, u) -> str:
@@ -109,6 +110,8 @@ def board_embed(g: Game, record: dict, win_p0: Optional[float] = None, model: st
     if record.get("coach"):
         footer += " · coaching on (unrated)"
     embed.set_footer(text=footer)
+    if win_p0 is not None:
+        brand(embed)
     return embed
 
 
@@ -165,4 +168,4 @@ def doctor_embed(name: str, report: dict, swaps: list) -> discord.Embed:
                         value="\n".join(f"− {CARD_BY_ID[cut].name} → + {CARD_BY_ID[add].name}" for cut, add, _ in swaps),
                         inline=False)
     embed.set_footer(text=f"model {report.get('model')} · {report.get('seconds')} s · advisory only")
-    return embed
+    return brand(embed, "Deck Doctor")
