@@ -352,10 +352,10 @@ class SecurityService(RecoveryMixin):
         if spared:
             self.health["spared_trusted"] += len(spared)
             if inc is not None:
-                inc.note(self.now(), "standing", f"{len(spared)} trusted member(s) spared an automatic "
-                         f"{plan.kind}: left to staff")
+                inc.note(self.now(), "standing", ("[shadow] would leave " if not rt.config.live else "")
+                         + f"{len(spared)} trusted member(s) out of an automatic {plan.kind}: left to staff")
                 rt.dirty.add(inc.id)
-            if plan.kind == "timeout":
+            if plan.kind == "timeout" and rt.config.live:     # shadow mode only records, so no proposal either
                 await self._dispatch(rt, replace(plan, authority="confirm", targets=spared,
                                                  reason=plan.reason + " (a trusted member: staff decide)"))
             if not plan.targets:

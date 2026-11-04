@@ -33,7 +33,9 @@ def status_embed(services, guild_id: Optional[int] = None) -> discord.Embed:
     # ---- intent router
     router = services.intents
     learn = getattr(router, "outcomes", None)
-    intent = (f"30 intents · confident from {router.confident:.0%}" if router.ready else f"unavailable: {router.error}")
+    from rudhabot.ml.intent_data import INTENTS
+    intent = (f"{len(INTENTS)} intents · confident from {router.confident:.0%}" if router.ready
+              else f"unavailable: {router.error}")
     if learn:
         intent += f"\n{learn.get('offered', 0)} suggestions · {learn.get('run', 0)} run · {learn.get('clarified', 0)} " \
                   "clarifying questions"

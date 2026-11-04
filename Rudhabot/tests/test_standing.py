@@ -100,6 +100,14 @@ class TrustedProtectionTests(_StandingCase):
         self.assertEqual(action["targets"], [VETERAN])
         self.assertEqual(self.sec.health["spared_trusted"], 1)
 
+    async def test_shadow_mode_records_but_proposes_nothing(self):
+        self.active(VETERAN, 50)
+        rt = self.sec.runtime(1)
+        await self.sec._dispatch(rt, PlannedAction("timeout", "auto", Tier.HELPER, "repeat spam", targets=[VETERAN],
+                                                   params={"seconds": 600}))
+        self.assertEqual(self.sec.store.pending_approvals(1), [])
+        self.assertNotIn(VETERAN, self.fake.timeouts)
+
     async def test_probation_skips_trusted_members(self):
         self.active(VETERAN, 50)
         cfg = self.sec.config(1).with_value("mode", "live").with_value("probation_role", 7)
