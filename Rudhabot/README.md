@@ -16,6 +16,14 @@ A Discord economy and games bot (discord.py 2.x) built around **its own intellig
   `docs/ECONOMY.md`.
 - **`/ask`** (or an @mention) routes commands locally, and answers questions with OpenAI when it's configured. See
   `docs/OPENAI.md`.
+- **Server security:**
+  - raid, spam and phishing defence; anti-nuke budgets with automatic quarantine of a compromised staff account;
+  - five threat levels with standing orders;
+  - scoped lockdowns with two-person approval and safe restore;
+  - server snapshots, a numbered moderation log, incident reports and sandboxed attack drills.
+
+  Clairvoyance adds an 8.4M-parameter message-risk model, an incident model and an alert ranker, all advisory. See
+  `docs/SECURITY.md`.
 - Everything from v1 is still here.
 
 ## Run
@@ -55,20 +63,31 @@ presses **Act**.
 2. **A clean economy:** `RUDHABOT_DATA_DIR=data` keeps every data file in `data/` next to `main.py`. A new, empty
    folder means the bot starts with no balances, no inventories and no audit history; every file is created on first
    use. (Unset, files go to the working directory, as before.)
-3. **Discord:** enable the *Message Content* intent (for @mentions); invite the bot with the permissions below; put
-   the bot's role **above** the bankrupt role so it can give and remove it (*Manage Roles*).
-4. **Channels the bot must be able to post embeds in:** notifications (loan notices), audit (economy log, banker
+3. **Discord:** in the Developer Portal enable the **Server Members** and **Message Content** intents (security and
+   @mentions); keep the bot's role **above every staff role** and the bankrupt role (*Manage Roles*). Security needs
+   *View Audit Log* for anti-nuke (`docs/SECURITY.md` lists every permission and what stops without it).
+4. **Security setup:** `/security setup alert_channel:... modlog_channel:... probation_role:...`, map staff roles with
+   `/security clearance set`, run `/security posture`, rehearse with `/security drill`. Security starts in **shadow
+   mode** (detect and report only) until an admin runs `/security mode live`.
+5. **Channels the bot must be able to post embeds in:** notifications (loan notices), audit (economy log, banker
    actions, review signals), lottery (jackpots), birthdays.
-5. **Back up `data/`**, above all `ledger.jsonl` (the audit trail) and `data.json` / `bank.json` (balances, cards).
-   Writes are atomic (temp file + rename, fsynced), so a backup taken while the bot runs is consistent per file.
-6. **Model:** `clairvoyance-v3` ships in `models/` (and `oracle-v1` / `clairvoyance-v2` for rollback). The bot works
+6. **Storage:** everything lives in `data/rudhabot.db` (SQLite, built into Python: no server, no hosted database).
+   It is backed up daily to `data/backups/` (14 kept). Existing JSON files are imported once on first start and
+   left in place.
+   - Check or copy it with `python -m rudhabot.persistence.database info|check|backup <dir>`.
+   - `RUDHABOT_STORAGE=json` keeps the old one-file-per-store layout; `... export <dir>` writes the database back out
+     as JSON.
+7. **Model:** `clairvoyance-v3` ships in `models/` (and `oracle-v1` / `clairvoyance-v2` for rollback). The bot works
    without it (`CLAIRVOYANCE_ENABLED=0`): it falls back to a deterministic heuristic AI.
 
-Data files (all inside `RUDHABOT_DATA_DIR`): `data.json` (wallets, inventories, loans), `bank.json`, `ledger.jsonl`
-(append-only audit trail, rotates at 50 MB), `stocks.json`, `crypto.json`, `specials.json`, `lottery.json`,
-`birthdays.json`, `birthday_registry.json`, `tcg.json`, `tcg_matches.json` (live matches, restored after a restart),
-`gacha.json`, `reviews.json`, `failures.jsonl`. Hot data (accounts, bank, Cloudfall profiles) is kept in memory and
-written through to disk on every change; a file edited by hand while the bot runs is noticed and reloaded.
+Data (inside `RUDHABOT_DATA_DIR`): `rudhabot.db` holds every store:
+- accounts, the bank, the audit ledger, Cloudfall profiles and live matches (restored after a restart);
+- stocks, crypto, the lottery, birthdays, the gacha meter, review signals;
+- all security records.
+
+Hot stores are kept in memory and written through on every change; with SQLite only the changed records are written,
+in one transaction. A change made to the database by another process is noticed and reloaded. With
+`RUDHABOT_STORAGE=json` the same data lives in `data.json`, `bank.json`, `ledger.jsonl`, and so on, as before.
 
 ## Test
 
@@ -88,6 +107,13 @@ python -m rudhabot.ml.recalibrate --version my-model
 
 ```bash
 python -m rudhabot.ml.benchmark --versions clairvoyance-v3,my-model
+```
+
+Retrain and benchmark the security models (the public datasets are downloaded and checksum-verified; about 11
+minutes on 4 cores):
+
+```bash
+python -m rudhabot.ml.security.train --data ~/rudhabot-datasets --download
 ```
 
 Retrain the intent router and re-run the anomaly benchmark:
@@ -113,6 +139,8 @@ python -m rudhabot.ml.anomaly --tune
 | Skyfall Wishes | `/tcg wish banner | pull | shards | daily | craft | convergence` |
 | Banker | `/audit`, `/review list | resolve`, `/banker account | card-hold | card-release | loan-unban` |
 | Admin | `/clairvoyance status | reload` |
+| Moderation | `/warn`, `/timeout`, `/untimeout`, `/kick`, `/ban`, `/massban`, `/unban`, `/purge`, `/slowmode`, `/case view | edit | delete`, `/modlog`, the *Report to moderators* message command |
+| Security | `/security status | posture | mode | setup | level | incidents | incident … | lockdown … | snapshot … | config … | clearance … | allow … | quarantine … | probation … | verify-panel | automod | drill | ask | models` |
 
 Designed for Discord:
 - Each duel gets its own **thread**, so channels stay readable.
@@ -129,9 +157,10 @@ Each layer only depends on the ones above it.
 |---|---|
 | `settings`, `errors`, `clock` | Immutable config dataclasses (`AISettings.from_env()` for the AI layer), shared exceptions, an injectable clock |
 | `domain/`, `tcg/` | Pure rules, with no Discord and no files. v1 games, plus the Cloudfall engine (`tcg/engine.py`, deterministic and replayable) |
-| `ml/` | The Clairvoyance: features, numpy network, policy and search, self-play, training, evaluation, versioned artifact store |
+| `ml/` | The Clairvoyance: features, numpy network, policy and search, self-play, training, evaluation, versioned artifact store; `ml/security/` holds the wargame simulator and the security models |
+| `security/` | Server security without Discord: events, detectors, anti-nuke, threat levels, planning, lockdown/snapshot planning, the action adapter (`discord_port.py` is the only part that talks to Discord) |
 | `llm/` | Provider interface (`LanguageModel`) and the OpenAI Responses client, local retrieval, rate limits, the assistant |
-| `persistence/` | `JsonStore` (atomic writes; corrupt files are backed up) and repositories, including `TcgRepository` |
+| `persistence/` | SQLite storage (`database.py`) and the JSON fallback (`JsonStore`), repositories, security records |
 | `services/` | v1 services, plus `ClairvoyanceService` (threaded, bounded, timed out, with fallback) and `TcgService` (match lifecycle) |
 | `ui/`, `views/` | Embeds and components (`MatchButton` dynamic items survive restarts) |
 | `cogs/` | Thin slash commands, one cog per area |

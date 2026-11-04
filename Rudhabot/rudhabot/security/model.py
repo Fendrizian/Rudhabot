@@ -5,7 +5,7 @@ The permission audit, snapshots, lockdown planning and the simulator all work on
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from rudhabot.security import perms as P

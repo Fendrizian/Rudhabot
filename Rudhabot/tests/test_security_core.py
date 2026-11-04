@@ -63,7 +63,8 @@ class TextTests(unittest.TestCase):
 class LinkTests(unittest.TestCase):
     def test_phishing_patterns_are_scored_and_explained(self):
         cases = {
-            "free nitro https://dlscord-nitro.gift/abc": "LINK_BRAND_IN_DOMAIN",
+            "free nitro https://dlscord-nitro.gift/abc": "LINK_LOOKALIKE",
+            "https://my-discord-guide.com": "LINK_BRAND_IN_DOMAIN",
             "https://steamcomunnity.com/tradeoffer": "LINK_LOOKALIKE",
             "https://dіscord.gift/claim": "LINK_HOMOGLYPH",
             "https://discord.com@evil.ru/x": "LINK_USERINFO",

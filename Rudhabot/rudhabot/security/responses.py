@@ -72,7 +72,7 @@ class Planner:
     # ------------------------------------------------------------------ messages
     def for_message(self, signals: list[Signal], delete: bool, cfg: SecurityConfig, orders: StandingOrders,
                     now: float, author: int, channel: int, member_age_days: Optional[float],
-                    model_scam: float = 0.0, author_tier: int = 0) -> list[PlannedAction]:
+                    model_scam: float = 0.0, author_tier: int = 0, webhook: bool = False) -> list[PlannedAction]:
         plans: list[PlannedAction] = []
         codes = [r.code for s in signals for r in s.reasons]
         link_sig = next((s for s in signals if s.detector == "link"), None)
@@ -88,7 +88,7 @@ class Planner:
             if refs:
                 plans.append(PlannedAction("delete_messages", "auto", Tier.HELPER, _summary(signals), targets=[author],
                                            params={"messages": refs[-100:]}, codes=codes))
-                if author_tier == 0:
+                if author_tier == 0 and not webhook:            # a webhook isn't a member: nothing to time out
                     strikes = self.note_deletion(author, now)
                     if strikes >= 2 and orders.timeout_repeat_spammers and cfg["auto.timeouts"] \
                             and self._fresh(f"timeout:{author}", now, 600):

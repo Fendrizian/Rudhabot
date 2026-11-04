@@ -118,7 +118,7 @@ SETTINGS: tuple[Setting, ...] = (
     # ---------------------------------------------------------------- Clairvoyance models and the LLM
     S("models.message", True, "Use Clairvoyance's message-risk model (advisory).", bool),
     S("models.incident", True, "Use Clairvoyance's incident model (advisory).", bool),
-    S("models.ranker", True, "Rank alerts with Clairvoyance's alert ranker.", bool),
+    S("models.ranker", True, "Order the low-severity digest with Clairvoyance's alert ranker.", bool),
     S("models.staff_baseline", True, "Compare staff activity with each account's own usual pattern.", bool),
     S("llm.summaries", True, "Draft incident summaries with the LLM when it is configured (reason codes and counts "
       "only are sent; never message text).", bool),

@@ -60,7 +60,9 @@ class RudhaTree(app_commands.CommandTree):
 class RudhaBot(commands.Bot):
     def __init__(self, settings: Optional[Settings] = None, *, clock=None, rng=random, services: Optional[Services] = None):
         intents = discord.Intents.default()
-        intents.message_content = True
+        intents.message_content = True      # assistant mentions, spam and link detection
+        intents.members = True              # join defence, probation, clearance (privileged: enable in the portal)
+        intents.moderation = True           # audit-log entries (anti-nuke) and bans
         super().__init__(command_prefix=">", intents=intents, tree_cls=RudhaTree)
         self.services = services or Services.build(settings or Settings(), self, clock=clock, rng=rng)
         self.guild_id: Optional[int] = None

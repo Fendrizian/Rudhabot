@@ -72,6 +72,16 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
      ("audit", "review list | resolve", "banker account", "banker card-hold | card-release", "banker loan-unban")),
     ("admin", "Admin", "🛠️", "Server administrators only",
      ("add-money", "remove-money", "clairvoyance status | reload")),
+    ("moderation", "Moderation", "🛡️", "Warnings, timeouts, kicks, bans and the moderation log (staff)",
+     ("warn", "timeout", "untimeout", "kick", "ban", "massban", "unban", "purge", "slowmode",
+      "case view | edit | delete", "modlog", "Report to moderators")),
+    ("security", "Server security", "🚨", "Raid and anti-nuke defences, lockdowns and recovery (staff)",
+     ("security status", "security posture", "security mode", "security setup", "security level",
+      "security incidents", "security incident view | report | redact", "security lockdown start | lift",
+      "security snapshot take | list | restore", "security config view | set | list | history | rollback",
+      "security clearance set | view | check", "security allow add | remove | list",
+      "security quarantine list | release", "security probation list | release", "security verify-panel",
+      "security automod", "security drill", "security ask", "security models")),
 ]
 SECTION_BY_KEY = {key: (title, emoji, summary, names) for key, title, emoji, summary, names in SECTIONS}
 
@@ -86,7 +96,8 @@ def alphabetical(names) -> list[str]:
 
 
 def _field(embed: discord.Embed, command: dict) -> None:
-    embed.add_field(name=f"/{command['name']} {command['args']}".strip(), value=command["description"], inline=False)
+    slash = "" if command["name"][:1].isupper() else "/"          # context-menu entries ("Report to moderators")
+    embed.add_field(name=f"{slash}{command['name']} {command['args']}".strip(), value=command["description"], inline=False)
 
 
 # ------------------------------------------------------------------ embeds
@@ -524,5 +535,160 @@ def get_commands_data():
             "name": "birthday upcoming",
             "args": "",
             "description": "List the next birthdays in this server."
+        },
+        {
+            "name": "warn",
+            "args": "<member> <reason>",
+            "description": "Warn a member: a numbered case in the mod log, and a DM to them. Helpers and above."
+        },
+        {
+            "name": "timeout",
+            "args": "<member> <minutes> <reason>",
+            "description": "Time a member out. Helpers up to 10 minutes; Moderators up to 28 days."
+        },
+        {
+            "name": "untimeout",
+            "args": "<member> [reason]",
+            "description": "Lift a timeout early."
+        },
+        {
+            "name": "kick",
+            "args": "<member> <reason>",
+            "description": "Kick a member (Moderator). They get a DM with the reason."
+        },
+        {
+            "name": "ban",
+            "args": "<user> <reason> [delete_hours]",
+            "description": "Ban anyone, member or not (Senior Moderator), optionally deleting their recent messages."
+        },
+        {
+            "name": "massban",
+            "args": "<user_ids> <reason> [delete_hours]",
+            "description": "Ban up to 200 accounts by id in one go, paced for Discord's limits (Senior Moderator). Raid clean-up through this doesn't count against anyone's anti-nuke budget."
+        },
+        {
+            "name": "unban",
+            "args": "<user_id> <reason>",
+            "description": "Lift a ban (Senior Moderator)."
+        },
+        {
+            "name": "purge",
+            "args": "<count> [member] [reason]",
+            "description": "Delete recent messages here, optionally only one member's (Helpers up to 50, Moderators up to 500)."
+        },
+        {
+            "name": "slowmode",
+            "args": "<seconds> [channel] [minutes]",
+            "description": "Set slowmode, optionally lifting it automatically after some minutes."
+        },
+        {
+            "name": "case view | edit | delete",
+            "args": "<number>",
+            "description": "Look up a moderation case, correct its reason (Moderator) or remove it (Admin)."
+        },
+        {
+            "name": "modlog",
+            "args": "<user>",
+            "description": "A member's moderation history."
+        },
+        {
+            "name": "Report to moderators",
+            "args": "",
+            "description": "Right-click a message, then Apps. Flags it for staff without telling the member who reported it. Anyone can use it."
+        },
+        {
+            "name": "security status",
+            "args": "",
+            "description": "The readiness report: threat level and standing orders, open incidents, lockdowns, probation, quarantine, models."
+        },
+        {
+            "name": "security posture",
+            "args": "",
+            "description": "Inspect permissions and safety settings (2FA, verification, dangerous roles, bots, stale staff) with a score and fixes."
+        },
+        {
+            "name": "security mode",
+            "args": "<shadow|live>",
+            "description": "Shadow: detect and report only (the default). Live: carry out the standing orders. Admin."
+        },
+        {
+            "name": "security setup",
+            "args": "[alert_channel] [modlog_channel] [probation_role] [verified_role] [quarantine_role]",
+            "description": "Where alerts and cases go, and the roles security uses. Admin."
+        },
+        {
+            "name": "security level",
+            "args": "<1-5> <reason> [hold_minutes]",
+            "description": "Raise or lower the threat level by hand, held for a while (Senior Moderator)."
+        },
+        {
+            "name": "security incidents",
+            "args": "[status]",
+            "description": "Recent incidents with their type and severity."
+        },
+        {
+            "name": "security incident view | report | redact",
+            "args": "<id>",
+            "description": "One incident in full; its after-action report (an AI draft when configured); or delete the message snippets kept as evidence."
+        },
+        {
+            "name": "security lockdown start | lift",
+            "args": "<scope> <reason> [target] [minutes]",
+            "description": "Lock the server, a channel or a category for a set time after a preview and a second staff approval; lift it early with a safe restore."
+        },
+        {
+            "name": "security snapshot take | list | restore",
+            "args": "[snapshot_id]",
+            "description": "Snapshots of roles, channels and permissions (every 6 hours and before lockdowns); restore shows a diff and needs approval."
+        },
+        {
+            "name": "security config view | set | list | history | rollback",
+            "args": "",
+            "description": "Every security setting, with descriptions. Changes are versioned and can be rolled back. Admin to change."
+        },
+        {
+            "name": "security clearance set | view | check",
+            "args": "",
+            "description": "Map roles to clearance tiers (Helper, Moderator, Senior Moderator, Admin) and check anyone's tier."
+        },
+        {
+            "name": "security allow add | remove | list",
+            "args": "",
+            "description": "Time-limited exceptions for a user, role, channel or domain (at most 90 days)."
+        },
+        {
+            "name": "security quarantine list | release",
+            "args": "[member]",
+            "description": "Accounts anti-nuke quarantined, and giving their roles back after review (Admin)."
+        },
+        {
+            "name": "security probation list | release",
+            "args": "[member]",
+            "description": "Members on probation and when it ends; release someone early."
+        },
+        {
+            "name": "security verify-panel",
+            "args": "<channel>",
+            "description": "Post the verification button that grants the verified role. Admin."
+        },
+        {
+            "name": "security automod",
+            "args": "[preview|create]",
+            "description": "Preview or create Rudhabot's recommended native AutoMod rules (mention spam, spam, denied links). Admin."
+        },
+        {
+            "name": "security drill",
+            "args": "<scenario>",
+            "description": "Rehearse an attack in a sandbox: what would be detected, how fast, and what would be done. Nothing real is touched."
+        },
+        {
+            "name": "security ask",
+            "args": "<question>",
+            "description": "Ask about the current security state (read-only; AI when configured, otherwise the raw status)."
+        },
+        {
+            "name": "security models",
+            "args": "",
+            "description": "Clairvoyance's security models: versions, health and how to switch each off."
         },
     ]

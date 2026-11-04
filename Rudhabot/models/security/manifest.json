@@ -1,0 +1,20 @@
+{
+  "message": {
+    "file": "message-risk-v1.npz",
+    "version": "message-risk-v1",
+    "schema": "sechash-v1-262144",
+    "params": 8396579
+  },
+  "incident": {
+    "file": "incident-v1.npz",
+    "version": "incident-v1",
+    "schema": "secfeat-v1-83",
+    "params": 7753
+  },
+  "ranker": {
+    "file": "ranker-v1.json",
+    "version": "ranker-v1"
+  },
+  "created": "2026-11-04T07:28:14+00:00",
+  "data_policy": "public licence-checked datasets + synthetic chat; no Rudhabot server data; raw text not committed"
+}

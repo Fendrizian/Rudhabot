@@ -12,6 +12,8 @@ def main() -> None:
     single_threaded_blas()                        # before numpy loads: tiny matrices run faster on one thread
     level = os.environ.get("RUDHABOT_LOG_LEVEL", "INFO").strip().upper()
     logging.basicConfig(level=getattr(logging, level, logging.INFO), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    from rudhabot.logging_filters import install
+    install()                                     # tokens, API keys and webhook URLs never reach the log
     if loaded:
         logging.getLogger("rudhabot").info("loaded from .env: %s", ", ".join(sorted(set(loaded))))
     from rudhabot.errors import MissingTokenError

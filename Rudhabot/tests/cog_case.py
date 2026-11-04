@@ -29,6 +29,8 @@ class CogTestCase(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.s.storage.close)
         # nothing may touch the network: capture every DM / channel post instead
         self.s.messenger.post = AsyncMock(return_value=True)
+        self.s.messenger.send = AsyncMock(return_value=None)
+        self.s.messenger.edit = AsyncMock(return_value=True)
         self.s.messenger.dm = AsyncMock(return_value=True)
         self.s.messenger.find_user = AsyncMock(return_value=None)
         self._sleep = fast_sleep_patch()

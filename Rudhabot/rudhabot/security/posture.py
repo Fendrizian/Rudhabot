@@ -9,7 +9,7 @@ each dangerous permission, stale staff access, and whether native AutoMod and Ru
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Iterable
 
 from rudhabot.security import perms as P
 from rudhabot.security.model import GuildModel

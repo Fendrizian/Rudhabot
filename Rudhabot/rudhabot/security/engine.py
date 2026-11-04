@@ -11,7 +11,6 @@ import math
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from rudhabot.security import perms as P
 from rudhabot.security.antinuke import AntiNuke, StaffBaseline
 from rudhabot.security.detectors import DAY, JoinBaseline, JoinDetector, MessageDetector
 from rudhabot.security.events import AuditEntry, MemberJoin, MemberLeave, Message, Tick
@@ -27,6 +26,8 @@ INCIDENT_GAP_S = 900              # a signal joins an open incident of its famil
 INCIDENT_CLOSE_S = 1800           # an incident with no new signals for this long is closed
 MIN_INCIDENT_SCORE = 0.2          # weaker single signals are not worth an incident
 MODEL_BONUS_CAP = 0.15            # the most a model can add to an incident's severity
+MODEL_REVIEW_CAP = 0.6            # ... when its reading is corroborated (a confident scam score on a message with an
+                                  # unofficial link): enough to alert staff for review, never to move the threat level
 
 
 @dataclass
@@ -63,7 +64,11 @@ class Incident:
         self.last = max(self.last, signal.ts)
         self.counts[signal.detector] = self.counts.get(signal.detector, 0) + 1
         if signal.source == "model":
-            self.model_bonus = min(MODEL_BONUS_CAP, max(self.model_bonus, signal.score * MODEL_BONUS_CAP))
+            if signal.evidence.get("corroborated"):        # 0.9 -> 0.54, 0.97 -> 0.58: an alert for review
+                bonus = signal.confidence * MODEL_REVIEW_CAP
+            else:
+                bonus = signal.score * MODEL_BONUS_CAP
+            self.model_bonus = min(MODEL_REVIEW_CAP, max(self.model_bonus, bonus))
         else:
             self.top[signal.detector] = max(self.top.get(signal.detector, 0.0), signal.score)
             scores = sorted(self.top.values(), reverse=True)[:5]
@@ -187,7 +192,8 @@ class GuildEngine:
         out = self._absorb(verdict.signals, msg.ts)
         out.plans += self._tag(self.planner.for_message(verdict.signals, verdict.delete, self.cfg, self.threat.orders,
                                                         msg.ts, msg.author_id, msg.channel_id, msg.member_age_days,
-                                                        author_tier=msg.author_tier), verdict.signals)
+                                                        author_tier=msg.author_tier,
+                                                        webhook=msg.webhook_id is not None), verdict.signals)
         # worth a model look: links, files, invites, new members, or anything a rule already flagged
         out.model_candidate = bool(links.links or links.invites or msg.attachments or verdict.signals
                                    or (msg.member_age_days is not None and msg.member_age_days < 14)
@@ -203,13 +209,15 @@ class GuildEngine:
             return Outcome()
         detector, code, score = ("model_scam", "MSG_MODEL_SCAM", scam) if scam >= spam else \
             ("model_spam", "MSG_MODEL_SPAM", spam)
+        links = analyse_text(msg.content, self.cfg["links.deny"], set(self.cfg["links.allow"]) | self.extra_allow,
+                             self.own_invites)
+        corroborated = scam >= 0.9 and bool(links.links) and not all(f.official for f in links.links)
         sig = Signal(detector, "phishing" if detector == "model_scam" else "spam", 0.6, score, msg.ts,
                      [Reason.of(code, confidence=round(score, 2))], users=[msg.author_id], channels=[msg.channel_id],
                      messages=[(msg.channel_id, msg.message_id)], source="model",
-                     evidence={"scam": round(scam, 3), "spam": round(spam, 3), "version": version})
+                     evidence={"scam": round(scam, 3), "spam": round(spam, 3), "version": version,
+                               "corroborated": corroborated}, snippet=msg.content[:200] if corroborated else None)
         out = self._absorb([sig], msg.ts, allow_new=True)
-        links = analyse_text(msg.content, self.cfg["links.deny"], set(self.cfg["links.allow"]) | self.extra_allow,
-                             self.own_invites)
         if links.links and links.score >= 0.5 and not links.score >= self.cfg["links.delete_score"]:
             link_sig = Signal("link", "phishing", links.score, 0.85, msg.ts, [], messages=[(msg.channel_id, msg.message_id)])
             out.plans += self._tag(self.planner.for_message([link_sig, sig], False, self.cfg, self.threat.orders, msg.ts,
@@ -369,7 +377,8 @@ class GuildEngine:
         """The incident model's periodic view (advisory). Only a confident view becomes a signal."""
         if not confident or probability < 0.8:
             return Outcome()
+        # a reading on its own only opens a (digest) incident when very confident; at 0.8+ it adds to open ones
         sig = Signal("incident_model", family if family in ("raid", "spam", "phishing", "nuke", "integration") else "raid",
                      0.5, probability, now, [Reason.of("MODEL_INCIDENT", family=family, confidence=round(probability, 2))],
                      source="model", evidence={"family": family, "p": round(probability, 3)})
-        return self._absorb([sig], now)
+        return self._absorb([sig], now, allow_new=probability >= 0.9)

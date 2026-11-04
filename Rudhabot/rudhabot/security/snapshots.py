@@ -60,7 +60,7 @@ def diff(snapshot: dict, guild: GuildModel, bot_top_position: Optional[int] = No
         if role_id == guild.id:
             now = roles_now.get(role_id)
             if now and now.permissions != old.permissions:
-                plan.steps.append(Step("edit_role", f"@everyone permissions back to the snapshot",
+                plan.steps.append(Step("edit_role", "@everyone permissions back to the snapshot",
                                        {"role_id": role_id, "permissions": old.permissions}))
             continue
         now = roles_now.get(role_id)

@@ -28,6 +28,7 @@ from rudhabot.services.bank import BankService
 from rudhabot.services.birthdays import BirthdayService
 from rudhabot.services.gacha import GachaService
 from rudhabot.services.review import ReviewService
+from rudhabot.services.security import SecurityService
 from rudhabot.services.stocks import StockExchange, initial_state
 from rudhabot.services.crypto_market import CryptoMarket
 from rudhabot.services.loans import LoanService
@@ -73,6 +74,7 @@ class Services:
     reviews: ReviewService
     intents: IntentRouter
     storage: Storage
+    security: SecurityService
 
     @classmethod
     def build(cls, settings: Settings, client: discord.Client, *, clock: Clock | None = None,
@@ -109,6 +111,7 @@ class Services:
         tcg.gacha = gacha
         tcg.bank = bank
 
+        assistant = _build_assistant(settings, tcg, clairvoyance)
         return cls(
             settings=settings,
             clock=clock,
@@ -134,7 +137,7 @@ class Services:
             announcer=Announcer(messenger, settings.channels, catalog),
             clairvoyance=clairvoyance,
             tcg=tcg,
-            assistant=_build_assistant(settings, tcg, clairvoyance),
+            assistant=assistant,
             audit=audit,
             bank=bank,
             stocks=exchange,
@@ -142,7 +145,28 @@ class Services:
             reviews=reviews,
             intents=IntentRouter(_intent_model(ai.models_dir)),
             storage=storage,
+            security=_build_security(settings, storage, clock, client, assistant),
         )
+
+
+def _build_security(settings: Settings, storage: Storage, clock: Clock, client: discord.Client,
+                    assistant: Assistant) -> SecurityService:
+    """Security keeps its records in SQLite even when the economy uses JSON files (RUDHABOT_STORAGE=json)."""
+    import os
+    from rudhabot.ml.security.serving import SecurityModels
+    from rudhabot.persistence.database import Database
+    from rudhabot.persistence.security import SecurityStore
+    from rudhabot.security.briefing import Briefer
+    from rudhabot.security.discord_port import DiscordGuildPort
+    db = storage.db or Database(settings.paths.database)
+    store = SecurityStore(db, clock)
+    enabled = (os.environ.get("RUDHABOT_SECURITY_MODELS", "1").strip().lower() not in ("0", "false", "off", "no"))
+    models = SecurityModels(os.path.join(settings.ai.models_dir, "security"), enabled=enabled)
+    briefer = Briefer(assistant.model, assistant.limiter)
+    automod_counts: dict[int, int] = {}
+    return SecurityService(store, clock, admin_role_id=settings.admin_role_id, models=models, briefer=briefer,
+                           port_factory=lambda gid: DiscordGuildPort(client, gid, lambda: automod_counts.get(gid, 0)),
+                           bot_id=lambda: client.user.id if client.user else 0)
 
 
 def _intent_model(models_dir: str):

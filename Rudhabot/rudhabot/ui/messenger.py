@@ -48,13 +48,27 @@ class Messenger:
 
     async def post(self, channel, **message) -> bool:
         """`channel` may be a channel object or an id. Never raises."""
+        return await self.send(channel, **message) is not None
+
+    async def send(self, channel, **message) -> Optional[discord.Message]:
+        """Like post(), but returns the sent message (or None), for messages that are edited later."""
         if isinstance(channel, int):
-            channel = await self.resolve_channel(channel)
+            channel = await self.resolve_channel(channel) if channel else None
+        if channel is None:
+            return None
+        try:
+            return await channel.send(**message)
+        except Exception as error:
+            log.warning("posting to channel %s failed: %s", getattr(channel, "id", channel), error)
+            return None
+
+    async def edit(self, channel_id: int, message_id: int, **changes) -> bool:
+        channel = await self.resolve_channel(channel_id)
         if channel is None:
             return False
         try:
-            await channel.send(**message)
+            await channel.get_partial_message(message_id).edit(**changes)
             return True
         except Exception as error:
-            log.warning("posting to channel %s failed: %s", getattr(channel, "id", channel), error)
+            log.info("editing message %s failed: %s", message_id, error)
             return False

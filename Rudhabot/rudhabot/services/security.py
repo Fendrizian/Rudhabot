@@ -25,7 +25,7 @@ from rudhabot.security.briefing import Briefer, after_action
 from rudhabot.security.clearance import Refused, Tier, check, resolve_tier
 from rudhabot.security.detectors import _stem
 from rudhabot.security.engine import RULES_VERSION, GuildEngine, Incident, Outcome
-from rudhabot.security.events import Message, Tick
+from rudhabot.security.events import AuditEntry, Message, Tick
 from rudhabot.security.levels import Level
 from rudhabot.security.lockdown import OverwriteChange, plan_lockdown, plan_restore
 from rudhabot.security.policy import SecurityConfig
@@ -78,6 +78,7 @@ class SecurityService:
         self.notify: Optional[Notify] = None
         self.health = Counter()
         self._model_sem = asyncio.Semaphore(2)
+        self._tasks: set = set()                 # strong references: the loop only holds tasks weakly
 
     # ================================================================ plumbing
     def now(self) -> float:
@@ -189,6 +190,9 @@ class SecurityService:
             return None
         if isinstance(event, Message) and event.author_tier >= 1:
             rt.seen[event.author_id] = event.ts
+        if isinstance(event, AuditEntry) and event.action in ("role_create", "role_update", "member_role_update") \
+                and self.now() - rt.refreshed_at > 5:
+            self._refresh(rt)                    # role permissions must be current to judge a grant
         try:
             out = rt.engine.observe(event)
         except Exception:
@@ -200,7 +204,9 @@ class SecurityService:
                 and rt.config["models.message"] and self.models.message_ready:
             if rt.model_pending < MAX_MODEL_QUEUE:
                 rt.model_pending += 1
-                asyncio.get_running_loop().create_task(self._score_message(rt, event))
+                task = asyncio.get_running_loop().create_task(self._score_message(rt, event))
+                self._tasks.add(task)
+                task.add_done_callback(self._tasks.discard)
             else:
                 self.health["model_dropped"] += 1
         return out
@@ -646,7 +652,7 @@ class SecurityService:
     async def slowmode(self, guild_id: int, actor_id: int, channel_id: int, seconds: int,
                        revert_minutes: int = 0) -> ActionResult:
         rt = self.runtime(guild_id)
-        plan = PlannedAction("slowmode", "confirm", Tier.HELPER, f"set by moderator", targets=[channel_id],
+        plan = PlannedAction("slowmode", "confirm", Tier.HELPER, "set by moderator", targets=[channel_id],
                              params={"seconds": seconds, "revert_after": revert_minutes * 60})
         result = await rt.executor.execute(plan, actor_id=actor_id)
         if result.status == "refused":
@@ -889,7 +895,6 @@ class SecurityService:
         return after_action(inc.to_dict(), actions), "template"
 
     async def ask(self, guild_id: int, question: str) -> tuple[str, str]:
-        rt = self.runtime(guild_id)
         status = self.status(guild_id)
         incidents = self.store.incidents(guild_id, limit=8)
         return await self.briefer.answer(question, {k: v for k, v in status.items() if k != "health"}, incidents,

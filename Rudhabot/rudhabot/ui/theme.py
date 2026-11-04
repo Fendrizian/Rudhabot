@@ -103,6 +103,14 @@ class Colors:
     GAMBLING = 0x99AAB5
     HELP = 0x607D8B
     CLAIRVOYANCE = 0x5865F2     # technical matters only: model status, review signals (and /ask for now)
+    # server security: one colour per threat level (calm to critical), plus moderation records
+    THREAT_NORMAL = 0x3BA55D
+    THREAT_ELEVATED = 0xE8B92E
+    THREAT_HIGH = 0xF28C28
+    THREAT_SEVERE = 0xD9363E
+    THREAT_CRITICAL = 0x7A0B12
+    SECURITY = 0x4F5D95         # status, configuration, reports
+    MODLOG = 0x5D6D7E           # moderation cases
     # Asgrelia: Cloudfall, darkest to brightest
     TCG_DEEP = 0x0A288A
     TCG_BLUE = 0x1653C4

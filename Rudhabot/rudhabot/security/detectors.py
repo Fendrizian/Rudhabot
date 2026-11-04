@@ -15,7 +15,7 @@ from rudhabot.security.links import LinkReport, analyse_attachment
 from rudhabot.security.policy import SecurityConfig
 from rudhabot.security.reasons import duration
 from rudhabot.security.signals import Reason, Signal
-from rudhabot.security.text import CoordinationIndex, content_hash, name_shape, skeleton, snippet
+from rudhabot.security.text import CoordinationIndex, content_hash, name_shape, normalise, skeleton, snippet
 
 DAY = 86400.0
 
@@ -352,7 +352,7 @@ class MessageDetector:
                 mwin = self.mentions[msg.author_id]
                 mwin.add(now, msg.user_mentions)
                 total = sum(n for _, n in mwin.within(now, 60))
-                if total >= cfg["messages.mention_window_limit"] and msg.user_mentions < cfg["messages.mention_limit"]:
+                if total >= cfg["messages.mention_window_limit"] * relax and msg.user_mentions < cfg["messages.mention_limit"]:
                     signals.append(Signal("mention_flood", "spam", min(1.0, 0.5 + 0.01 * total), 0.85, now,
                                           [Reason.of("MSG_MENTION_FLOOD", count=total, window="1 min")],
                                           users=[msg.author_id], channels=[msg.channel_id], messages=[ref]))
@@ -375,9 +375,14 @@ class MessageDetector:
                 family = "phishing" if links.links else "spam"
                 # Many established members writing the same thing is usually a celebration ("happy birthday!"),
                 # not spam: only a payload (links, invites, pings) or mostly brand-new accounts makes it actionable.
-                payload = bool(links.links or links.invites or msg.user_mentions >= 2 or msg.everyone_attempt)
+                # In relaxed channels (games, roleplay battles) repeated commands with a few pings are the point,
+                # so only links or invites count there; elsewhere mass pings count too.
+                payload = bool(links.links or links.invites) or (relax == 1.0 and (msg.everyone_attempt
+                                                                                    or msg.user_mentions >= 4))
                 new_share = sum(1 for a in cluster.authors if self.member_age.get(a, 99.0) < 1) / len(cluster.authors)
-                actionable = payload or new_share >= 0.5
+                # brand-new members greeting in the same words ("came from the partner post!") is an onboarding
+                # wave, so without a payload only longer text from mostly new accounts is treated as spam
+                actionable = payload or (new_share >= 0.5 and len(normalise(msg.content)) >= 40)
                 signals.append(Signal("coordinated", family,
                                       min(1.0, 0.55 + 0.05 * len(cluster.authors)) if actionable else 0.25,
                                       0.9 if actionable else 0.6, now,
@@ -452,10 +457,13 @@ class MessageDetector:
         win.add(now, (msg.channel_id, msg.message_id, msg.user_mentions + (25 if msg.everyone_attempt else 0)))
         recent = win.within(now, 10)
         pings = sum(x[2] for _, x in recent)
-        if len(recent) >= 10 or (len(recent) >= 4 and pings >= 10):
+        minute = win.within(now, 60)
+        everyone_repeats = sum(1 for _, x in minute if x[2] >= 25)          # a webhook pinging @everyone again and again
+        if len(recent) >= 10 or (len(recent) >= 4 and pings >= 10) or everyone_repeats >= 3:
+            recent = minute if everyone_repeats >= 3 else recent
             sig = Signal("webhook_flood", "integration", min(1.0, 0.6 + 0.02 * len(recent) + 0.005 * pings), 0.9, now,
                          [Reason.of("WEBHOOK_FLOOD", count=len(recent), window="10s")],
-                         channels=[msg.channel_id], messages=[(c, m) for _, (c, m, _) in recent],
+                         users=[msg.author_id], channels=[msg.channel_id], messages=[(c, m) for _, (c, m, _) in recent],
                          evidence={"webhook_id": msg.webhook_id, "count": len(recent), "pings": pings})
             return MessageVerdict([sig], True)
         return MessageVerdict([])

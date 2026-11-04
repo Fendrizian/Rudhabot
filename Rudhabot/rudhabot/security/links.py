@@ -181,6 +181,13 @@ def _brand_match(domain: str, host: str) -> tuple[Optional[str], list[str]]:
         if len(target) >= 7 and 0 < edit_distance(skel, target, 2) <= (1 if len(target) < 10 else 2):
             return brand, ["LINK_LOOKALIKE"]
     tokens = [t for t in re.split(r"[-.]", skeleton(label)) if t]
+    if len(tokens) > 1:                     # "dlscord-gift": judge each word of a hyphenated name on its own too
+        for token in tokens:
+            for target, brand in _TARGETS.items():
+                if token == target:
+                    continue                # the real word itself is handled as brand-in-domain below
+                if len(target) >= 7 and 0 < edit_distance(token, target, 2) <= (1 if len(target) < 10 else 2):
+                    return brand, ["LINK_LOOKALIKE"]
     for brand in IMPERSONATED:
         if brand in tokens or (skel.startswith(brand) and len(skel) > len(brand) + 2) or skel.endswith(brand + "gift"):
             return (brand if brand != "nitro" else "discord"), ["LINK_BRAND_IN_DOMAIN"]

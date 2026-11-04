@@ -16,8 +16,8 @@ class HelpDataTests(CogTestCase):
         self.assertEqual(sorted(placed), sorted(names))
 
     def test_every_registered_slash_command_is_documented(self):
-        documented = {c["name"].split()[0] for c in get_commands_data()}
-        registered = {c.name for c in self.bot.tree.get_commands()}
+        documented = {c["name"] if c["name"][:1].isupper() else c["name"].split()[0] for c in get_commands_data()}
+        registered = {c.name for c in self.bot.tree.get_commands()}              # includes context menus
         self.assertEqual(registered - documented, set())
 
     def test_full_list_shows_every_command_once_alphabetically(self):
