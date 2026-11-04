@@ -300,7 +300,7 @@ class PortfolioCommandTests(CogTestCase):
 
     async def test_empty_portfolio_points_to_both_markets(self):
         it = await self.run_command("portfolio", self.bob)
-        self.assertIn("/buycoin", it.text())
+        self.assertIn("/crypto buy", it.text())
         self.assertIn("/stocks buy", it.text())
 
 

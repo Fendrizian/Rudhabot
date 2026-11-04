@@ -59,7 +59,7 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
       "bank card info | pay", "loan", "loaninfo", "pay", "extend")),
     ("shop", "Shop & Café", "🛍️", "Buy, sell and use items", ("shop", "cafe", "buy", "sell", "inventory", "look", "use")),
     ("markets", "Markets", "📈", "The stock exchange and crypto",
-     ("portfolio", "stocks market | quote", "stocks buy | sell", "crypto", "buycoin", "sellcoin")),
+     ("portfolio", "stocks market | quote", "stocks buy | sell", "crypto market", "crypto buy | sell")),
     ("games", "Gambling games", "🎰", "Bet on coins, dice, cards and more",
      ("coinflip", "dice", "rps", "slots", "roulette", "highlow", "crash", "blackjack", "baccarat", "craps")),
     ("tcg", "Cloudfall TCG", TCG.LOGO, "Asgrelia: Cloudfall, the trading card game",
@@ -447,19 +447,14 @@ def get_commands_data():
             "description": "Check your current loan status and debt information."
         },
         {
-            "name": "crypto",
+            "name": "crypto market",
             "args": "",
             "description": "View the current cryptocurrency market prices."
         },
         {
-            "name": "buycoin",
+            "name": "crypto buy | sell",
             "args": "<coin> <amount>",
-            "description": "Buy cryptocurrency with your wallet money."
-        },
-        {
-            "name": "sellcoin",
-            "args": "<coin> <amount|all>",
-            "description": "Sell your cryptocurrency holdings."
+            "description": "Buy a coin with wallet money (amount in ra), or sell a coin (an amount of coins, or 'all')."
         },
         {
             "name": "portfolio",

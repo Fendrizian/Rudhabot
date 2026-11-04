@@ -161,7 +161,7 @@ class GamesNeverLeaveAPlayerLockedTests(CogTestCase):
 class CryptoForBrandNewMembersTests(CogTestCase):
     async def test_a_new_members_first_trade_is_refused_politely(self):
         # Trades used to look the account up in a whole-file transaction; a member who had never done anything had no
-        # stored account, so their first /buycoin raised KeyError ("Something went wrong").
+        # stored account, so their first /crypto buy (then /buycoin) raised KeyError ("Something went wrong").
         from rudhabot.services.crypto_market import TradeRefused
         with self.assertRaises(TradeRefused):
             self.s.crypto.buy(4242, "SCAY", 100)

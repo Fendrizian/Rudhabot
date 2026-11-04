@@ -138,16 +138,16 @@ class LockFixTests(CogTestCase):
 class FixedBugTests(CogTestCase):
     async def test_negative_crypto_purchase_cannot_mint_money(self):
         self.fund(self.alice, 100)
-        it = await self.run_command("buycoin", self.alice, coin="SCAY", amount=-1_000_000)
+        it = await self.run_command("crypto", self.alice, group="buy", coin="SCAY", amount=-1_000_000)
         self.assertIn("must be positive", it.text())
         self.assertEqual(it.ephemeral(), [True])
         self.assertEqual(self.account(self.alice)["wallet"], 100)
 
     async def test_crypto_round_trip_through_the_commands(self):
         self.fund(self.alice, 1000)
-        await self.run_command("buycoin", self.alice, coin="SCAY", amount=500)
+        await self.run_command("crypto", self.alice, group="buy", coin="SCAY", amount=500)
         self.assertEqual(self.account(self.alice)["wallet"], 500)
-        it = await self.run_command("sellcoin", self.alice, coin="SCAY", amount="all")
+        it = await self.run_command("crypto", self.alice, group="sell", coin="SCAY", amount="all")
         self.assertIn("You sold 5.0000 SCAY", it.text())
         self.assertEqual(self.account(self.alice)["wallet"], 1000)
 

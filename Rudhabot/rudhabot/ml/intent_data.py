@@ -25,7 +25,7 @@ INTENTS: dict[str, tuple[str, str, bool]] = {
     "bank": ("see the bank card tiers, interest and monthly limits", "bank tiers", True),
     "card": ("check or pay your credit card", "bank card info", True),
     "stocks": ("see the stock market", "stocks market", True),
-    "crypto": ("check the crypto market", "crypto", True),
+    "crypto": ("check the crypto market", "crypto market", True),
     "portfolio": ("see your stocks and crypto with profit and loss", "portfolio", True),
     "look": ("look up an item's description, price and aliases", "look", False),
     "games": ("pick a gambling game", "help", True),

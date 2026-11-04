@@ -1,4 +1,4 @@
-"""Cryptocurrency commands and the per-minute price update job."""
+"""/crypto market | buy | sell (like /stocks), /portfolio, and the per-minute price update job."""
 from __future__ import annotations
 
 import logging
@@ -25,6 +25,8 @@ def _embed(user, message: str, color: int = Colors.FAIL) -> discord.Embed:
 
 
 class CryptoCog(ServiceCog):
+    crypto = app_commands.Group(name="crypto", description="The crypto market: prices, buying and selling")
+
     async def cog_load(self):
         self.update_prices.start()
 
@@ -42,9 +44,9 @@ class CryptoCog(ServiceCog):
     async def _wait_until_ready(self):
         await self.bot.wait_until_ready()
 
-    @app_commands.command(name="crypto", description="Check current cryptocurrency market.")
+    @crypto.command(name="market", description="Check current cryptocurrency market.")
     @not_in_game()
-    async def crypto(self, interaction: discord.Interaction):
+    async def market(self, interaction: discord.Interaction):
         market = self.services.crypto
         account = self.users.get(interaction.user.id)
         embed = discord.Embed(
@@ -53,16 +55,16 @@ class CryptoCog(ServiceCog):
                         f"You have {CURRENCY}{account.get('wallet', 0)} in your wallet.",
             color=Colors.CRYPTO_MARKET,
         )
-        embed.set_footer(text="Use /buycoin to buy cryptocurrencies")
+        embed.set_footer(text="Use /crypto buy to buy cryptocurrencies and /crypto sell to sell them")
         for coin, price in market.prices.items():
             embed.add_field(name=f"{market.coins[coin].name} ({coin})", value=f"{CURRENCY}{round(int(price), 2)}", inline=False)
         await respond(interaction, embed)
 
-    @app_commands.command(name="buycoin", description="Buy a cryptocurrency.")
+    @crypto.command(name="buy", description="Buy a cryptocurrency.")
     @app_commands.describe(coin="SCAY, RDC, LICH, or WNC", amount="Amount in your wallet to spend")
     @app_commands.choices(coin=COIN_CHOICES)
     @not_in_game()
-    async def buycoin(self, interaction: discord.Interaction, coin: str, amount: int):
+    async def buy(self, interaction: discord.Interaction, coin: str, amount: int):
         try:
             trade = self.services.crypto.buy(interaction.user.id, coin, amount)
         except TradeRefused as refusal:
@@ -74,11 +76,11 @@ class CryptoCog(ServiceCog):
             return
         await respond(interaction, _embed(interaction.user, f"✅ You bought {trade.quantity:.4f} {trade.coin} for {CURRENCY}{amount}.", Colors.SUCCESS))
 
-    @app_commands.command(name="sellcoin", description="Sell a cryptocurrency.")
+    @crypto.command(name="sell", description="Sell a cryptocurrency.")
     @app_commands.describe(coin="SCAY, RDC, LICH, or WNC", amount="Amount of the coin to sell or 'all'")
     @app_commands.choices(coin=COIN_CHOICES)
     @not_in_game()
-    async def sellcoin(self, interaction: discord.Interaction, coin: str, amount: str):
+    async def sell(self, interaction: discord.Interaction, coin: str, amount: str):
         try:
             trade = self.services.crypto.sell(interaction.user.id, coin, amount)
         except TradeRefused as refusal:
@@ -99,7 +101,7 @@ class CryptoCog(ServiceCog):
         shares = self.services.stocks.portfolio(interaction.user.id)
         embed = discord.Embed(title=f"{PORTFOLIOICON} {interaction.user.name}'s Portfolio", color=Colors.PORTFOLIO)
         if not coins and not shares:
-            embed.description = "Your portfolio is empty. Buy coins with `/buycoin` or shares with `/stocks buy`."
+            embed.description = "Your portfolio is empty. Buy coins with `/crypto buy` or shares with `/stocks buy`."
             await respond(interaction, embed)
             return
         crypto_total = sum(h.value for h in coins)
@@ -115,5 +117,5 @@ class CryptoCog(ServiceCog):
                             value=("\n".join(lines) + f"\nProfit/loss vs cost {CURRENCY}{cost:,.0f}: "
                                    f"{stock_total - cost:+,.0f}")[:1024], inline=False)
         embed.add_field(name="Total Investments", value=f"{CURRENCY}{crypto_total + stock_total:,.0f}", inline=False)
-        embed.set_footer(text="Sell with /sellcoin or /stocks sell · prices: /crypto, /stocks market")
+        embed.set_footer(text="Sell with /crypto sell or /stocks sell · prices: /crypto market, /stocks market")
         await respond(interaction, embed)
