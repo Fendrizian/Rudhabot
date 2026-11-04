@@ -121,7 +121,7 @@ class Database:
     def backup_to(self, destination: str) -> None:
         """A consistent online copy (SQLite's backup API, from a fresh connection so the bot keeps running)."""
         os.makedirs(os.path.dirname(os.path.abspath(destination)), exist_ok=True)
-        tmp = destination + ".tmp"
+        tmp = f"{destination}.{os.getpid()}-{threading.get_ident()}.tmp"     # never shared between two backups
         if os.path.exists(tmp):
             os.remove(tmp)
         src = sqlite3.connect(self.path, timeout=30.0)
@@ -355,6 +355,7 @@ class Storage:
             raise ValueError(f"RUDHABOT_STORAGE must be 'sqlite' or 'json', got {backend!r}")
         self.backend, self.db = backend, db
         self.imports: list[str] = []
+        self._backup_lock = threading.Lock()
 
     @classmethod
     def open(cls, backend: str, database_path: Optional[str]) -> "Storage":
@@ -412,7 +413,12 @@ class Storage:
             return None
         stamp = stamp or time.strftime("%Y%m%d")
         target = os.path.join(directory, f"rudhabot-{stamp}.db")
-        self.db.backup_to(target)
+        with self._backup_lock:
+            self.db.backup_to(target)
+            return self._prune(directory, keep, target)
+
+    @staticmethod
+    def _prune(directory: str, keep: int, target: str) -> str:
         backups = sorted(f for f in os.listdir(directory) if f.startswith("rudhabot-") and f.endswith(".db"))
         for old in backups[:-keep] if keep > 0 else []:
             try:

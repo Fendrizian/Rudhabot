@@ -30,6 +30,10 @@ class MaintenanceCog(ServiceCog):
     async def backups(self) -> None:
         await self.backup_if_due()
 
+    @backups.before_loop
+    async def _ready(self) -> None:
+        await self.bot.wait_until_ready()
+
     async def backup_if_due(self) -> None:
         day = self.clock.now().strftime("%Y%m%d")
         if self.storage.db is None or day == self._last_backup_day:
