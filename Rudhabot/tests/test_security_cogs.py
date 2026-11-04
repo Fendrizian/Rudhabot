@@ -207,7 +207,8 @@ class LogScrubbingTests(unittest.TestCase):
         # assembled at run time so the repository never contains anything shaped like a real token
         token = ".".join(["M" + "x" * 25, "y" * 6, "z" * 38])
         self.assertNotIn(token, scrub(f"login with {token}"))
-        self.assertNotIn("sk-abcdefghijklmnopqrstuvwx", scrub("key sk-abcdefghijklmnopqrstuvwx used"))
+        key = "sk-" + "q" * 24
+        self.assertNotIn(key, scrub(f"key {key} used"))
         self.assertIn("[webhook-token]", scrub("https://discord.com/api/webhooks/123/abcdefghijklmnopqrstuvwxyz123"))
         record = logging.LogRecord("x", logging.INFO, __file__, 1, "token=%s", (token,), None)
         SecretScrubber().filter(record)
