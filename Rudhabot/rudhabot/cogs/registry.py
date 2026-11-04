@@ -13,6 +13,7 @@ from rudhabot.cogs.loans import LoansCog
 from rudhabot.cogs.lottery import LotteryCog
 from rudhabot.cogs.maintenance import MaintenanceCog
 from rudhabot.cogs.moderation import ModerationCog
+from rudhabot.cogs.roles import RolesCog
 from rudhabot.cogs.clairvoyance import ClairvoyanceCog
 from rudhabot.cogs.security import SecurityCog
 from rudhabot.cogs.shop import ShopCog
@@ -21,4 +22,4 @@ from rudhabot.cogs.tcg import TcgCog
 
 ALL_COGS = (EconomyCog, ShopCog, LoansCog, CryptoCog, GamblingCog, LotteryCog, BirthdayCog, AdminCog, HelpCog,
             TcgCog, AssistantCog, ClairvoyanceCog, BankCog, StocksCog, AuditCog, BankerCog,
-            MaintenanceCog, SecurityCog, ModerationCog)
+            MaintenanceCog, SecurityCog, ModerationCog, RolesCog)

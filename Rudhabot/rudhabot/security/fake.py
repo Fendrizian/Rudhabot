@@ -114,6 +114,25 @@ class FakeGuild:
             raise ActionFailed("Unknown Member")
         self.members[user_id] = replace(m, roles=tuple(r for r in m.roles if r not in set(role_ids)))
 
+    async def move_role(self, role_id, position, reason):
+        """Discord's semantics: the role takes `position` and the roles it passes shift by one to make room."""
+        self._guard("move_role", role_id)
+        role = self._model.role(role_id)
+        if role is None:
+            raise ActionFailed("Unknown Role")
+        old, new = role.position, int(position)
+        roles = []
+        for r in self._model.roles:
+            if r.id == role_id:
+                roles.append(replace(r, position=new))
+            elif old < new and old < r.position <= new:
+                roles.append(replace(r, position=r.position - 1))
+            elif new < old and new <= r.position < old:
+                roles.append(replace(r, position=r.position + 1))
+            else:
+                roles.append(r)
+        self._model = replace(self._model, roles=tuple(roles))
+
     async def set_slowmode(self, channel_id, seconds, reason):
         self._guard("set_slowmode", channel_id)
         ch = self._model.channel(channel_id)

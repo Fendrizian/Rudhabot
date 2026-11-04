@@ -172,6 +172,8 @@ class SecurityCog(ServiceCog):
             await self._post(alert, guild_id, embed=E.containment_embed(payload["plan"], payload["result"]))
         elif kind == "restore":
             await self._post(alert, guild_id, embed=E.restore_embed(payload))
+        elif kind == "role_change":
+            await self._post(alert, guild_id, embed=E.role_change_embed(payload))
 
     def _ranked(self, guild_id: int, incidents: list[dict]) -> list[dict]:
         """Most likely real first: the alert ranker when it is on and loaded, otherwise severity."""

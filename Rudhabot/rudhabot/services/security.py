@@ -19,6 +19,7 @@ from datetime import timezone
 from typing import Awaitable, Callable, Optional
 
 from rudhabot.persistence.security import SecurityStore
+from rudhabot.security import perms as P
 from rudhabot.security import snapshots as snap
 from rudhabot.security.actions import ActionFailed, ActionResult, Executor, GuildPort, Pacer
 from rudhabot.security.briefing import Briefer, after_action
@@ -66,7 +67,7 @@ class Runtime:
 class SecurityService:
     def __init__(self, store: SecurityStore, clock, *, admin_role_id: int = 0, models=None,
                  briefer: Optional[Briefer] = None, port_factory: Optional[Callable[[int], GuildPort]] = None,
-                 bot_id: Callable[[], int] = lambda: 0, pacer_factory=Pacer):
+                 bot_id: Callable[[], int] = lambda: 0, pacer_factory=Pacer, role_tools: bool = True):
         self.store, self.clock = store, clock
         self.admin_role_id = admin_role_id
         self.models = models
@@ -74,6 +75,7 @@ class SecurityService:
         self.port_factory = port_factory
         self.bot_id = bot_id
         self.pacer_factory = pacer_factory
+        self.role_tools = role_tools             # the temporary /role commands (RUDHABOT_ROLE_TOOLS=0 turns them off)
         self.runtimes: dict[int, Runtime] = {}
         self.notify: Optional[Notify] = None
         self.health = Counter()
@@ -721,6 +723,133 @@ class SecurityService:
         except ActionFailed:
             return "Verification couldn't be completed right now; please tell a moderator."
         return "Verified. Welcome!"
+
+    # ================================================================ role tools (temporary)
+    # For when staff can't manage roles themselves (Rudhabot's role sits above theirs). Admin clearance, re-checked
+    # every time; Discord's own limits still apply below Rudhabot's highest role. Rudhabot's own changes don't count in
+    # the audit-log anti-nuke budgets, so each change is fed to the engine as the *requester's* action instead: a
+    # compromised admin can't use these commands to hand out power unnoticed. Every change is a case in the mod log;
+    # granting a role with dangerous permissions also alerts staff.
+    def _role_target(self, guild_id: int, actor_id: int, role_id: int):
+        if not self.role_tools:
+            raise Refused("The role tools are switched off (RUDHABOT_ROLE_TOOLS=0).")
+        rt = self.runtime(guild_id)
+        if rt is None:
+            raise Refused("Security isn't available in this server.")
+        tier = self.require(guild_id, actor_id, "role_manage")
+        model = rt.port.model()
+        role = model.role(role_id)
+        if role is None:
+            raise Refused("That role doesn't exist any more.")
+        if role.id == model.id:
+            raise Refused("@everyone can't be assigned or moved.")
+        if role.managed:
+            raise Refused(f"'{role.name}' is managed by an integration (a bot, boosts or a linked app); Discord doesn't "
+                          "let anyone assign or remove it by hand.")
+        if not model.base_permissions(model.bot_id) & P.MANAGE_ROLES:
+            raise Refused("Rudhabot doesn't have the Manage Roles permission, so it can't change roles either.")
+        if role.position >= model.bot_top_position:
+            raise Refused(f"'{role.name}' is at or above Rudhabot's highest role, so Rudhabot can't manage it. Only "
+                          "the server owner can fix that (move Rudhabot's role higher).")
+        return rt, tier, model, role
+
+    async def _count_for(self, rt: Runtime, actor_id: int, tier: Tier, action: str, **fields) -> None:
+        try:
+            await self.handle(rt.guild_id, AuditEntry(rt.guild_id, action, actor_id, self.now(), actor_tier=int(tier),
+                                                      **fields))
+        except Exception:
+            log.exception("could not account a role change to anti-nuke")
+
+    async def role_assign(self, guild_id: int, actor_id: int, target_id: int, role_id: int, add: bool,
+                          reason: str) -> tuple[str, Optional[dict]]:
+        rt, tier, model, role = self._role_target(guild_id, actor_id, role_id)
+        if target_id == model.bot_id:
+            raise Refused("Rudhabot's own roles can't be changed this way.")
+        member = rt.port.member(target_id)
+        if member is None:
+            raise Refused("They aren't in the server.")
+        if not add and target_id != actor_id and tier < Tier.OWNER and self.tier_of(guild_id, target_id) >= tier:
+            raise Refused(f"They hold {self.tier_of(guild_id, target_id).label} clearance; only someone of higher "
+                          "rank can take their roles away.")
+        if add == (role.id in member.roles):
+            return (f"<@{target_id}> {'already has' if add else 'does not have'} '{role.name}'. Nothing changed.", None)
+        why = f"Rudhabot role tools, by {actor_id}: {reason}"[:480]
+        await rt.executor.pacer.wait()
+        try:
+            if add:
+                await rt.port.add_role(target_id, role.id, why)
+            else:
+                await rt.port.remove_roles(target_id, [role.id], why)
+        except ActionFailed as error:
+            raise Refused(f"Discord refused: {error}")
+        dangerous = role.permissions & P.DANGEROUS
+        case = self.store.add_case(guild_id, "role_add" if add else "role_remove", target_id, actor_id, reason,
+                                   extra={"role": role.id, "role_name": role.name, "via": "role tools",
+                                          "dangerous": P.names(dangerous)[:6]})
+        await self._notify("case", guild_id, {"case": case})
+        await self._count_for(rt, actor_id, tier, "member_role_update", target_id=target_id,
+                              roles_added=(role.id,) if add else (), roles_removed=() if add else (role.id,))
+        if add and dangerous:
+            await self._notify("role_change", guild_id, {"kind": "grant", "actor": actor_id, "target": target_id,
+                                                         "role": role.name, "permissions": P.names(dangerous)[:6],
+                                                         "case": case["case_no"]})
+        return (f"{'Gave' if add else 'Removed'} '{role.name}' {'to' if add else 'from'} <@{target_id}> "
+                f"(case #{case['case_no']}).", case)
+
+    async def role_move(self, guild_id: int, actor_id: int, role_id: int, *, position: Optional[int] = None,
+                        above: Optional[int] = None, below: Optional[int] = None,
+                        reason: str = "") -> tuple[str, Optional[dict]]:
+        rt, tier, model, role = self._role_target(guild_id, actor_id, role_id)
+        if sum(x is not None for x in (position, above, below)) != 1:
+            raise Refused("Give exactly one of: position, above, below.")
+        old = role.position
+        if position is not None:
+            new = int(position)
+        else:
+            anchor = model.role(above if above is not None else below)
+            if anchor is None or anchor.id == role.id:
+                raise Refused("Pick a different role to place it next to.")
+            j = anchor.position
+            new = (j if old < j else j + 1) if above is not None else (j - 1 if old < j else j)
+        top = model.bot_top_position
+        if not 1 <= new < top:
+            raise Refused(f"Rudhabot can only place roles between position 1 and {top - 1} (just under its own role "
+                          f"at {top}).")
+        if new == old:
+            return (f"'{role.name}' is already at position {old}. Nothing changed.", None)
+        await rt.executor.pacer.wait()
+        try:
+            await rt.port.move_role(role.id, new, f"Rudhabot role tools, by {actor_id}: {reason}"[:480])
+        except ActionFailed as error:
+            raise Refused(f"Discord refused: {error}")
+        case = self.store.add_case(guild_id, "role_move", 0, actor_id, reason or "role moved",
+                                   extra={"role": role.id, "role_name": role.name, "from": old, "to": new,
+                                          "via": "role tools"})
+        await self._notify("case", guild_id, {"case": case})
+        await self._count_for(rt, actor_id, tier, "role_update", target_id=role.id, perms_before=role.permissions,
+                              perms_after=role.permissions)
+        if role.permissions & P.DANGEROUS and new > old:
+            await self._notify("role_change", guild_id, {"kind": "move", "actor": actor_id, "role": role.name,
+                                                         "from": old, "to": new, "case": case["case_no"],
+                                                         "permissions": P.names(role.permissions & P.DANGEROUS)[:6]})
+        return (f"Moved '{role.name}' from position {old} to {new} (case #{case['case_no']}).", case)
+
+    def role_overview(self, guild_id: int, actor_id: int) -> dict:
+        """The hierarchy as Rudhabot sees it, and whether Rudhabot itself can manage roles (for diagnosing)."""
+        self.require(guild_id, actor_id, "role_manage")
+        rt = self.runtime(guild_id)
+        model = rt.port.model()
+        top = model.bot_top_position
+        bot_roles = [r for r in model.roles if model.member(model.bot_id) and r.id in model.member(model.bot_id).roles]
+        bot_top = max(bot_roles, key=lambda r: r.position, default=None)
+        perms = model.base_permissions(model.bot_id)
+        rows = [{"id": r.id, "name": r.name, "position": r.position, "members": r.member_count,
+                 "managed": r.managed, "dangerous": bool(r.permissions & P.DANGEROUS),
+                 "manageable": not r.managed and r.id != model.id and r.position < top}
+                for r in sorted(model.roles, key=lambda r: -r.position)]
+        return {"roles": rows, "bot_role": bot_top.name if bot_top else None, "bot_position": top,
+                "manage_roles": bool(perms & P.MANAGE_ROLES), "administrator": bool(perms & P.ADMINISTRATOR),
+                "enabled": self.role_tools}
 
     # ================================================================ configuration and levels
     def save_config(self, guild_id: int, config: SecurityConfig, by: int, note: str) -> SecurityConfig:
