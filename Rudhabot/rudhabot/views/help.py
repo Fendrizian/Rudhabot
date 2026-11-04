@@ -75,13 +75,10 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     ("moderation", "Moderation", "🛡️", "Warnings, timeouts, kicks, bans and the moderation log (staff)",
      ("warn", "timeout", "untimeout", "kick", "ban", "massban", "unban", "purge", "slowmode",
       "case view | edit | delete", "modlog", "Report to moderators")),
-    ("security", "Server security", "🚨", "Raid and anti-nuke defences, lockdowns and recovery (staff)",
-     ("security status", "security posture", "security mode", "security setup", "security level",
-      "security incidents", "security incident view | report | redact", "security lockdown start | lift",
-      "security snapshot take | list | restore", "security config view | set | list | history | rollback",
-      "security clearance set | view | check", "security allow add | remove | list",
-      "security quarantine list | release", "security probation list | release", "security verify-panel",
-      "security automod", "security drill", "security ask", "security models")),
+    ("security", "Server security", "🚨", "Raid and anti-nuke defences run by themselves; these are the controls (staff)",
+     ("security status", "security incident", "security lockdown", "security unlock", "security level",
+      "security release", "security ask", "security setup", "security staff", "security settings",
+      "security exempt", "security tools")),
 ]
 SECTION_BY_KEY = {key: (title, emoji, summary, names) for key, title, emoji, summary, names in SECTIONS}
 
@@ -609,96 +606,61 @@ def get_commands_data():
         {
             "name": "security status",
             "args": "",
-            "description": "The readiness report: threat level and standing orders, open incidents, lockdowns, probation, quarantine, models."
+            "description": "Threat level, open and recent incidents, lockdowns, who is on probation or quarantined."
         },
         {
-            "name": "security posture",
-            "args": "",
-            "description": "Inspect permissions and safety settings (2FA, verification, dangerous roles, bots, stale staff) with a score and fixes."
+            "name": "security incident",
+            "args": "<id> [details|report|redact]",
+            "description": "One incident's evidence and actions; its after-action report; or delete the message snippets kept as evidence."
         },
         {
-            "name": "security mode",
-            "args": "<shadow|live>",
-            "description": "Shadow: detect and report only (the default). Live: carry out the standing orders. Admin."
+            "name": "security lockdown",
+            "args": "<reason> [channel or category] [minutes]",
+            "description": "Lock a channel, a category or (empty) the whole server. Shows a preview; another senior staff member approves; it lifts itself."
         },
         {
-            "name": "security setup",
-            "args": "[alert_channel] [modlog_channel] [probation_role] [verified_role] [quarantine_role]",
-            "description": "Where alerts and cases go, and the roles security uses. Admin."
+            "name": "security unlock",
+            "args": "[lockdown]",
+            "description": "End a lockdown now and put the permissions back."
         },
         {
             "name": "security level",
-            "args": "<1-5> <reason> [hold_minutes]",
-            "description": "Raise or lower the threat level by hand, held for a while (Senior Moderator)."
+            "args": "<1-5> [reason] [hold_minutes]",
+            "description": "Raise or lower the threat level by hand (Senior Moderator)."
         },
         {
-            "name": "security incidents",
-            "args": "[status]",
-            "description": "Recent incidents with their type and severity."
-        },
-        {
-            "name": "security incident view | report | redact",
-            "args": "<id>",
-            "description": "One incident in full; its after-action report (an AI draft when configured); or delete the message snippets kept as evidence."
-        },
-        {
-            "name": "security lockdown start | lift",
-            "args": "<scope> <reason> [target] [minutes]",
-            "description": "Lock the server, a channel or a category for a set time after a preview and a second staff approval; lift it early with a safe restore."
-        },
-        {
-            "name": "security snapshot take | list | restore",
-            "args": "[snapshot_id]",
-            "description": "Snapshots of roles, channels and permissions (every 6 hours and before lockdowns); restore shows a diff and needs approval."
-        },
-        {
-            "name": "security config view | set | list | history | rollback",
-            "args": "",
-            "description": "Every security setting, with descriptions. Changes are versioned and can be rolled back. Admin to change."
-        },
-        {
-            "name": "security clearance set | view | check",
-            "args": "",
-            "description": "Map roles to clearance tiers (Helper, Moderator, Senior Moderator, Admin) and check anyone's tier."
-        },
-        {
-            "name": "security allow add | remove | list",
-            "args": "",
-            "description": "Time-limited exceptions for a user, role, channel or domain (at most 90 days)."
-        },
-        {
-            "name": "security quarantine list | release",
-            "args": "[member]",
-            "description": "Accounts anti-nuke quarantined, and giving their roles back after review (Admin)."
-        },
-        {
-            "name": "security probation list | release",
-            "args": "[member]",
-            "description": "Members on probation and when it ends; release someone early."
-        },
-        {
-            "name": "security verify-panel",
-            "args": "<channel>",
-            "description": "Post the verification button that grants the verified role. Admin."
-        },
-        {
-            "name": "security automod",
-            "args": "[preview|create]",
-            "description": "Preview or create Rudhabot's recommended native AutoMod rules (mention spam, spam, denied links). Admin."
-        },
-        {
-            "name": "security drill",
-            "args": "<scenario>",
-            "description": "Rehearse an attack in a sandbox: what would be detected, how fast, and what would be done. Nothing real is touched."
+            "name": "security release",
+            "args": "<member>",
+            "description": "Free a member from probation (Helper) or quarantine (Admin)."
         },
         {
             "name": "security ask",
             "args": "<question>",
-            "description": "Ask about the current security state (read-only; AI when configured, otherwise the raw status)."
+            "description": "Ask about the security state in plain words (read-only)."
         },
         {
-            "name": "security models",
-            "args": "",
-            "description": "Clairvoyance's security models: versions, health and how to switch each off."
+            "name": "security setup",
+            "args": "[channels] [roles] [mode]",
+            "description": "Alert channel, mod log, probation/verified/quarantine roles, and shadow or live mode (Admin). Empty shows the current setup."
+        },
+        {
+            "name": "security staff",
+            "args": "[role] [tier] [member]",
+            "description": "See which roles are Helper, Moderator, Senior Moderator or Admin; set a role's tier (Admin); or check a member."
+        },
+        {
+            "name": "security settings",
+            "args": "[key] [value]",
+            "description": "Detection settings: list what's changed, explain one, or change it (Admin). Versioned: key rollback restores an older version."
+        },
+        {
+            "name": "security exempt",
+            "args": "[member|role|channel|domain] [value] [days]",
+            "description": "Exempt something from checks for a while (Senior Moderator); days 0 removes it; empty lists them."
+        },
+        {
+            "name": "security tools",
+            "args": "<action>",
+            "description": "Health check of permissions and settings, attack drills in a sandbox, snapshots and restore, AutoMod rules, the verification panel, model status."
         },
     ]

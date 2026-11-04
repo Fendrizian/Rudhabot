@@ -1,12 +1,11 @@
 """Server security: the event listeners, the alert/approval posts and the /security commands.
 
+Kept deliberately small for staff; everything else (detection, anti-nuke, levels, approvals, models) runs by itself.
+    everyday:  status · incident · lockdown · unlock · level · release · ask
+    set-up:    setup · staff · settings · exempt · tools (health check, drills, snapshots, AutoMod, verification, models)
+
 Listeners turn Discord events into security events (security/discord_port.py) and hand them to the service; nothing
 here decides anything. Alerts go to the configured alert channel, cases to the moderation log.
-
-/security status | posture | mode | setup | level | incidents | incident view|report|redact | lockdown start|lift
-/security snapshot take|list|restore | config view|set|history|rollback|list | clearance set|view|check
-/security allow add|remove|list | quarantine list|release | probation list|release | verify-panel | automod
-/security drill | ask | models
 """
 from __future__ import annotations
 
@@ -20,7 +19,7 @@ from discord.ext import commands, tasks
 
 from rudhabot.cogs.base import ServiceCog
 from rudhabot.security.clearance import TIER_LABELS, Refused, Tier, check
-from rudhabot.security.policy import BY_KEY, SETTINGS, SecurityConfig
+from rudhabot.security.policy import BY_KEY, LIST_KEYS, SETTINGS, SecurityConfig
 from rudhabot.ui import security_embeds as E
 from rudhabot.ui.theme import Colors
 from rudhabot.views.security import DYNAMIC_ITEMS, approval_view, incident_view, verify_view
@@ -32,14 +31,6 @@ REASON = app_commands.Range[str, 1, 300]
 class SecurityCog(ServiceCog):
     security = app_commands.Group(name="security", description="Server security: status, emergencies, configuration",
                                   guild_only=True)
-    incident_group = app_commands.Group(name="incident", description="One incident", parent=security)
-    lockdown_group = app_commands.Group(name="lockdown", description="Scoped, time-limited lockdowns", parent=security)
-    snapshot_group = app_commands.Group(name="snapshot", description="Server snapshots and restore", parent=security)
-    config_group = app_commands.Group(name="config", description="Security settings (versioned)", parent=security)
-    clearance_group = app_commands.Group(name="clearance", description="Staff clearance tiers", parent=security)
-    allow_group = app_commands.Group(name="allow", description="Time-limited exceptions", parent=security)
-    quarantine_group = app_commands.Group(name="quarantine", description="Quarantined accounts", parent=security)
-    probation_group = app_commands.Group(name="probation", description="Members on probation", parent=security)
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -250,139 +241,72 @@ class SecurityCog(ServiceCog):
         return self.sec.save_config(interaction.guild.id, config, interaction.user.id, note)
 
     # ================================================================ /security
-    @security.command(name="status", description="Readiness report: threat level, incidents, lockdowns, models")
+    # ================================================================ everyday commands (staff)
+    @security.command(name="status", description="Threat level, open incidents, lockdowns and who is restricted")
     async def status(self, interaction: discord.Interaction):
         if not await self._guarded(interaction, "view_incidents"):
             return
-        await interaction.response.send_message(embed=E.status_embed(self.sec.status(interaction.guild.id)),
-                                                ephemeral=True)
+        embed = E.status_embed(self.sec.status(interaction.guild.id))
+        recent = [i for i in self.sec.store.incidents(interaction.guild.id, "closed", 5)]
+        if recent:
+            embed.add_field(name="Recently closed", value="\n".join(
+                f"{E.FAMILY_ICONS.get(i['family'], '•')} `{i['id']}` {i['family']} · {E.ts(i.get('last'))}"
+                for i in recent), inline=False)
+        embed.add_field(name="Next", value="`/security incident <id>` for details · `/security lockdown` in an "
+                        "emergency · `/security release` to free someone", inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @security.command(name="posture", description="Inspect permissions and safety settings (with fixes)")
-    async def posture(self, interaction: discord.Interaction):
-        if not await self._guarded(interaction, "posture"):
+    @security.command(name="incident", description="One incident: details, its after-action report, or remove evidence")
+    @app_commands.describe(action="details (default), report, or redact (delete the kept message snippets)")
+    async def incident(self, interaction: discord.Interaction, incident_id: str,
+                       action: Literal["details", "report", "redact"] = "details"):
+        if not await self._guarded(interaction, "incident_manage" if action == "redact" else "view_incidents"):
             return
-        score, findings = self.sec.posture(interaction.guild.id)
-        await interaction.response.send_message(embed=E.posture_embed(score, findings), ephemeral=True)
-
-    @security.command(name="mode", description="shadow: detect and report only · live: carry out standing orders (Admin)")
-    async def mode(self, interaction: discord.Interaction, mode: Literal["shadow", "live"]):
-        if not await self._guarded(interaction, "mode"):
-            return
-        cfg = self._save(interaction, self.sec.config(interaction.guild.id).with_value("mode", mode), f"mode {mode}")
-        text = ("Live: Rudhabot now carries out the standing orders (deleting spam, slowmode, probation, short "
-                "timeouts, anti-nuke quarantine). Everything else still needs staff." if mode == "live" else
-                "Shadow: everything is detected and reported; no automatic action is taken.")
-        await self._ephemeral(interaction, f"Mode: {mode} (config v{cfg.version})", text)
-
-    @security.command(name="setup", description="Set the alert channel, mod log and roles security uses (Admin)")
-    async def setup(self, interaction: discord.Interaction, alert_channel: Optional[discord.TextChannel] = None,
-                    modlog_channel: Optional[discord.TextChannel] = None, probation_role: Optional[discord.Role] = None,
-                    verified_role: Optional[discord.Role] = None, quarantine_role: Optional[discord.Role] = None):
-        if not await self._guarded(interaction, "config"):
-            return
-        cfg = self.sec.config(interaction.guild.id)
-        changes = []
-        for key, value in (("alert_channel", alert_channel), ("modlog_channel", modlog_channel),
-                           ("probation_role", probation_role), ("verified_role", verified_role),
-                           ("quarantine_role", quarantine_role)):
-            if value is not None:
-                me = getattr(interaction.guild, "me", None)
-                if isinstance(value, discord.Role) and me is not None and value >= me.top_role:
-                    return await self._ephemeral(interaction, "⛔ Role too high",
-                                                 f"{value.mention} is above Rudhabot's role, so it can't be managed.",
-                                                 Colors.UNAVAILABLE)
-                cfg = cfg.with_value(key, value.id)
-                changes.append(f"{key.replace('_', ' ')}: {value.mention}")
-        if not changes:
-            return await self._ephemeral(interaction, "Nothing changed", "Pick at least one option.")
-        cfg = self._save(interaction, cfg, "setup: " + ", ".join(c.split(":")[0] for c in changes))
-        await self._ephemeral(interaction, f"Setup saved (config v{cfg.version})", "\n".join(changes))
-
-    @security.command(name="level", description="Set the threat level by hand, held for a while (Senior Moderator)")
-    @app_commands.describe(hold_minutes="Keep this level at least this long (0 = let it decay normally)")
-    async def level(self, interaction: discord.Interaction, level: app_commands.Range[int, 1, 5], reason: REASON,
-                    hold_minutes: app_commands.Range[int, 0, 1440] = 60):
-        try:
-            await self.sec.set_level(interaction.guild.id, interaction.user.id, level, reason, hold_minutes)
-        except Refused as refusal:
-            return await self._ephemeral(interaction, "⛔ Not allowed", str(refusal), Colors.UNAVAILABLE)
-        await interaction.response.send_message(embed=E.simple(
-            f"Threat level set to {level}", f"{E.level_line(level)}\n{reason}", E.LEVEL_COLORS[level]))
-
-    @security.command(name="incidents", description="Recent incidents")
-    async def incidents(self, interaction: discord.Interaction, status: Optional[Literal["open", "closed"]] = None):
-        if not await self._guarded(interaction, "view_incidents"):
-            return
-        rows = self.sec.store.incidents(interaction.guild.id, status, 15)
-        open_now = {i.id: i for i in (self.sec.runtime(interaction.guild.id).engine.incidents.values())}
-        lines = []
-        for inc in rows:
-            live = open_now.get(inc["id"])
-            sev = live.severity if live else inc.get("severity", 0)
-            lines.append(f"{E.FAMILY_ICONS.get(inc['family'], '•')} `{inc['id']}` {inc['family']} · {sev:.0%} · "
-                         f"{inc.get('status')} · {E.ts(inc.get('last'))}")
-        await self._ephemeral(interaction, "Incidents", "\n".join(lines) or "None recorded.")
-
-    @incident_group.command(name="view", description="One incident in full")
-    async def incident_view(self, interaction: discord.Interaction, incident_id: str):
-        if not await self._guarded(interaction, "view_incidents"):
-            return
-        rt = self.sec.runtime(interaction.guild.id)
+        gid = interaction.guild.id
+        rt = self.sec.runtime(gid)
+        if action == "redact":
+            removed = self.sec.store.redact_snippets(gid, incident_id)
+            inc = rt.engine.incidents.get(incident_id)
+            if inc is not None:
+                inc.snippets = []
+            return await self._ephemeral(interaction, "Evidence removed", f"{removed} snippet(s) deleted.")
+        if action == "report":
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            try:
+                text, source = await self.sec.incident_report(gid, incident_id)
+            except Refused as refusal:
+                return await self._ephemeral(interaction, "No such incident", str(refusal), Colors.FAIL)
+            return await self._ephemeral(interaction, f"📋 Incident {incident_id}"
+                                         + (" · AI draft: check it against the facts" if source == "llm" else ""), text)
         inc = rt.engine.incidents.get(incident_id)
-        data = inc.to_dict() if inc else self.sec.store.incident(interaction.guild.id, incident_id)
+        data = inc.to_dict() if inc else self.sec.store.incident(gid, incident_id)
         if data is None:
-            return await self._ephemeral(interaction, "No such incident", incident_id, Colors.FAIL)
-        if inc is not None:
-            data["snippets"] = self.sec.store.snippets(interaction.guild.id, incident_id)
+            return await self._ephemeral(interaction, "No such incident", f"`{incident_id}` (see /security status)",
+                                         Colors.FAIL)
+        data["snippets"] = self.sec.store.snippets(gid, incident_id)
         await interaction.response.send_message(embed=E.incident_embed(data, int(rt.engine.level), rt.config.live),
-                                                ephemeral=True)
+                                                view=incident_view(incident_id), ephemeral=True)
 
-    @incident_group.command(name="report", description="After-action report (an LLM draft when configured)")
-    async def incident_report(self, interaction: discord.Interaction, incident_id: str):
-        if not await self._guarded(interaction, "view_incidents"):
-            return
-        await interaction.response.defer(ephemeral=True, thinking=True)
+    @security.command(name="lockdown", description="Lock the server, a channel or a category (preview, then approval)")
+    @app_commands.describe(target="A channel or category; leave empty for the whole server",
+                           minutes="Lifts itself after this long (default 30)")
+    async def lockdown(self, interaction: discord.Interaction, reason: REASON,
+                       target: Optional[discord.abc.GuildChannel] = None,
+                       minutes: app_commands.Range[int, 5, 1440] = 30):
+        scope = "server" if target is None else "channels"
         try:
-            text, source = await self.sec.incident_report(interaction.guild.id, incident_id)
-        except Refused as refusal:
-            return await self._ephemeral(interaction, "No such incident", str(refusal), Colors.FAIL)
-        title = f"📋 Incident {incident_id}" + (" · AI draft: check it against the facts" if source == "llm" else "")
-        await self._ephemeral(interaction, title, text)
-
-    @incident_group.command(name="redact", description="Delete the message snippets kept as evidence (Moderator)")
-    async def incident_redact(self, interaction: discord.Interaction, incident_id: str):
-        if not await self._guarded(interaction, "incident_manage"):
-            return
-        removed = self.sec.store.redact_snippets(interaction.guild.id, incident_id)
-        inc = self.sec.runtime(interaction.guild.id).engine.incidents.get(incident_id)
-        if inc is not None:
-            inc.snippets = []
-        await self._ephemeral(interaction, "Evidence removed", f"{removed} snippet(s) deleted from incident {incident_id}.")
-
-    # ------------------------------------------------------------------ lockdowns
-    @lockdown_group.command(name="start", description="Request a lockdown: preview first, then approval (Moderator+)")
-    @app_commands.describe(scope="Whole server, one channel, or a whole category",
-                           target="The channel or category (for channel/category scope)")
-    async def lockdown_start(self, interaction: discord.Interaction, scope: Literal["server", "channel", "category"],
-                             reason: REASON, target: Optional[discord.abc.GuildChannel] = None,
-                             minutes: app_commands.Range[int, 5, 1440] = 30):
-        channels = [target.id] if target is not None else []
-        if scope != "server" and target is None:
-            return await self._ephemeral(interaction, "Pick a target", "Choose the channel or category to lock.")
-        try:
-            token, preview = await self.sec.request_lockdown(interaction.guild.id, interaction.user.id,
-                                                             "server" if scope == "server" else "channels", channels,
-                                                             minutes, reason)
+            token, preview = await self.sec.request_lockdown(interaction.guild.id, interaction.user.id, scope,
+                                                             [target.id] if target else [], minutes, reason)
         except Refused as refusal:
             return await self._ephemeral(interaction, "⛔ Not done", str(refusal), Colors.UNAVAILABLE)
         two = self.sec.config(interaction.guild.id)["approvals.two_person"]
         await self._ephemeral(interaction, "🔐 Lockdown requested",
-                              ("A second staff member (Senior Moderator+) must approve it in the alert channel."
-                               if two else "Confirm it in the alert channel.") + "\n\n**Preview**\n"
+                              ("Another Senior Moderator+ approves it in the alert channel." if two else
+                               "Confirm it in the alert channel.") + "\n\n**Preview**\n"
                               + "\n".join(f"• {x}" for x in preview[:12]))
 
-    @lockdown_group.command(name="lift", description="End a lockdown now and restore what it changed (Moderator)")
-    async def lockdown_lift(self, interaction: discord.Interaction, lockdown_id: Optional[int] = None):
+    @security.command(name="unlock", description="End a lockdown now and put the permissions back")
+    async def unlock(self, interaction: discord.Interaction, lockdown_id: Optional[int] = None):
         active = self.sec.store.active_lockdowns(interaction.guild.id)
         if lockdown_id is None:
             if not active:
@@ -395,251 +319,34 @@ class SecurityCog(ServiceCog):
             return await self._ephemeral(interaction, "⛔ Not done", str(refusal), Colors.UNAVAILABLE)
         await interaction.followup.send(embed=E.lockdown_embed("lifted", report))
 
-    # ------------------------------------------------------------------ snapshots
-    @snapshot_group.command(name="take", description="Snapshot roles, channels and permissions now (Senior Moderator)")
-    async def snapshot_take(self, interaction: discord.Interaction):
-        if not await self._guarded(interaction, "snapshot"):
-            return
-        snap_id = self.sec.take_snapshot(interaction.guild.id, f"manual by {interaction.user.id}")
-        await self._ephemeral(interaction, "📸 Snapshot taken", f"Snapshot #{snap_id}.")
-
-    @snapshot_group.command(name="list", description="Recent snapshots")
-    async def snapshot_list(self, interaction: discord.Interaction):
-        if not await self._guarded(interaction, "snapshot"):
-            return
-        rows = self.sec.store.snapshots(interaction.guild.id, 10)
-        await self._ephemeral(interaction, "Snapshots", "\n".join(f"#{r['id']} · {E.ts(r['created'])} · {r['reason']}"
-                                                                 for r in rows) or "None yet.")
-
-    @snapshot_group.command(name="restore", description="Preview and request a restore from a snapshot (approval needed)")
-    async def snapshot_restore(self, interaction: discord.Interaction, snapshot_id: Optional[int] = None):
+    @security.command(name="level", description="Set the threat level by hand (Senior Moderator)")
+    @app_commands.describe(hold_minutes="Keep it at least this long (0 = let it step down normally)")
+    async def level(self, interaction: discord.Interaction, level: app_commands.Range[int, 1, 5],
+                    reason: REASON = "set by staff", hold_minutes: app_commands.Range[int, 0, 1440] = 60):
         try:
-            token, preview = await self.sec.request_restore(interaction.guild.id, interaction.user.id, snapshot_id)
+            await self.sec.set_level(interaction.guild.id, interaction.user.id, level, reason, hold_minutes)
+        except Refused as refusal:
+            return await self._ephemeral(interaction, "⛔ Not allowed", str(refusal), Colors.UNAVAILABLE)
+        await interaction.response.send_message(embed=E.simple(
+            f"Threat level set to {level}", f"{E.level_line(level)}\n{reason}", E.LEVEL_COLORS[level]))
+
+    @security.command(name="release", description="Free a member from probation or quarantine")
+    async def release(self, interaction: discord.Interaction, member: discord.Member):
+        gid = interaction.guild.id
+        done = []
+        try:
+            if self.sec.store.quarantined(gid, member.id):
+                done.append(await self.sec.release_quarantine(gid, interaction.user.id, member.id))
+            if any(p["user_id"] == member.id for p in self.sec.store.probation(gid)):
+                done.append(await self.sec.release_probation(gid, interaction.user.id, member.id))
         except Refused as refusal:
             return await self._ephemeral(interaction, "⛔ Not done", str(refusal), Colors.UNAVAILABLE)
-        await self._ephemeral(interaction, "♻️ Restore requested", "Approve it in the alert channel (Admin).\n\n"
-                              + "\n".join(f"• {x}" for x in preview[:15]))
+        if not done:
+            return await self._ephemeral(interaction, "Nothing to release",
+                                         f"{member.mention} isn't on probation or quarantined.")
+        await self._ephemeral(interaction, "🔓 Released", "\n".join(done), Colors.SUCCESS)
 
-    # ------------------------------------------------------------------ configuration
-    async def _setting_names(self, interaction, current: str) -> list[app_commands.Choice[str]]:
-        names = [s.key for s in SETTINGS if current.lower() in s.key]
-        return [app_commands.Choice(name=n, value=n) for n in names[:25]]
-
-    @config_group.command(name="view", description="Show the security settings (or one setting)")
-    async def config_view(self, interaction: discord.Interaction, key: Optional[str] = None):
-        if not await self._guarded(interaction, "posture"):
-            return
-        cfg = self.sec.config(interaction.guild.id)
-        if key:
-            setting = BY_KEY.get(key)
-            if setting is None:
-                return await self._ephemeral(interaction, "Unknown setting", key, Colors.FAIL)
-            return await self._ephemeral(interaction, key, f"**{cfg[key]}** (default {setting.default})\n{setting.help}")
-        groups: dict[str, list[str]] = {}
-        for s in SETTINGS:
-            groups.setdefault(s.key.split(".")[0] if "." in s.key else "general", []).append(
-                f"`{s.key}` = **{cfg[s.key]}**" + ("" if cfg[s.key] == s.default else " ✱"))
-        embed = discord.Embed(title=f"Security settings (config v{cfg.version})", color=Colors.SECURITY,
-                              description="✱ = changed from the default. `/security config view key` explains one.")
-        for name, lines in groups.items():
-            embed.add_field(name=name, value="\n".join(lines)[:1024], inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    config_view.autocomplete("key")(_setting_names)
-
-    @config_group.command(name="set", description="Change one setting (Admin; versioned, can be rolled back)")
-    async def config_set(self, interaction: discord.Interaction, key: str, value: app_commands.Range[str, 1, 40]):
-        if not await self._guarded(interaction, "config"):
-            return
-        try:
-            cfg = self.sec.config(interaction.guild.id).with_value(key, value)
-        except ValueError as error:
-            return await self._ephemeral(interaction, "Not changed", str(error), Colors.FAIL)
-        cfg = self._save(interaction, cfg, f"{key}={value}")
-        await self._ephemeral(interaction, f"Saved (config v{cfg.version})", f"`{key}` = **{cfg[key]}**")
-
-    config_set.autocomplete("key")(_setting_names)
-
-    @config_group.command(name="list", description="Edit a list: deny/allow domains, relaxed/protected/ignored channels")
-    async def config_list(self, interaction: discord.Interaction,
-                          name: Literal["links.deny", "links.allow", "channels.relaxed", "channels.protected",
-                                        "channels.ignored"],
-                          action: Literal["add", "remove", "show"], value: Optional[str] = None):
-        cfg = self.sec.config(interaction.guild.id)
-        if action == "show":
-            if not await self._guarded(interaction, "posture"):
-                return
-            items = cfg[name]
-            shown = [f"<#{x}>" if name.startswith("channels") else f"`{x}`" for x in items]
-            return await self._ephemeral(interaction, name, ", ".join(shown) or "empty")
-        if not await self._guarded(interaction, "config"):
-            return
-        if not value:
-            return await self._ephemeral(interaction, "Missing value", "Give a domain or a channel id/mention.")
-        item = value.strip().strip("<#>") if name.startswith("channels") else value.strip().lower()
-        try:
-            cfg = cfg.with_list(name, item, action == "add")
-        except (ValueError, TypeError):
-            return await self._ephemeral(interaction, "Not changed", "That isn't a valid entry.", Colors.FAIL)
-        cfg = self._save(interaction, cfg, f"{name} {action} {item}")
-        await self._ephemeral(interaction, f"Saved (config v{cfg.version})", f"{name}: {len(cfg[name])} entr(y/ies)")
-
-    @config_group.command(name="history", description="Recent configuration versions")
-    async def config_history(self, interaction: discord.Interaction):
-        if not await self._guarded(interaction, "posture"):
-            return
-        rows = self.sec.store.config_history(interaction.guild.id)
-        await self._ephemeral(interaction, "Config history", "\n".join(
-            f"v{r['version']} · {E.ts(r['created'])} · <@{r['by']}> · {r['note']}" for r in rows) or "Defaults only.")
-
-    @config_group.command(name="rollback", description="Restore an earlier configuration version (Admin)")
-    async def config_rollback(self, interaction: discord.Interaction, version: app_commands.Range[int, 1, 10**6]):
-        if not await self._guarded(interaction, "config"):
-            return
-        values = self.sec.store.config_version(interaction.guild.id, version)
-        if values is None:
-            return await self._ephemeral(interaction, "No such version", f"v{version}", Colors.FAIL)
-        cfg = self._save(interaction, SecurityConfig(values), f"rollback to v{version}")
-        await self._ephemeral(interaction, f"Rolled back (now v{cfg.version})", f"Settings are those of v{version}.")
-
-    # ------------------------------------------------------------------ clearance
-    @clearance_group.command(name="set", description="Give a role a clearance tier (Admin)")
-    @app_commands.describe(tier="0 Member, 1 Helper, 2 Moderator, 3 Senior Moderator, 4 Admin; -1 removes the mapping")
-    async def clearance_set(self, interaction: discord.Interaction, role: discord.Role, tier: app_commands.Range[int, -1, 4]):
-        if not await self._guarded(interaction, "clearance"):
-            return
-        cfg = self.sec.config(interaction.guild.id).with_tier(role.id, None if tier < 0 else tier)
-        cfg = self._save(interaction, cfg, f"clearance {role.id}={tier}")
-        label = "removed" if tier < 0 else f"{Tier(tier).label} ({Tier(tier).rank})"
-        await self._ephemeral(interaction, f"Clearance saved (config v{cfg.version})", f"{role.mention}: {label}")
-
-    @clearance_group.command(name="view", description="Which roles hold which tier")
-    async def clearance_view(self, interaction: discord.Interaction):
-        cfg = self.sec.config(interaction.guild.id)
-        lines = [f"<@&{rid}>: {TIER_LABELS[Tier(t)]}" for rid, t in sorted(cfg["tiers"].items(), key=lambda x: -x[1])]
-        extra = ("Tiers also come from Discord permissions (Administrator/Manage Server = Admin, Ban Members = Senior "
-                 "Moderator, Kick/Timeout Members = Moderator, Manage Messages = Helper)." if cfg["derive_tiers"]
-                 else "Only the roles above count.")
-        await self._ephemeral(interaction, "Clearance", "\n".join(lines + ["", extra]) if lines
-                              else f"No roles mapped. {extra}")
-
-    @clearance_group.command(name="check", description="A member's current clearance")
-    async def clearance_check(self, interaction: discord.Interaction, member: discord.Member):
-        tier = self.sec.tier_of(interaction.guild.id, member.id)
-        await self._ephemeral(interaction, "Clearance", f"{member.mention}: **{tier.label}** ({tier.rank})")
-
-    # ------------------------------------------------------------------ allowlist
-    @allow_group.command(name="add", description="A time-limited exception (Senior Moderator)")
-    @app_commands.describe(kind="What to exempt", value="User/role/channel id or a domain",
-                           detectors="messages, joins, antinuke or all", days="Expires after this many days (max 90)")
-    async def allow_add(self, interaction: discord.Interaction, kind: Literal["user", "role", "channel", "domain"],
-                        value: str, detectors: Literal["messages", "joins", "antinuke", "all"],
-                        days: app_commands.Range[int, 1, 90], note: Optional[str] = None):
-        if not await self._guarded(interaction, "allowlist"):
-            return
-        value = value.strip().strip("<@&#!>").lower()
-        if kind != "domain" and not value.isdigit():
-            return await self._ephemeral(interaction, "Not an id", "Give a numeric id or a mention.", Colors.FAIL)
-        expires = self.sec.now() + days * 86400
-        entry = self.sec.store.add_allow(interaction.guild.id, kind, value, [detectors], expires,
-                                         interaction.user.id, note or "")
-        self.sec.runtime(interaction.guild.id).allows_at = 0
-        await self._ephemeral(interaction, f"Exception #{entry} added", f"{kind} `{value}` exempt from {detectors} "
-                              f"until {E.ts(expires)}")
-
-    @allow_group.command(name="remove", description="Remove an exception (Senior Moderator)")
-    async def allow_remove(self, interaction: discord.Interaction, entry_id: int):
-        if not await self._guarded(interaction, "allowlist"):
-            return
-        removed = self.sec.store.remove_allow(interaction.guild.id, entry_id)
-        self.sec.runtime(interaction.guild.id).allows_at = 0
-        await self._ephemeral(interaction, "Removed" if removed else "Not found", f"Exception #{entry_id}")
-
-    @allow_group.command(name="list", description="Current exceptions (all expire)")
-    async def allow_list(self, interaction: discord.Interaction):
-        if not await self._guarded(interaction, "posture"):
-            return
-        rows = self.sec.store.allows(interaction.guild.id)
-        await self._ephemeral(interaction, "Exceptions", "\n".join(
-            f"#{a['id']} {a['kind']} `{a['value']}` · {', '.join(a['detectors'])} · until {E.ts(a['expires'])}"
-            for a in rows) or "None.")
-
-    # ------------------------------------------------------------------ quarantine and probation
-    @quarantine_group.command(name="list", description="Accounts quarantined by anti-nuke")
-    async def quarantine_list(self, interaction: discord.Interaction):
-        if not await self._guarded(interaction, "view_incidents"):
-            return
-        rows = self.sec.store.quarantined(interaction.guild.id)
-        await self._ephemeral(interaction, "Quarantine", "\n".join(
-            f"<@{q['user_id']}> · {E.ts(q['created'])} · {len(q['roles'])} role(s) held back · {q['reason'][:80]}"
-            for q in rows) or "Nobody is quarantined.")
-
-    @quarantine_group.command(name="release", description="Give a quarantined account its roles back (Admin)")
-    async def quarantine_release(self, interaction: discord.Interaction, member: discord.Member):
-        try:
-            text = await self.sec.release_quarantine(interaction.guild.id, interaction.user.id, member.id)
-        except Refused as refusal:
-            return await self._ephemeral(interaction, "⛔ Not done", str(refusal), Colors.UNAVAILABLE)
-        await self._ephemeral(interaction, "🔓 Quarantine released", text, Colors.SUCCESS)
-
-    @probation_group.command(name="list", description="Members on probation and when it ends")
-    async def probation_list(self, interaction: discord.Interaction):
-        if not await self._guarded(interaction, "view_incidents"):
-            return
-        rows = sorted(self.sec.store.probation(interaction.guild.id), key=lambda r: r["until"])
-        await self._ephemeral(interaction, f"Probation ({len(rows)})", "\n".join(
-            f"<@{r['user_id']}> · ends {E.ts(r['until'])} · {r['reason'][:60]}" for r in rows[:25]) or "Nobody.")
-
-    @probation_group.command(name="release", description="End a member's probation now (Helper)")
-    async def probation_release(self, interaction: discord.Interaction, member: discord.Member):
-        try:
-            text = await self.sec.release_probation(interaction.guild.id, interaction.user.id, member.id)
-        except Refused as refusal:
-            return await self._ephemeral(interaction, "⛔ Not done", str(refusal), Colors.UNAVAILABLE)
-        await self._ephemeral(interaction, "Probation", text, Colors.SUCCESS)
-
-    # ------------------------------------------------------------------ verification, AutoMod, drills, Q&A
-    @security.command(name="verify-panel", description="Post the verification button in a channel (Admin)")
-    async def verify_panel(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        if not await self._guarded(interaction, "verify_panel"):
-            return
-        if not self.sec.config(interaction.guild.id)["verified_role"]:
-            return await self._ephemeral(interaction, "Set a verified role first", "/security setup verified_role:@role")
-        embed = E.simple("✅ Verification", "Press the button to confirm you're a person and unlock the server.",
-                         Colors.SECURITY)
-        await channel.send(embed=embed, view=verify_view())
-        await self._ephemeral(interaction, "Posted", f"Verification panel posted in {channel.mention}.")
-
-    @security.command(name="automod", description="Preview or create Rudhabot's recommended native AutoMod rules (Admin)")
-    async def automod(self, interaction: discord.Interaction, action: Literal["preview", "create"] = "preview"):
-        if not await self._guarded(interaction, "automod_sync"):
-            return
-        cfg = self.sec.config(interaction.guild.id)
-        rules = automod_plan(cfg)
-        lines = [f"• **{name}**: {what}" for name, what, _ in rules]
-        if action == "preview":
-            return await self._ephemeral(interaction, "AutoMod rules (preview)", "\n".join(lines)
-                                         + "\n\nRun again with `action: create` to add them. Existing rules with the "
-                                           "same name are left alone.")
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        created, failed = await create_automod_rules(interaction.guild, rules, cfg["alert_channel"])
-        await self._ephemeral(interaction, "AutoMod", f"Created: {', '.join(created) or 'none'}"
-                              + (f"\nNot created: {'; '.join(failed)}" if failed else ""))
-
-    @security.command(name="drill", description="Run a simulated attack in a sandbox and see how security responds")
-    async def drill(self, interaction: discord.Interaction,
-                    scenario: Literal["join_raid", "spam_raid", "phishing", "mention_bomb", "staff_nuke",
-                                      "malicious_bot", "webhook_spam", "slow_drip"]):
-        if not await self._guarded(interaction, "drill"):
-            return
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        from rudhabot.security.drill import run_drill
-        models = self.sec.models if self.sec.models is not None and self.sec.models.loaded else None
-        report = await asyncio.to_thread(run_drill, scenario, self.sec.config(interaction.guild.id), None, models)
-        await interaction.followup.send(embed=E.simple(f"🎯 Drill: {scenario.replace('_', ' ')}", report,
-                                                       Colors.SECURITY), ephemeral=True)
-
-    @security.command(name="ask", description="Ask about the server's security state (read-only; staff)")
+    @security.command(name="ask", description="Ask about the server's security state in plain words (read-only)")
     async def ask(self, interaction: discord.Interaction, question: app_commands.Range[str, 3, 400]):
         if not await self._guarded(interaction, "ask"):
             return
@@ -647,18 +354,223 @@ class SecurityCog(ServiceCog):
         text, source = await self.sec.ask(interaction.guild.id, question)
         await self._ephemeral(interaction, "Security Q&A" + (" (AI, read-only)" if source == "llm" else ""), text)
 
-    @security.command(name="models", description="Clairvoyance security models: versions, health, switches")
-    async def models(self, interaction: discord.Interaction):
+    # ================================================================ set-up (Admins)
+    @security.command(name="setup", description="Channels, roles and mode security uses; empty shows the current setup")
+    @app_commands.describe(mode="shadow: detect and report only · live: carry out the automatic responses")
+    async def setup(self, interaction: discord.Interaction, alert_channel: Optional[discord.TextChannel] = None,
+                    modlog_channel: Optional[discord.TextChannel] = None, probation_role: Optional[discord.Role] = None,
+                    verified_role: Optional[discord.Role] = None, quarantine_role: Optional[discord.Role] = None,
+                    mode: Optional[Literal["shadow", "live"]] = None):
+        cfg = self.sec.config(interaction.guild.id)
+        options = (("alert_channel", alert_channel), ("modlog_channel", modlog_channel),
+                   ("probation_role", probation_role), ("verified_role", verified_role),
+                   ("quarantine_role", quarantine_role))
+        if all(v is None for _, v in options) and mode is None:
+            if not await self._guarded(interaction, "posture"):
+                return
+            lines = [f"**{k.replace('_', ' ')}:** " + (f"<#{cfg[k]}>" if "channel" in k else f"<@&{cfg[k]}>")
+                     if cfg[k] else f"**{k.replace('_', ' ')}:** not set" for k, _ in options]
+            lines.append(f"**mode:** {cfg['mode']}")
+            return await self._ephemeral(interaction, "Security setup", "\n".join(lines)
+                                         + "\n\nChange any of these with the options of this command.")
+        if not await self._guarded(interaction, "config"):
+            return
+        changes = []
+        for key, value in options:
+            if value is not None:
+                me = getattr(interaction.guild, "me", None)
+                if isinstance(value, discord.Role) and me is not None and value >= me.top_role:
+                    return await self._ephemeral(interaction, "⛔ Role too high",
+                                                 f"{value.mention} is above Rudhabot's role, so it can't be managed.",
+                                                 Colors.UNAVAILABLE)
+                cfg = cfg.with_value(key, value.id)
+                changes.append(f"{key.replace('_', ' ')}: {value.mention}")
+        if mode is not None:
+            cfg = cfg.with_value("mode", mode)
+            changes.append(f"mode: **{mode}**" + (" (automatic responses on)" if mode == "live" else
+                                                  " (detect and report only)"))
+        cfg = self._save(interaction, cfg, "setup: " + ", ".join(c.split(":")[0] for c in changes))
+        await self._ephemeral(interaction, f"Setup saved (v{cfg.version})", "\n".join(changes))
+
+    @security.command(name="staff", description="Which staff tier a role has; give a role and tier to change it")
+    @app_commands.describe(tier="1 Helper, 2 Moderator, 3 Senior Moderator, 4 Admin; 0 removes the role's tier")
+    async def staff(self, interaction: discord.Interaction, role: Optional[discord.Role] = None,
+                    tier: Optional[app_commands.Range[int, 0, 4]] = None, member: Optional[discord.Member] = None):
+        gid = interaction.guild.id
+        if member is not None:
+            t = self.sec.tier_of(gid, member.id)
+            return await self._ephemeral(interaction, "Staff tier", f"{member.mention}: **{t.label}** ({t.rank})")
+        if role is not None and tier is not None:
+            if not await self._guarded(interaction, "clearance"):
+                return
+            cfg = self._save(interaction, self.sec.config(gid).with_tier(role.id, tier or None), f"staff {role.id}={tier}")
+            label = "no tier" if not tier else f"{Tier(tier).label} ({Tier(tier).rank})"
+            return await self._ephemeral(interaction, f"Saved (v{cfg.version})", f"{role.mention}: {label}")
+        cfg = self.sec.config(gid)
+        lines = [f"<@&{rid}>: {TIER_LABELS[Tier(t)]}" for rid, t in sorted(cfg["tiers"].items(), key=lambda x: -x[1])]
+        extra = ("Discord permissions count too: Administrator/Manage Server = Admin, Ban Members = Senior Moderator, "
+                 "Kick/Timeout Members = Moderator, Manage Messages = Helper." if cfg["derive_tiers"] else "")
+        await self._ephemeral(interaction, "Staff tiers", "\n".join(lines + ["", extra]) if lines
+                              else f"No roles mapped yet. {extra}")
+
+    async def _setting_names(self, interaction, current: str) -> list[app_commands.Choice[str]]:
+        keys = [s.key for s in SETTINGS] + list(LIST_KEYS) + ["rollback"]
+        return [app_commands.Choice(name=k, value=k) for k in keys if current.lower() in k][:25]
+
+    @security.command(name="settings", description="Detection settings: list, explain or change one (Admin to change)")
+    @app_commands.describe(key="A setting (empty lists them all)",
+                           value="New value. Lists take +item / -item; key 'rollback' takes a version number")
+    async def settings(self, interaction: discord.Interaction, key: Optional[str] = None,
+                       value: Optional[app_commands.Range[str, 1, 100]] = None):
+        gid = interaction.guild.id
+        cfg = self.sec.config(gid)
+        if value is None:
+            if not await self._guarded(interaction, "posture"):
+                return
+            if key in BY_KEY:
+                s = BY_KEY[key]
+                return await self._ephemeral(interaction, key, f"**{cfg[key]}** (default {s.default})\n{s.help}")
+            if key in LIST_KEYS:
+                items = [f"<#{x}>" if key.startswith("channels") else f"`{x}`" for x in cfg[key]]
+                return await self._ephemeral(interaction, key, ", ".join(items) or "empty")
+            if key == "rollback":
+                rows = self.sec.store.config_history(gid)
+                return await self._ephemeral(interaction, "Versions", "\n".join(
+                    f"v{r['version']} · {E.ts(r['created'])} · <@{r['by']}> · {r['note']}" for r in rows)
+                    or "Defaults only.")
+            changed = [f"`{s.key}` = **{cfg[s.key]}**" for s in SETTINGS if cfg[s.key] != s.default]
+            lists = [f"`{k}`: {len(cfg[k])}" for k in LIST_KEYS if cfg[k]]
+            exempt = self.sec.store.allows(gid)
+            text = ("Everything else is at its recommended default. Pick a `key` to see what it does.\n\n"
+                    "**Changed:** " + (", ".join(changed) or "nothing") + "\n**Lists:** " + (", ".join(lists) or "empty")
+                    + f"\n**Exemptions:** {len(exempt)} active (`/security exempt`)")
+            return await self._ephemeral(interaction, f"Security settings (v{cfg.version})", text)
+        if not await self._guarded(interaction, "config"):
+            return
+        try:
+            if key == "rollback":
+                values = self.sec.store.config_version(gid, int(value))
+                if values is None:
+                    raise ValueError(f"there is no version {value}")
+                new, note = SecurityConfig(values), f"rollback to v{value}"
+            elif key in LIST_KEYS:
+                add = not value.startswith("-")
+                item = value.lstrip("+-").strip().strip("<#>")
+                new, note = cfg.with_list(key, item if not key.startswith("links") else item.lower(), add), f"{key} {value}"
+            elif key in BY_KEY:
+                new, note = cfg.with_value(key, value), f"{key}={value}"
+            else:
+                raise ValueError(f"unknown setting {key!r}")
+        except (ValueError, TypeError) as error:
+            return await self._ephemeral(interaction, "Not changed", str(error), Colors.FAIL)
+        new = self._save(interaction, new, note)
+        await self._ephemeral(interaction, f"Saved (v{new.version})", note)
+
+    settings.autocomplete("key")(_setting_names)
+
+    @security.command(name="exempt", description="Exempt a member, role, channel or domain for a while (empty lists them)")
+    @app_commands.describe(value="A mention, an id or a domain", days="How long (0 removes the exemption)",
+                           checks="Which checks to skip")
+    async def exempt(self, interaction: discord.Interaction,
+                     kind: Optional[Literal["member", "role", "channel", "domain"]] = None, value: Optional[str] = None,
+                     days: app_commands.Range[int, 0, 90] = 7,
+                     checks: Literal["all", "messages", "joins", "antinuke"] = "all"):
+        gid = interaction.guild.id
+        if kind is None or value is None:
+            if not await self._guarded(interaction, "posture"):
+                return
+            rows = self.sec.store.allows(gid)
+            return await self._ephemeral(interaction, "Exemptions", "\n".join(
+                f"{a['kind']} `{a['value']}` · {', '.join(a['detectors'])} · until {E.ts(a['expires'])}" for a in rows)
+                or "None.")
+        if not await self._guarded(interaction, "allowlist"):
+            return
+        store_kind = "user" if kind == "member" else kind
+        value = value.strip().strip("<@&#!>").lower()
+        if store_kind != "domain" and not value.isdigit():
+            return await self._ephemeral(interaction, "Not an id", "Give a mention or a numeric id.", Colors.FAIL)
+        if days == 0:
+            removed = [a for a in self.sec.store.allows(gid) if a["kind"] == store_kind and a["value"] == value]
+            for a in removed:
+                self.sec.store.remove_allow(gid, a["id"])
+            self.sec.runtime(gid).allows_at = 0
+            return await self._ephemeral(interaction, "Exemption removed" if removed else "Nothing to remove",
+                                         f"{kind} `{value}`")
+        expires = self.sec.now() + days * 86400
+        self.sec.store.add_allow(gid, store_kind, value, [checks], expires, interaction.user.id, "")
+        self.sec.runtime(gid).allows_at = 0
+        await self._ephemeral(interaction, "Exempted", f"{kind} `{value}` skips {checks} checks until {E.ts(expires)}")
+
+    @security.command(name="tools", description="Health check, drills, snapshots, restore, AutoMod, verification, models")
+    @app_commands.describe(action="What to do", scenario="For a drill: which attack to rehearse",
+                           channel="For the verification panel: where to post it",
+                           snapshot_id="For a restore: which snapshot (default: the latest)")
+    async def tools(self, interaction: discord.Interaction,
+                    action: Literal["health check", "drill", "take snapshot", "restore snapshot", "automod preview",
+                                    "automod create", "verification panel", "models"],
+                    scenario: Optional[Literal["join_raid", "spam_raid", "phishing", "mention_bomb", "staff_nuke",
+                                               "malicious_bot", "webhook_spam", "slow_drip"]] = None,
+                    channel: Optional[discord.TextChannel] = None, snapshot_id: Optional[int] = None):
+        gid = interaction.guild.id
+        if action == "health check":
+            if not await self._guarded(interaction, "posture"):
+                return
+            score, findings = self.sec.posture(gid)
+            return await interaction.response.send_message(embed=E.posture_embed(score, findings), ephemeral=True)
+        if action == "drill":
+            if not await self._guarded(interaction, "drill"):
+                return
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            from rudhabot.security.drill import run_drill
+            scenario = scenario or "join_raid"
+            models = self.sec.models if self.sec.models is not None and self.sec.models.loaded else None
+            report = await asyncio.to_thread(run_drill, scenario, self.sec.config(gid), None, models)
+            return await interaction.followup.send(embed=E.simple(f"🎯 Drill: {scenario.replace('_', ' ')}", report,
+                                                                  Colors.SECURITY), ephemeral=True)
+        if action == "take snapshot":
+            if not await self._guarded(interaction, "snapshot"):
+                return
+            snap_id = self.sec.take_snapshot(gid, f"manual by {interaction.user.id}")
+            recent = self.sec.store.snapshots(gid, 5)
+            return await self._ephemeral(interaction, f"📸 Snapshot #{snap_id} taken", "Recent: " + ", ".join(
+                f"#{r['id']} {E.ts(r['created'])}" for r in recent))
+        if action == "restore snapshot":
+            try:
+                token, preview = await self.sec.request_restore(gid, interaction.user.id, snapshot_id)
+            except Refused as refusal:
+                return await self._ephemeral(interaction, "⛔ Not done", str(refusal), Colors.UNAVAILABLE)
+            return await self._ephemeral(interaction, "♻️ Restore requested", "Approve it in the alert channel "
+                                         "(Admin).\n\n" + "\n".join(f"• {x}" for x in preview[:15]))
+        if action.startswith("automod"):
+            if not await self._guarded(interaction, "automod_sync"):
+                return
+            rules = automod_plan(self.sec.config(gid))
+            if action == "automod preview":
+                return await self._ephemeral(interaction, "AutoMod rules (preview)", "\n".join(
+                    f"• **{n}**: {w}" for n, w, _ in rules) + "\n\nUse `automod create` to add them.")
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            created, failed = await create_automod_rules(interaction.guild, rules, self.sec.config(gid)["alert_channel"])
+            return await self._ephemeral(interaction, "AutoMod", f"Created: {', '.join(created) or 'none (already there)'}"
+                                         + (f"\nNot created: {'; '.join(failed)}" if failed else ""))
+        if action == "verification panel":
+            if not await self._guarded(interaction, "verify_panel"):
+                return
+            if not self.sec.config(gid)["verified_role"]:
+                return await self._ephemeral(interaction, "Set a verified role first", "/security setup verified_role:")
+            if channel is None:
+                return await self._ephemeral(interaction, "Pick a channel", "Choose where to post the panel.")
+            await channel.send(embed=E.simple("✅ Verification", "Press the button to confirm you're a person and "
+                                              "unlock the server.", Colors.SECURITY), view=verify_view())
+            return await self._ephemeral(interaction, "Posted", f"Verification panel posted in {channel.mention}.")
         if not await self._guarded(interaction, "posture"):
             return
-        status = self.sec.status(interaction.guild.id).get("models", {})
-        lines = [f"message model: {status.get('message', 'unavailable')}",
-                 f"incident model: {status.get('incident', 'unavailable')}",
-                 f"alert ranker: {status.get('ranker', 'unavailable')}",
-                 f"versions: {', '.join(f'{k}={v}' for k, v in status.get('versions', {}).items()) or 'none'}",
-                 f"parameters: {status.get('params', {})}", f"calls: {status.get('stats', {})}",
-                 "Turn one off: `/security config set models.message off`. Models only add evidence or rank alerts."]
-        await self._ephemeral(interaction, "🔮 Clairvoyance (security)", "\n".join(lines))
+        status = self.sec.status(gid).get("models", {})
+        await self._ephemeral(interaction, "🔮 Clairvoyance (security)", "\n".join([
+            f"message model: {status.get('message', 'unavailable')}",
+            f"incident model: {status.get('incident', 'unavailable')}",
+            f"alert ranker: {status.get('ranker', 'unavailable')}",
+            f"versions: {', '.join(f'{k}={v}' for k, v in status.get('versions', {}).items()) or 'none'}",
+            "Models only add evidence or order the digest. Turn one off: `/security settings models.message off`."]))
 
 
 # ---------------------------------------------------------------------------------------------- AutoMod

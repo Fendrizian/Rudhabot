@@ -561,7 +561,7 @@ class SecurityService:
         self.require(guild_id, requester, "snapshot")
         data = self.store.snapshot(guild_id, snapshot_id)
         if data is None:
-            raise Refused("There is no snapshot yet. Use /security snapshot take.")
+            raise Refused("There is no snapshot yet. Use /security tools action:take snapshot.")
         plan = PlannedAction("restore", "approve2" if rt.config["approvals.two_person"] else "confirm", Tier.ADMIN,
                              f"restore from snapshot #{data['id']}", params={"snapshot_id": data["id"]})
         preview = self.preview(rt, plan)

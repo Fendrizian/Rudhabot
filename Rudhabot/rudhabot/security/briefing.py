@@ -78,10 +78,10 @@ def after_action(incident: dict, actions: list[dict]) -> str:
         follow.append("Proposals were left unanswered: decide whether they were needed.")
     if f["type"] == "nuke":
         follow.append("Review the audit log for this account, check its 2FA and sessions, and only then release the "
-                      "quarantine (/security quarantine release).")
+                      "quarantine (/security release).")
     if f["type"] == "raid":
         follow.append("Check the probation list and release members who were caught up by mistake.")
-    follow.append("Were the defences too aggressive or too weak? Adjust /security config if so.")
+    follow.append("Were the defences too aggressive or too weak? Adjust /security settings if so.")
     lines += [f"• {x}" for x in follow]
     lines.append(f"\n_Versions: {', '.join(f'{k} {v}' for k, v in f['versions'].items())}_")
     return "\n".join(lines)[:3900]
@@ -146,4 +146,4 @@ class Briefer:
         self.stats["fallback"] += 1
         return ("The language model isn't available, so here is the raw status: threat level "
                 f"{status.get('level')}, {status.get('open_incidents', 0)} open incident(s), mode {status.get('mode')}. "
-                "Use /security status and /security incidents for details."), "template"
+                "Use /security status and /security status for details."), "template"

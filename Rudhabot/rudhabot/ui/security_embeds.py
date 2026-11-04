@@ -227,7 +227,7 @@ def lockdown_embed(event: str, report: dict) -> discord.Embed:
         embed = discord.Embed(title=f"🔒 Lockdown #{report['id']} in force", color=Colors.THREAT_SEVERE,
                               description=f"{report['changed']} permission change(s) across {report['channels']} "
                                           f"channel(s). Lifts {ts(report.get('expires'))}, or with "
-                                          f"`/security lockdown lift`.")
+                                          f"`/security unlock`.")
     else:
         embed = discord.Embed(title=f"🔓 Lockdown #{report['id']} lifted ({report.get('reason')})",
                               color=Colors.THREAT_NORMAL, description=f"{report.get('restored', 0)} change(s) restored.")
@@ -259,7 +259,7 @@ def containment_embed(plan: dict, result: dict) -> discord.Embed:
     if plan["kind"] == "quarantine" and targets:
         embed.add_field(name="Account", value=", ".join(f"<@{t}>" for t in targets[:5]), inline=False)
         embed.add_field(name="Next", value="Check the account's 2FA and sessions with its owner, review the audit log, "
-                                           "then `/security quarantine release` (Admin).", inline=False)
+                                           "then `/security release` (Admin).", inline=False)
     embed.set_footer(text="Anti-nuke containment is the one action Rudhabot takes on staff without asking.")
     return embed
 

@@ -1,4 +1,4 @@
-"""An in-memory server implementing GuildPort: used by the tests, by `/security drill` and by the wargame simulator.
+"""An in-memory server implementing GuildPort: used by the tests, by `/security tools action:drill` and by the wargame simulator.
 
 Nothing here touches Discord. It applies changes to a GuildModel, keeps members/messages/bans, records every call,
 and can be told to refuse specific operations (to test partial failures and lost permissions).

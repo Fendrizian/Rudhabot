@@ -2,7 +2,7 @@
 
 - Versioned artifacts in `models/security/` with a manifest; each model is refused if its feature-schema hash doesn't
   match the running code, and then the rules work alone.
-- Each model has its own switch (`/security config models.message off`, ...) and the environment can turn them all
+- Each model has its own switch (`/security settings models.message off`, ...) and the environment can turn them all
   off (`RUDHABOT_SECURITY_MODELS=0`).
 - Inference runs off the event loop (`asyncio.to_thread`) with a timeout; a timeout, error or missing model returns
   None and is counted, never raised.

@@ -67,8 +67,8 @@ presses **Act**.
    @mentions); keep the bot's role **above every staff role** and the bankrupt role (*Manage Roles*). Security needs
    *View Audit Log* for anti-nuke (`docs/SECURITY.md` lists every permission and what stops without it).
 4. **Security setup:** `/security setup alert_channel:... modlog_channel:... probation_role:...`, map staff roles with
-   `/security clearance set`, run `/security posture`, rehearse with `/security drill`. Security starts in **shadow
-   mode** (detect and report only) until an admin runs `/security mode live`.
+   `/security staff`, run `/security tools action:health check`, rehearse with `/security tools action:drill`. Security starts in **shadow
+   mode** (detect and report only) until an admin runs `/security setup mode:live`.
 5. **Channels the bot must be able to post embeds in:** notifications (loan notices), audit (economy log, banker
    actions, review signals), lottery (jackpots), birthdays.
 6. **Storage:** everything lives in `data/rudhabot.db` (SQLite, built into Python: no server, no hosted database).
@@ -140,7 +140,7 @@ python -m rudhabot.ml.anomaly --tune
 | Banker | `/audit`, `/review list | resolve`, `/banker account | card-hold | card-release | loan-unban` |
 | Admin | `/clairvoyance status | reload` |
 | Moderation | `/warn`, `/timeout`, `/untimeout`, `/kick`, `/ban`, `/massban`, `/unban`, `/purge`, `/slowmode`, `/case view | edit | delete`, `/modlog`, the *Report to moderators* message command |
-| Security | `/security status | posture | mode | setup | level | incidents | incident … | lockdown … | snapshot … | config … | clearance … | allow … | quarantine … | probation … | verify-panel | automod | drill | ask | models` |
+| Security | Everyday: `/security status | incident | lockdown | unlock | level | release | ask` · set-up: `/security setup | staff | settings | exempt | tools` |
 
 Designed for Discord:
 - Each duel gets its own **thread**, so channels stay readable.

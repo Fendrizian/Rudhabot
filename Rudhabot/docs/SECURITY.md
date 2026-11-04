@@ -17,13 +17,38 @@ outcome.**
 3. Create a staff-only **alert channel**, a **mod-log channel** and a **probation role**. The probation role should
    not be able to post links or attach files, or should see only a welcome channel.
 4. `/security setup alert_channel:#security-alerts modlog_channel:#mod-log probation_role:@Probation`.
-5. Map staff roles to clearance tiers: `/security clearance set role:@Moderator tier:2`, and so on. (Discord
+5. Map staff roles to clearance tiers: `/security staff role:@Moderator tier:2`, and so on. (Discord
    permissions also grant tiers by default, see below.)
-6. `/security posture`: fix what it reports (2FA for moderation, verification level, dangerous roles, ...).
-7. `/security automod action:create` adds Discord-native AutoMod rules (mention spam, spam, denied links).
+6. `/security tools action:health check`: fix what it reports (2FA for moderation, verification level, dangerous roles, ...).
+7. `/security tools action:automod create` adds Discord-native AutoMod rules (mention spam, spam, denied links).
 8. Leave it in **shadow mode** (the default) for a while. Everything is detected and reported, and the automatic
-   actions are recorded as "would have". When the reports look right, switch on automation with `/security mode live`.
-9. Rehearse: `/security drill scenario:join_raid` (and the other scenarios). Drills run in a sandbox.
+   actions are recorded as "would have". When the reports look right, switch on automation with `/security setup mode:live`.
+9. Rehearse: `/security tools action:drill scenario:join_raid` (and the other scenarios). Drills run in a sandbox.
+
+## Commands
+
+Everything else runs on its own. Staff only need these:
+
+| everyday | |
+|---|---|
+| `/security status` | threat level, open and recent incidents, lockdowns, who is restricted |
+| `/security incident <id>` | an incident's evidence and actions; `action:report` for the after-action report, `action:redact` to delete kept snippets |
+| `/security lockdown <reason> [target] [minutes]` | lock a channel, category or (no target) the whole server: preview, approval, lifts itself |
+| `/security unlock` | end a lockdown now |
+| `/security level <1-5>` | set the threat level by hand |
+| `/security release <member>` | free someone from probation or quarantine |
+| `/security ask <question>` | ask about the security state in plain words |
+
+| set-up (mostly Admins) | |
+|---|---|
+| `/security setup` | channels, roles, and `mode` (shadow or live); empty shows the current setup |
+| `/security staff [role] [tier]` | which roles are Helper / Moderator / Senior Moderator / Admin |
+| `/security settings [key] [value]` | detection settings; lists take `+item` / `-item`; `key:rollback` lists versions or restores one |
+| `/security exempt [kind] [value] [days]` | time-limited exemptions (`days:0` removes) |
+| `/security tools <action>` | health check, drills, snapshots and restore, AutoMod rules, verification panel, model status |
+
+Approvals, containment notices, level changes and the digest arrive in the alert channel with buttons; nobody has to
+type a command for those.
 
 ## Clearance tiers
 
@@ -37,7 +62,7 @@ outcome.**
 | 5 | Owner | head of state | everything |
 
 A member's tier is the highest of these:
-- their roles' mapped tiers (`/security clearance set`);
+- their roles' mapped tiers (`/security staff`);
 - the configured admin role (tier 4);
 - if `derive_tiers` is on (the default), their Discord permissions: Administrator or Manage Server gives Admin, Ban
   Members gives Senior Moderator, Kick or Timeout Members gives Moderator, Manage Messages gives Helper.
@@ -135,7 +160,7 @@ reason), *refused* (not authorised), or *shadow* (would have run). Nothing is re
 
 ## Lockdowns
 
-`/security lockdown start scope:server|channel|category`:
+`/security lockdown reason:… [target:#channel or category]`:
 1. **Preview:** exactly which overwrites change.
 2. **Approval** by a second staff member.
 3. **Snapshot**, then the change.
@@ -163,9 +188,9 @@ for any role the report lists. `/security status` shows active lockdowns; the al
 
 Snapshots record roles (permissions, colour, hoist, mentionable, position), channels and categories (type, topic,
 slowmode, NSFW, every permission overwrite) and the safety settings. They are taken every 6 hours, before every
-lockdown, and on demand (`/security snapshot take`); the last 30 are kept.
+lockdown, and on demand (`/security tools action:take snapshot`); the last 30 are kept.
 
-`/security snapshot restore` previews a diff and needs approval. A restore:
+`/security tools action:restore snapshot` previews a diff and needs approval. A restore:
 - recreates deleted roles and categories/channels, with overwrites re-pointed at recreated roles;
 - puts back changed role permissions, overwrites and weakened safety settings;
 - never deletes anything added since;
@@ -192,7 +217,7 @@ records:
 - staff decisions;
 - the rule, config and model versions.
 
-`/security incident report` writes an after-action report (an LLM draft if configured). `/security incident redact`
+`/security incident action:report` writes an after-action report (an LLM draft if configured). `/security incident action:redact`
 deletes its evidence snippets. Incidents close after 30 quiet minutes.
 
 **Cases.** Every moderation action, manual or automatic, gets a numbered **case** in the mod-log channel. `/case edit`
@@ -213,7 +238,7 @@ corrects a reason (the old reason is kept in the record's edit history), `/case 
 
 ## Clairvoyance's role
 
-All of these are advisory, can each be switched off (`/security config set models.message off`, or
+All of these are advisory, can each be switched off (`/security settings key:models.message value:off`, or
 `RUDHABOT_SECURITY_MODELS=0` for all), are refused if their feature schema doesn't match the code, and run off the
 event loop with a 2-second timeout. If one fails, the rules carry on alone.
 
@@ -236,7 +261,7 @@ How they were trained and how well they work, with confidence intervals and what
 ## The LLM
 
 When OpenAI is configured (`docs/OPENAI.md`), it does two things:
-- drafts incident summaries (`/security incident report`);
+- drafts incident summaries (`/security incident action:report`);
 - answers staff questions read-only (`/security ask`).
 
 It receives only content-free facts: reason codes, counts, times, action statuses. It gets no message text, no
@@ -262,8 +287,8 @@ so). The minimum, and what stops without each:
 
 ## Configuration reference
 
-`/security config view` lists every setting with its current value; `/security config view key:<name>` explains one.
-Changes are versioned (`/security config history`, `/security config rollback`). The main groups:
+`/security settings` lists every setting with its current value; `/security settings key:<name>` explains one.
+Changes are versioned (`/security settings key:rollback`, `/security settings key:rollback value:<version>`). The main groups:
 - `joins.*`, `messages.*`, `links.*`, `files.*`: detection thresholds.
 - `antinuke.*`: budgets, window, quarantine and containment switches.
 - `levels.*`: the highest automatic level and the decay time.
@@ -271,14 +296,14 @@ Changes are versioned (`/security config history`, `/security config rollback`).
 - `approvals.*`, `lockdown.*`, `retention.*`, `models.*`, `llm.summaries`.
 
 Lists: `links.deny`, `links.allow`, `channels.relaxed`, `channels.protected`, `channels.ignored`
-(`/security config list`). Time-limited exceptions (at most 90 days) for a user, role, channel or domain:
-`/security allow`.
+(`/security settings key:<list> value:+item / -item`). Time-limited exceptions (at most 90 days) for a user, role, channel or domain:
+`/security exempt`.
 
 ## If a token leaks
 
 1. Discord Developer Portal → your application → Bot → **Reset Token**; put the new one in `.env`; restart.
 2. OpenAI: revoke the key in the OpenAI dashboard and create a new one.
-3. Check the audit log for actions by Rudhabot that it didn't record (`/security incidents`, the mod log).
+3. Check the audit log for actions by Rudhabot that it didn't record (`/security status`, the mod log).
 4. Logs never contain tokens: a filter replaces Discord tokens, OpenAI keys and webhook URLs before anything is written.
 
 ## Tests

@@ -1,4 +1,4 @@
-"""The permission and configuration audit (`/security posture`): a readiness inspection of the server.
+"""The permission and configuration audit (`/security tools action:health check`): a readiness inspection of the server.
 
 Findings are graded critical / high / medium / low / info, each with the fix. The score starts at 100 and loses
 points per finding (critical 25, high 12, medium 5, low 2). It checks Rudhabot's own access and position, @everyone
@@ -116,7 +116,7 @@ def audit(guild: GuildModel, *, configured: dict, stale_staff: Iterable[int] = (
     if guild.automod_rules == 0:
         add("medium", "No native AutoMod rules",
             "Discord's AutoMod blocks spam and mention raids before any bot sees them.",
-            "Run /security automod to create Rudhabot's recommended rules.")
+            "Run /security tools action:automod create to create Rudhabot's recommended rules.")
 
     # --------------------------------------------------------------- channel overwrites
     risky = []
@@ -146,7 +146,7 @@ def audit(guild: GuildModel, *, configured: dict, stale_staff: Iterable[int] = (
             "/security setup probation_role:@role")
     if configured.get("mode") == "shadow":
         add("info", "Automation is in shadow mode", "Everything is detected and reported; nothing is done automatically.",
-            "When you are happy with what it reports: /security mode live")
+            "When you are happy with what it reports: /security setup mode:live")
     score = max(0, 100 - sum(WEIGHT[x.severity] for x in f))
     f.sort(key=lambda x: ORDER[x.severity])
     return score, f

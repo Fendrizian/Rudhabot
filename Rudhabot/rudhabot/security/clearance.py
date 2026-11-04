@@ -8,7 +8,7 @@ Tiers (plain names; the rank in brackets is only flavour):
     4 Admin             (commander)      configuration, shadow/live mode, restores, releasing quarantine
     5 Owner             (head of state)  everything; cannot be quarantined by the bot (Discord doesn't allow it)
 
-A member's tier is the highest of: the role->tier map set with `/security clearance`, the configured admin role (4),
+A member's tier is the highest of: the role->tier map set with `/security staff`, the configured admin role (4),
 and, if `derive_tiers` is on, their Discord permissions (Administrator/Manage Server 4, Ban Members 3, Kick or Timeout
 Members 2, Manage Messages 1). A quarantined account has tier 0 until it is released.
 """

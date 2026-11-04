@@ -51,10 +51,10 @@ class SecurityCommandTests(CogTestCase):
         self.assertIn("Not allowed", it.last_embed.title)
 
     async def test_mode_needs_admin_and_is_versioned(self):
-        it = await self.cmd("security", MOD, group="mode", mode="live")
+        it = await self.cmd("security", MOD, group="setup", mode="live")
         self.assertIn("Not allowed", it.last_embed.title)
         version = self.sec.config(1).version
-        it = await self.cmd("security", ADMIN, group="mode", mode="live")
+        it = await self.cmd("security", ADMIN, group="setup", mode="live")
         self.assertTrue(self.sec.config(1).live)
         self.assertEqual(self.sec.config(1).version, version + 1)
 
@@ -75,8 +75,7 @@ class SecurityCommandTests(CogTestCase):
 
     async def test_lockdown_request_and_approval_buttons(self):
         target = SimpleNamespace(id=101)
-        it = await self.run_command_in_group("lockdown", "start", SENIOR, scope="channel", reason="raid", target=target,
-                                             minutes=30)
+        it = await self.cmd("security", SENIOR, group="lockdown", reason="raid", target=target, minutes=30)
         self.assertIn("Lockdown requested", it.last_embed.title)
         approval = next(c for c in self.s.messenger.send.await_args_list if c.kwargs.get("view") is not None
                         and "Proposed" in (c.kwargs["embed"].title or ""))
@@ -95,32 +94,45 @@ class SecurityCommandTests(CogTestCase):
         self.assertIn("already", replay.last_embed.description)
 
     async def test_config_set_validates_and_rolls_back(self):
-        it = await self.run_command_in_group("config", "set", ADMIN, key="joins.min_joins", value="0")
+        it = await self.cmd("security", ADMIN, group="settings", key="joins.min_joins", value="0")
         self.assertIn("Not changed", it.last_embed.title)
-        await self.run_command_in_group("config", "set", ADMIN, key="joins.min_joins", value="20")
+        await self.cmd("security", ADMIN, group="settings", key="joins.min_joins", value="20")
         self.assertEqual(self.sec.config(1)["joins.min_joins"], 20)
         old = self.sec.config(1).version - 1
-        await self.run_command_in_group("config", "rollback", ADMIN, version=old)
+        await self.cmd("security", ADMIN, group="settings", key="rollback", value=str(old))
         self.assertEqual(self.sec.config(1)["joins.min_joins"], 8)
+        await self.cmd("security", ADMIN, group="settings", key="links.deny", value="+Bad.Example")
+        self.assertEqual(self.sec.config(1)["links.deny"], ["bad.example"])
+        await self.cmd("security", ADMIN, group="settings", key="links.deny", value="-bad.example")
+        self.assertEqual(self.sec.config(1)["links.deny"], [])
+        it = await self.cmd("security", MOD, group="settings", key="joins.min_joins", value="9")
+        self.assertIn("Not allowed", it.last_embed.title)
+        it = await self.cmd("security", MOD, group="settings")
+        self.assertIn("recommended default", it.last_embed.description)
 
-    async def run_command_in_group(self, sub, name, user_id, **kw):
-        from tests.fakes import FakeInteraction
-        root = self.bot.tree.get_command("security")
-        group = next(c for c in root.commands if c.name == sub)
-        command = next(c for c in group.commands if c.name == name)
-        it = FakeInteraction(self.bot, self.users[user_id], self.guild)
-        it.command = command
-        await command.callback(command.binding, it, **kw)
-        return it
+    async def test_release_staff_and_exempt(self):
+        from rudhabot.security.model import MemberModel
+        self.fake.add_member(MemberModel(6000, ()))
+        self.sec.store.set_probation(1, 6000, 7, self.sec.now() + 3600, "test", None)
+        it = await self.cmd("security", HELPER, group="release", member=SimpleNamespace(id=6000, mention="<@6000>"))
+        self.assertIn("Released", it.last_embed.title)
+        it = await self.cmd("security", HELPER, group="release", member=SimpleNamespace(id=6000, mention="<@6000>"))
+        self.assertIn("Nothing to release", it.last_embed.title)
+        it = await self.cmd("security", ADMIN, group="staff", role=SimpleNamespace(id=4, mention="<@&4>"), tier=2)
+        self.assertEqual(self.sec.config(1)["tiers"], {"4": 2})
+        it = await self.cmd("security", SENIOR, group="exempt", kind="domain", value="partner.example", days=3)
+        self.assertIn("Exempted", it.last_embed.title)
+        it = await self.cmd("security", SENIOR, group="exempt", kind="domain", value="partner.example", days=0)
+        self.assertIn("removed", it.last_embed.title)
 
     async def test_drill_reports_without_touching_the_server(self):
-        it = await self.cmd("security", MOD, group="drill", scenario="join_raid")
+        it = await self.cmd("security", MOD, group="tools", action="drill", scenario="join_raid")
         self.assertIn("Drill", it.last_embed.title)
         self.assertIn("Detected", it.last_embed.description)
         self.assertEqual(self.fake.calls, [])
 
     async def test_posture_and_verification(self):
-        it = await self.cmd("security", MOD, group="posture")
+        it = await self.cmd("security", MOD, group="tools", action="health check")
         self.assertIn("Security posture", it.last_embed.title)
         cfg = self.sec.config(1).with_value("verified_role", 2)
         self.sec.save_config(1, cfg, ADMIN, "verify")

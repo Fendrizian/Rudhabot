@@ -1,4 +1,4 @@
-"""`/security drill`: rehearse an attack against this server's own settings, in a sandbox.
+"""`/security tools action:drill`: rehearse an attack against this server's own settings, in a sandbox.
 
 A simulated community (the wargame simulator) suffers the chosen attack; the events around it are replayed through a
 fresh detection engine using a copy of the server's configuration with automation switched on. Nothing touches the

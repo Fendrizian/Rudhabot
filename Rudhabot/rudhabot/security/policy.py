@@ -1,6 +1,6 @@
 """Per-server security configuration: typed, validated, versioned settings with safe defaults.
 
-Settings are flat dotted keys (`joins.min_joins`). Each has a type, bounds and a description; `/security config`
+Settings are flat dotted keys (`joins.min_joins`). Each has a type, bounds and a description; `/security settings`
 lists and changes them (clearance: Admin), every change is a new version kept in history (so it can be rolled back), and
 the active version is recorded on every incident. Lists (deny/allow domains, relaxed channels, ...) and the role->tier
 map are edited through their own commands.
