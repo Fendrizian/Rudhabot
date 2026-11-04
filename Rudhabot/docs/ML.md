@@ -327,13 +327,29 @@ signals, threat level, model contribution and family.
 | compromised staff nuke | 23 | 87% / 87% | 72 s | n/a | 87%, after a median 7 of 17 actions |
 | malicious bot | 22 | 95% / 95% | 59 s | n/a | 95.5%, after a median 6 |
 | webhook spam | 16 | 94% / **100%** | 6 s | 100% | n/a |
-| slow drip | 19 | 100% / 100% | ~1 h | 55.1% (44% of its accounts on probation with the models, 25% without) | n/a |
+| slow drip | 19 | 100% / 100% | ~1 h (43 min with models) | **100%**, and 100% of its accounts on probation (was 55.1% and 25-44% before the slow-drip rule) | n/a |
 
 Innocent members per simulated day:
 - 0 messages deleted, 0 timeouts;
 - 0.02-0.03 false alerts per quiet day;
-- about 1 probation, from the standing orders while the threat level is raised after a real attack, which is by
-  design.
+- about 1.1 probations, from the standing orders while the threat level is raised during or after a real attack.
+  This is by design.
+
+**Slow-drip rule (re-measured November 2026, same 6 servers × 40 days and seeds).**
+- **Gains:**
+  - the wave's posts removed: 54% → 100%;
+  - the wave's accounts on probation: 25% → 100%.
+- **Unchanged:**
+  - time to the first alert, which link findings already raise at the first posts;
+  - every other attack family.
+- **Costs:**
+  - innocent deletions: still 0;
+  - innocent probations per day: 1.03 → 1.11 (1.14 → 1.16 with models). Waves keep their incident open longer, so
+    the link evidence of a large wave lifts the level to High a little more often. High puts every join on
+    probation, as for join raids.
+  - The wargame's quiet-day false-alert figure moved from 0.018 to 0.028. Counted directly, quiet-day alerts are
+    identical with and without the rule (1 in 109 quiet days). The difference is the simulator counting an incident
+    that stays open past midnight again on the next day.
 
 **What the models add:** a confident message-model reading on a message with an unofficial link can raise an alert
 for review, without any action and without moving the threat level. That lifts phishing alerting from 56% to 72%.

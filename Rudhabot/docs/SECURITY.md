@@ -120,8 +120,10 @@ All of these are deterministic rules with reason codes, so an alert says *what w
     - The wave is removed (each post once), and its accounts are put on probation, only when the links carry
       another warning sign (a risky domain, a lure like "free nitro") or the wave is two accounts past the bar.
       Otherwise it is an alert.
-    - It never raises the server's threat level by itself: the response is aimed at the wave, so other new members
-      aren't restricted for hours.
+    - Its own score never raises the server's threat level. The response is aimed at the wave, so other new members
+      aren't restricted for hours; a large wave's link evidence can still raise it, as for any phishing wave.
+    - In the wargame: 100% of slow-drip posts removed (was 54%), 100% of its accounts on probation (was 25%), no
+      innocent message removed (`docs/ML.md`).
   - Relaxed channels (`channels.relaxed`, e.g. roleplay battles) get 3× the limits.
 - **Links (no fetching):**
   - look-alikes of protected brands (`dlscord`, `steamcomunnity`);
