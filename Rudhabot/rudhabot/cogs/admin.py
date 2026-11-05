@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 
 from rudhabot.cogs.base import ServiceCog
-from rudhabot.cogs.checks import admin_only, not_in_game
+from rudhabot.cogs.checks import admin_only, not_in_game, staff_only
 from rudhabot.ui.replies import error_embed
 from rudhabot.ui.theme import CURRENCY, Colors
 from rudhabot.ui.profile_embeds import profile_embed
@@ -22,6 +22,7 @@ def _with_author(embed: discord.Embed, user) -> discord.Embed:
 
 class AdminCog(ServiceCog):
     @app_commands.command(name="add-money", description="Add money to a user's wallet or bank")
+    @staff_only("admin")
     @app_commands.describe(target="The user to add money to", amount="Amount of money to add",
                            location="Where to add the money: wallet or bank")
     @app_commands.choices(location=LOCATION_CHOICES)
@@ -41,6 +42,7 @@ class AdminCog(ServiceCog):
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="remove-money", description="Remove money from a user's wallet or bank")
+    @staff_only("admin")
     @app_commands.describe(target="The user to remove money from", amount="Amount of money to remove",
                            location="Where to remove the money from: wallet or bank")
     @app_commands.choices(location=LOCATION_CHOICES)
@@ -66,6 +68,7 @@ class AdminCog(ServiceCog):
 
     # ------------------------------------------------------------------ the server profile
     @app_commands.command(name="setup", description="Channels and roles Rudhabot uses here; empty shows the current setup")
+    @staff_only("admin")
     @app_commands.describe(reset="Put one setting (or all) back to its default",
                            admin_role="Needs the Administrator permission: this role gets admin powers")
     @app_commands.guild_only()

@@ -19,6 +19,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from rudhabot.cogs.base import ServiceCog
+from rudhabot.cogs.checks import PICKER_PERMISSIONS
 from rudhabot.security.clearance import TIER_LABELS, Refused, Tier, check
 from rudhabot.security.policy import BY_KEY, LIST_KEYS, SETTINGS, SecurityConfig
 from rudhabot.ui import security_embeds as E
@@ -33,6 +34,7 @@ DRILL_COOLDOWN_S = 60
 
 class SecurityCog(ServiceCog):
     security = app_commands.Group(name="security", description="Server security: status, emergencies, configuration",
+                                  default_permissions=PICKER_PERMISSIONS["helper"],
                                   guild_only=True)
 
     def __init__(self, bot):

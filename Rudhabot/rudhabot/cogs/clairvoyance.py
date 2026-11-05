@@ -7,11 +7,12 @@ from discord import app_commands
 from discord.ext import commands
 
 from rudhabot.cogs.base import ServiceCog
-from rudhabot.cogs.checks import admin_only
+from rudhabot.cogs.checks import admin_only, staff_only
 from rudhabot.ui.branding import brand
 from rudhabot.ui.theme import CLAIRVOYANCEICON, Colors
 
 
+@staff_only("admin")
 class ClairvoyanceCog(ServiceCog, commands.GroupCog, group_name="clairvoyance", group_description="Rudhabot's in-house ML model"):
     @app_commands.command(name="status", description="Model version, health, measured quality and live latency")
     @admin_only()

@@ -15,6 +15,7 @@ import discord
 from discord import app_commands
 
 from rudhabot.cogs.base import ServiceCog
+from rudhabot.cogs.checks import PICKER_PERMISSIONS, staff_only
 from rudhabot.security.clearance import Refused, check
 from rudhabot.security.reasons import duration
 from rudhabot.ui.security_embeds import case_embed, member_file_embed, simple
@@ -26,6 +27,7 @@ REASON = app_commands.Range[str, 1, 400]
 
 class ModerationCog(ServiceCog):
     case = app_commands.Group(name="case", description="Moderation cases: view, correct or remove a record",
+                              default_permissions=PICKER_PERMISSIONS["helper"],
                               guild_only=True)
 
     def __init__(self, bot):
@@ -75,6 +77,7 @@ class ModerationCog(ServiceCog):
 
     # ------------------------------------------------------------------ commands
     @app_commands.command(name="warn", description="Warn a member (recorded as a case; they get a DM)")
+    @staff_only("helper")
     @app_commands.guild_only()
     async def warn(self, interaction: discord.Interaction, member: discord.Member, reason: REASON):
         try:
@@ -87,6 +90,7 @@ class ModerationCog(ServiceCog):
             "Moderation notice", f"You were warned in **{interaction.guild.name}**: {reason}", Colors.MODLOG))
 
     @app_commands.command(name="timeout", description="Time a member out (Helpers: up to 10 minutes)")
+    @staff_only("helper")
     @app_commands.describe(minutes="1 minute to 28 days (40320 minutes)")
     @app_commands.guild_only()
     async def timeout(self, interaction: discord.Interaction, member: discord.Member,
@@ -97,6 +101,7 @@ class ModerationCog(ServiceCog):
                                 f"You were timed out in **{interaction.guild.name}** for {duration(minutes * 60)}: {reason}")
 
     @app_commands.command(name="untimeout", description="Lift a member's timeout")
+    @staff_only("helper")
     @app_commands.guild_only()
     async def untimeout(self, interaction: discord.Interaction, member: discord.Member, reason: REASON = "lifted"):
         result, cases = await self._run(interaction, "untimeout", [member.id], reason)
@@ -104,6 +109,7 @@ class ModerationCog(ServiceCog):
             await self._outcome(interaction, "▶️ Timeout lifted", result, cases)
 
     @app_commands.command(name="kick", description="Kick a member (Moderator)")
+    @staff_only("moderator")
     @app_commands.guild_only()
     async def kick(self, interaction: discord.Interaction, member: discord.Member, reason: REASON):
         await self.services.messenger.dm(member, embed=simple(
@@ -113,6 +119,7 @@ class ModerationCog(ServiceCog):
             await self._outcome(interaction, "👢 Kick", result, cases)
 
     @app_commands.command(name="ban", description="Ban a user, member or not (Senior Moderator)")
+    @staff_only("senior")
     @app_commands.describe(delete_hours="Also delete their messages from the last N hours (0-168)")
     @app_commands.guild_only()
     async def ban(self, interaction: discord.Interaction, user: discord.User, reason: REASON,
@@ -125,6 +132,7 @@ class ModerationCog(ServiceCog):
                                              user.avatar.key if user.avatar else None)
 
     @app_commands.command(name="massban", description="Ban many accounts by id at once (Senior Moderator; raid clean-up)")
+    @staff_only("senior")
     @app_commands.describe(user_ids="Ids separated by spaces or commas (up to 200)")
     @app_commands.guild_only()
     async def massban(self, interaction: discord.Interaction, user_ids: app_commands.Range[str, 5, 4000], reason: REASON,
@@ -153,6 +161,7 @@ class ModerationCog(ServiceCog):
                         ephemeral=False)
 
     @app_commands.command(name="unban", description="Lift a ban (Senior Moderator)")
+    @staff_only("senior")
     @app_commands.guild_only()
     async def unban(self, interaction: discord.Interaction, user_id: app_commands.Range[str, 15, 22], reason: REASON):
         if not user_id.isdigit():
@@ -162,6 +171,7 @@ class ModerationCog(ServiceCog):
             await self._outcome(interaction, "🕊️ Unban", result, cases)
 
     @app_commands.command(name="purge", description="Delete recent messages in this channel (Helpers: up to 50)")
+    @staff_only("helper")
     @app_commands.guild_only()
     async def purge(self, interaction: discord.Interaction, count: app_commands.Range[int, 1, 500],
                     member: Optional[discord.Member] = None, reason: REASON = "clean-up"):
@@ -176,6 +186,7 @@ class ModerationCog(ServiceCog):
         await self._say(interaction, "🧹 Purged", f"{removed} message(s) removed.")
 
     @app_commands.command(name="slowmode", description="Set slowmode on a channel, optionally lifting it after a while")
+    @staff_only("helper")
     @app_commands.describe(seconds="0 turns it off (max 21600)", minutes="Lift automatically after this many minutes")
     @app_commands.guild_only()
     async def slowmode(self, interaction: discord.Interaction, seconds: app_commands.Range[int, 0, 21600],
@@ -228,6 +239,7 @@ class ModerationCog(ServiceCog):
                         f"Case #{number} {'was deleted' if removed else 'does not exist'}.")
 
     @app_commands.command(name="modlog", description="A member's file: standing, cases, incidents and holds (Helpers+)")
+    @staff_only("helper")
     @app_commands.guild_only()
     async def modlog(self, interaction: discord.Interaction, user: discord.User):
         try:

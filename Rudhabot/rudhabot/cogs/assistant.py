@@ -125,6 +125,12 @@ class AssistantCog(ServiceCog):
     async def cog_load(self) -> None:
         self.bot.add_dynamic_items(RunIntent)
 
+    def _hidden(self, user, guild_id) -> frozenset:
+        """Help entries this person can't use: /ask never cites or suggests them."""
+        from rudhabot.services.permissions import viewer_for
+        from rudhabot.views.help import hidden_commands
+        return frozenset(hidden_commands(viewer_for(self.services, user, guild_id)))
+
     @app_commands.command(name="ask", description="Ask Rudhabot anything, or say what you want to do")
     @app_commands.describe(question="e.g. 'show my inventory' or 'how does Corruption work?'", private="Only you see the answer")
     async def ask(self, interaction: discord.Interaction, question: app_commands.Range[str, 3, 500], private: bool = True):
@@ -133,7 +139,8 @@ class AssistantCog(ServiceCog):
             embed, view = routed
             return await interaction.response.send_message(embed=embed, view=view, ephemeral=private)
         await interaction.response.defer(ephemeral=private, thinking=True)
-        answer = await self.services.assistant.ask(interaction.user.id, interaction.guild_id, question)
+        answer = await self.services.assistant.ask(interaction.user.id, interaction.guild_id, question,
+                                                   hidden=self._hidden(interaction.user, interaction.guild_id))
         await interaction.followup.send(embed=answer_embed(answer, question), ephemeral=private,
                                         allowed_mentions=discord.AllowedMentions.none())
 
@@ -152,7 +159,9 @@ class AssistantCog(ServiceCog):
                 await message.reply(embed=embed, view=view, mention_author=False)
                 return
             async with message.channel.typing():
-                answer = await self.services.assistant.ask(message.author.id, getattr(message.guild, "id", None), text)
+                guild_id = getattr(message.guild, "id", None)
+                answer = await self.services.assistant.ask(message.author.id, guild_id, text,
+                                                           hidden=self._hidden(message.author, guild_id))
             await message.reply(embed=answer_embed(answer, text), mention_author=False,
                                 allowed_mentions=discord.AllowedMentions.none())
         except discord.HTTPException as error:

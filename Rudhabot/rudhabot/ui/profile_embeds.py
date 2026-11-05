@@ -31,6 +31,12 @@ def profile_embed(profile, home: Optional[int], security=None, changes: Optional
                f"mode **{security['mode']}**"]
         embed.add_field(name="Security (change with /security setup)", value=" · ".join(sec), inline=False)
     embed.add_field(name="Home server", value=f"`{home}`" if home else "not known yet", inline=False)
+    banker = next((e.value for e in entries if e.key == "banker"), 0)
+    embed.add_field(name="Discord's command list", value=(
+        "Staff commands are hidden from members there. Roles that should see them without the matching Discord "
+        "permission need an override in Server Settings > Integrations > Rudhabot: "
+        f"{_mention('role', banker)} for `/banker`, `/audit` and `/review`, and any `/security staff` role without "
+        "Manage Messages, Kick Members or Ban Members."), inline=False)
     if problems:
         embed.add_field(name="Not changed", value="\n".join(problems)[:1024], inline=False)
     embed.set_footer(text="✏️ = set here with /setup (otherwise the default or the RUDHABOT_*_ID setting)")

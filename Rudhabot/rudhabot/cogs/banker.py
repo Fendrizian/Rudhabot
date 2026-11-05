@@ -19,7 +19,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from rudhabot.cogs.base import ServiceCog
-from rudhabot.cogs.checks import banker_only
+from rudhabot.cogs.checks import banker_only, staff_only
 from rudhabot.services.bank import BankRefused
 from rudhabot.services.loans import LoanRefused
 from rudhabot.ui.replies import error_embed
@@ -28,6 +28,7 @@ from rudhabot.ui.theme import BANKICON, CURRENCY, Colors
 log = logging.getLogger("rudhabot.banker")
 
 
+@staff_only("banker")
 class BankerCog(ServiceCog, commands.GroupCog, group_name="banker", group_description="Banker tools for member accounts"):
     async def _done(self, interaction: discord.Interaction, action: str, target: discord.abc.User, reason: str = "") -> None:
         """Confirm privately, then leave a public trail in the audit channel."""

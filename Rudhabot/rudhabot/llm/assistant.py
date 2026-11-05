@@ -110,7 +110,7 @@ class Assistant:
         return self.model is not None
 
     # ------------------------------------------------------------------ tools (read-only, caller-scoped)
-    def _tool(self, name: str, raw_args: str, user_id: int) -> str:
+    def _tool(self, name: str, raw_args: str, user_id: int, hidden: frozenset = frozenset()) -> str:
         try:
             args = json.loads(raw_args or "{}")
         except json.JSONDecodeError:
@@ -118,7 +118,7 @@ class Assistant:
         if name == "search_docs":
             kind = args.get("kind", "any")
             kinds = () if kind == "any" else (kind,)
-            hits = self.kb.search(str(args.get("query", ""))[:200], k=4, kinds=kinds)
+            hits = self.kb.search(str(args.get("query", ""))[:200], k=4, kinds=kinds, hidden=hidden)
             return json.dumps([{"title": d.title, "text": d.text[:600]} for d, _ in hits])
         if name == "get_card":
             card = find_card(str(args.get("name", ""))[:80])
@@ -132,8 +132,8 @@ class Assistant:
         return json.dumps({"error": "unknown tool"})
 
     # ------------------------------------------------------------------ answers
-    def local_answer(self, question: str, notice: Optional[str] = None) -> Answer:
-        hits = self.kb.search(question, k=3)
+    def local_answer(self, question: str, notice: Optional[str] = None, hidden: frozenset = frozenset()) -> Answer:
+        hits = self.kb.search(question, k=3, hidden=hidden)
         if not hits or not self.kb.covers(question, hits[0][0]):
             text = ("I couldn't find that in Rudhabot's docs. General questions need the AI assistant"
                     + (", which is off right now." if self.model is None else ", which couldn't answer just now.")
@@ -153,7 +153,7 @@ class Assistant:
     def _off_notice(self) -> Optional[str]:
         return f"AI answers are off: {self.disabled_reason}." if self.model is None else None
 
-    def _validate(self, raw: str) -> Optional[Answer]:
+    def _validate(self, raw: str, hidden: frozenset = frozenset()) -> Optional[Answer]:
         try:
             data = json.loads(raw)
         except (json.JSONDecodeError, TypeError):
@@ -166,24 +166,29 @@ class Assistant:
                 base = c.strip().lstrip("/").split(" <")[0].split(" [")[0].strip().lower()
                 parts = base.split()
                 for n in (3, 2, 1):
-                    if " ".join(parts[:n]) in self.allowed:
-                        commands.append("/" + " ".join(parts[:n]))
+                    name = " ".join(parts[:n])
+                    if name in self.allowed:
+                        if not _is_hidden(name, hidden, self.allowed):   # never suggest what the asker can't use
+                            commands.append("/" + name)
                         break
         text = _neutralise(data["answer"].strip())[:MAX_ANSWER]
         cards = [str(c)[:60] for c in data.get("cards", [])[:6] if isinstance(c, str)]
         return Answer(text, list(dict.fromkeys(commands))[:3], cards, "openai", model=getattr(self.model, "model", None))
 
-    async def ask(self, user_id: int, guild_id: Optional[int], question: str) -> Answer:
+    async def ask(self, user_id: int, guild_id: Optional[int], question: str, hidden=frozenset()) -> Answer:
+        """`hidden`: help entries the asker can't use (from views/help.py hidden_commands): they are never cited,
+        searched or suggested, so a member's answers never point at staff commands."""
+        hidden = frozenset(hidden)
         question = question.strip()[:MAX_QUESTION]
         if not question:
             return Answer("Ask me anything about Rudhabot or Cloudfall.")
         if self.model is None:
-            return self.local_answer(question)
+            return self.local_answer(question, hidden=hidden)
         refusal = self.limiter.check(user_id, guild_id)
         if refusal:
             self.stats["limited"] += 1
-            return self.local_answer(question, notice=refusal)
-        context = "\n".join(f"- {d.title}: {d.text[:400]}" for d, _ in self.kb.search(question, k=4))
+            return self.local_answer(question, notice=refusal, hidden=hidden)
+        context = "\n".join(f"- {d.title}: {d.text[:400]}" for d, _ in self.kb.search(question, k=4, hidden=hidden))
         items: list = [{"role": "user", "content": f"<context>\n{context}\n</context>\n<question>\n{question}\n</question>"}]
         safety_id = hashlib.sha256(f"rudhabot:{user_id}".encode()).hexdigest()[:32]
         try:
@@ -193,7 +198,7 @@ class Assistant:
                                                    text_format=ANSWER_FORMAT, max_output_tokens=self.max_output_tokens,
                                                    safety_identifier=safety_id)
                     if not turn.tool_calls:
-                        answer = self._validate(turn.text)
+                        answer = self._validate(turn.text, hidden)
                         if answer is None:
                             raise ValueError("model output failed schema validation")
                         self.stats["openai"] += 1
@@ -201,13 +206,14 @@ class Assistant:
                     items.extend(turn.output_items)
                     for call in turn.tool_calls[:3]:
                         items.append({"type": "function_call_output", "call_id": call.call_id,
-                                      "output": self._tool(call.name, call.arguments, user_id)[:2500]})
+                                      "output": self._tool(call.name, call.arguments, user_id, hidden)[:2500]})
                 raise ValueError("too many tool rounds")
         except Exception as error:
             self.stats["errors"] += 1
             self.last_error = f"{type(error).__name__}: {error}"[:300]
             log.warning("assistant fell back to local answer (%s)", self.last_error)
-            return self.local_answer(question, notice="The AI assistant is unavailable right now; here's what Rudhabot's docs say.")
+            return self.local_answer(question, notice="The AI assistant is unavailable right now; here's what Rudhabot's docs say.",
+                                     hidden=hidden)
 
     async def chronicle(self, facts: dict) -> str:
         """A short narrated recap of a finished match from deterministic facts. Falls back to a plain template."""
@@ -231,3 +237,23 @@ class Assistant:
         except Exception as error:
             log.warning("chronicle fell back to template (%s)", error)
             return plain
+
+
+
+def command_paths(entry: str) -> list[str]:
+    """A help entry as the commands it covers: 'review list | resolve' -> ['review list', 'review resolve']."""
+    parts = entry.split(" | ")
+    head = parts[0].split()
+    return [" ".join(head)] + [" ".join(head[:-1] + [p.strip()]) for p in parts[1:]]
+
+
+def _is_hidden(name: str, hidden: frozenset, entries) -> bool:
+    """Whether a suggested command ('banker account', or a bare group like 'security') is one the asker can't use: the
+    command itself is hidden, or every command under that group is."""
+    if not hidden:
+        return False
+    hidden_paths = {p for e in hidden for p in command_paths(e)}
+    if name in hidden_paths:
+        return True
+    under = [p for e in entries for p in command_paths(e) if p.startswith(name + " ")]
+    return bool(under) and all(p in hidden_paths for p in under)

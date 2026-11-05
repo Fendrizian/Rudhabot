@@ -1,8 +1,11 @@
 """/help: a sectioned overview, one page per section, and the full paginated list.
 
+Everything is rendered for one viewer: members see only the sections and commands they can use (REQUIRES below), so
+the Banker, Admin, Moderation and Security sections only appear to people with that role or clearance.
+
 Navigation uses DynamicItems with fixed custom ids ("help:..."), so the menus never time out and keep working after a
-restart. When someone other than the person who ran /help clicks, they get their own private copy instead of changing
-the shared message.
+restart. When someone other than the person who ran /help clicks, they get their own private copy (rendered for them)
+instead of changing the shared message.
 """
 from __future__ import annotations
 
@@ -14,6 +17,7 @@ from typing import Optional
 import discord
 from discord import ButtonStyle, Interaction, ui
 
+from rudhabot.services.permissions import MEMBER, Viewer, viewer_for
 from rudhabot.ui.theme import BOTICON, COMPONENT_FALLBACK, TCG, Colors
 
 PER_PAGE = 8                 # commands per page, in sections and in the full list
@@ -83,8 +87,45 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
 SECTION_BY_KEY = {key: (title, emoji, summary, names) for key, title, emoji, summary, names in SECTIONS}
 
 
-def _by_name() -> dict[str, dict]:
-    return {c["name"]: c for c in get_commands_data()}
+#: What each staff entry needs before it is shown (the lowest rank that can use it at all; security tiers from
+#: security/clearance.py REQUIRED). Everything not listed is for everyone. Visibility only: commands check again.
+REQUIRES: dict[str, str] = {
+    # banker role (and admins)
+    "audit": "banker", "review list | resolve": "banker", "banker account": "banker",
+    "banker card-hold | card-release": "banker", "banker loan-unban": "banker",
+    # admins
+    "add-money": "admin", "remove-money": "admin", "clairvoyance report": "admin",
+    "clairvoyance status | reload": "admin", "setup": "admin", "set-income": "admin",
+    # moderation, by clearance tier
+    "warn": "helper", "timeout": "helper", "untimeout": "helper", "purge": "helper", "slowmode": "helper",
+    "case view | edit | delete": "helper", "modlog": "helper",
+    "kick": "moderator",
+    "ban": "senior", "massban": "senior", "unban": "senior",
+    # security
+    "security status": "helper", "security incident": "helper", "security release": "helper", "security ask": "helper",
+    "security lockdown": "moderator", "security unlock": "moderator", "security setup": "moderator",
+    "security staff": "moderator", "security settings": "moderator", "security exempt": "moderator",
+    "security tools": "moderator",
+    "security level": "senior",
+}
+
+
+def visible(name: str, viewer: Viewer) -> bool:
+    return viewer.can(REQUIRES.get(name))
+
+
+def _by_name(viewer: Viewer = MEMBER) -> dict[str, dict]:
+    return {c["name"]: c for c in get_commands_data() if visible(c["name"], viewer)}
+
+
+def hidden_commands(viewer: Viewer) -> set[str]:
+    """Help entries this viewer can't use (for /ask, which must not suggest them either)."""
+    return {c["name"] for c in get_commands_data() if not visible(c["name"], viewer)}
+
+
+def visible_sections(viewer: Viewer = MEMBER) -> list[tuple]:
+    commands = _by_name(viewer)
+    return [s for s in SECTIONS if any(n in commands for n in s[4])]
 
 
 def alphabetical(names) -> list[str]:
@@ -98,50 +139,51 @@ def _field(embed: discord.Embed, command: dict) -> None:
 
 
 # ------------------------------------------------------------------ embeds
-def overview_embed() -> discord.Embed:
+def overview_embed(viewer: Viewer = MEMBER) -> discord.Embed:
     embed = discord.Embed(title=f"{BOTICON} HELP", color=COLOR,
                           description=ABOUT + "\n\nPick a section below, or press **Full list** for every command. "
                                               "Tip: `/ask` answers questions in plain words.")
     embed.set_thumbnail(url=THUMBNAIL)
-    commands = _by_name()
-    for key, title, emoji, summary, names in SECTIONS:
+    commands = _by_name(viewer)
+    sections = visible_sections(viewer)
+    for key, title, emoji, summary, names in sections:
         count = sum(1 for n in names if n in commands)
         embed.add_field(name=f"{emoji} {title}", value=f"{summary} · {count}", inline=True)
-    embed.set_footer(text=f"{len(commands)} commands in {len(SECTIONS)} sections")
+    embed.set_footer(text=f"{len(commands)} commands you can use, in {len(sections)} sections")
     return embed
 
 
-def _section_commands(key: str) -> list[dict]:
-    commands = _by_name()
+def _section_commands(key: str, viewer: Viewer = MEMBER) -> list[dict]:
+    commands = _by_name(viewer)
     return [commands[n] for n in alphabetical(SECTION_BY_KEY[key][3]) if n in commands]
 
 
-def section_pages(key: str) -> int:
-    return max(1, math.ceil(len(_section_commands(key)) / PER_PAGE))
+def section_pages(key: str, viewer: Viewer = MEMBER) -> int:
+    return max(1, math.ceil(len(_section_commands(key, viewer)) / PER_PAGE))
 
 
-def section_embed(key: str, page: int = 0) -> discord.Embed:
+def section_embed(key: str, page: int = 0, viewer: Viewer = MEMBER) -> discord.Embed:
     title, emoji, summary, _ = SECTION_BY_KEY[key]
-    pages = section_pages(key)
+    pages = section_pages(key, viewer)
     page = max(0, min(page, pages - 1))
     embed = discord.Embed(title=f"{emoji} {title}" + (f" ({page + 1}/{pages})" if pages > 1 else ""),
                           description=summary, color=COLOR)
-    for command in _section_commands(key)[page * PER_PAGE:(page + 1) * PER_PAGE]:
+    for command in _section_commands(key, viewer)[page * PER_PAGE:(page + 1) * PER_PAGE]:
         _field(embed, command)
-    position = [k for k, *_ in SECTIONS].index(key) + 1
-    embed.set_footer(text=f"Section {position}/{len(SECTIONS)}" + (f" · page {page + 1}/{pages}" if pages > 1 else "")
+    keys = [k for k, *_ in visible_sections(viewer)]
+    embed.set_footer(text=f"Section {keys.index(key) + 1}/{len(keys)}" + (f" · page {page + 1}/{pages}" if pages > 1 else "")
                           + " · use the menu to switch sections")
     return embed
 
 
-def ordered_commands() -> list[dict]:
-    """Every command for the full list, alphabetically."""
-    commands = _by_name()
+def ordered_commands(viewer: Viewer = MEMBER) -> list[dict]:
+    """Every command the viewer can use, for the full list, alphabetically."""
+    commands = _by_name(viewer)
     return [commands[n] for n in alphabetical(commands)]
 
 
-def full_pages() -> int:
-    return math.ceil(len(get_commands_data()) / PER_PAGE)
+def full_pages(viewer: Viewer = MEMBER) -> int:
+    return max(1, math.ceil(len(_by_name(viewer)) / PER_PAGE))
 
 
 def create_help_embed(commands_data, page, total_pages):
@@ -155,6 +197,14 @@ def create_help_embed(commands_data, page, total_pages):
 
 
 # ------------------------------------------------------------------ navigation (never expires)
+def viewer_of(interaction: Interaction) -> Viewer:
+    """Whoever clicked: each person is shown only their own commands."""
+    services = getattr(interaction.client, "services", None)
+    if services is None:
+        return MEMBER
+    return viewer_for(services, interaction.user, getattr(interaction, "guild_id", None))
+
+
 async def _show(interaction: Interaction, embed: discord.Embed, view: ui.View) -> None:
     """Edit the help message for the person who opened it; give anyone else their own private copy."""
     message = getattr(interaction, "message", None)
@@ -169,10 +219,10 @@ async def _show(interaction: Interaction, embed: discord.Embed, view: ui.View) -
 
 
 class SectionSelect(ui.DynamicItem[ui.Select], template=r"help:menu"):
-    def __init__(self, current: Optional[str] = None):
+    def __init__(self, current: Optional[str] = None, viewer: Viewer = MEMBER):
         options = [discord.SelectOption(label="Overview", value="home", emoji="🏠", default=current == "home")]
         options += [discord.SelectOption(label=title, value=key, emoji=COMPONENT_FALLBACK.get(emoji, emoji), description=summary[:100], default=key == current)
-                    for key, title, emoji, summary, _ in SECTIONS]
+                    for key, title, emoji, summary, _ in visible_sections(viewer)]
         options.append(discord.SelectOption(label="Full list (all commands)", value="full", emoji="📖", default=current == "full"))
         super().__init__(ui.Select(custom_id="help:menu", placeholder="Jump to a section…", options=options))
 
@@ -182,7 +232,7 @@ class SectionSelect(ui.DynamicItem[ui.Select], template=r"help:menu"):
 
     async def callback(self, interaction: Interaction) -> None:
         choice = interaction.data["values"][0]
-        embed, view = render(choice)
+        embed, view = render(choice, viewer=viewer_of(interaction))
         await _show(interaction, embed, view)
 
 
@@ -197,7 +247,7 @@ class NavButton(ui.DynamicItem[ui.Button], template=r"help:(?P<target>[a-z_]+):(
         return cls(match["target"], int(match["page"]))
 
     async def callback(self, interaction: Interaction) -> None:
-        embed, view = render(self.target, self.page)
+        embed, view = render(self.target, self.page, viewer=viewer_of(interaction))
         await _show(interaction, embed, view)
 
 
@@ -207,31 +257,32 @@ def _pager(view: ui.View, target: str, page: int, pages: int) -> None:
     view.add_item(NavButton(target, page + 1 if page < pages - 1 else pages + 2, "Next ▶", disabled=page >= pages - 1))
 
 
-def help_view(current: str = "home", page: int = 0) -> ui.View:
+def help_view(current: str = "home", page: int = 0, viewer: Viewer = MEMBER) -> ui.View:
     view = ui.View(timeout=None)
-    view.add_item(SectionSelect(current))
+    view.add_item(SectionSelect(current, viewer))
     if current == "full":
-        _pager(view, "full", page, full_pages())
+        _pager(view, "full", page, full_pages(viewer))
         view.add_item(NavButton("home", 0, "Overview", emoji="🏠"))
         return view
-    if current in SECTION_BY_KEY and section_pages(current) > 1:
-        _pager(view, current, page, section_pages(current))
+    if current in SECTION_BY_KEY and section_pages(current, viewer) > 1:
+        _pager(view, current, page, section_pages(current, viewer))
     view.add_item(NavButton("full", 0, "Full list", emoji="📖"))
     if current != "home":
         view.add_item(NavButton("home", 0, "Overview", emoji="🏠"))
     return view
 
 
-def render(target: str, page: int = 0) -> tuple[discord.Embed, ui.View]:
+def render(target: str, page: int = 0, viewer: Viewer = MEMBER) -> tuple[discord.Embed, ui.View]:
+    """One help page for one viewer. A section they can't see (or an unknown one) shows the overview."""
     if target == "full":
-        pages = full_pages()
+        pages = full_pages(viewer)
         page = max(0, min(page, pages - 1))
-        embed, view = create_help_embed(ordered_commands(), page, pages), help_view("full", page)
-    elif target in SECTION_BY_KEY:
-        page = max(0, min(page, section_pages(target) - 1))
-        embed, view = section_embed(target, page), help_view(target, page)
+        embed, view = create_help_embed(ordered_commands(viewer), page, pages), help_view("full", page, viewer)
+    elif target in SECTION_BY_KEY and target in {k for k, *_ in visible_sections(viewer)}:
+        page = max(0, min(page, section_pages(target, viewer) - 1))
+        embed, view = section_embed(target, page, viewer), help_view(target, page, viewer)
     else:
-        return _with_image(overview_embed()), help_view("home")          # the banner is on the main page only
+        return _with_image(overview_embed(viewer)), help_view("home", viewer=viewer)   # banner: main page only
     return embed, view
 
 

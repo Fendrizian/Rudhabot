@@ -77,11 +77,15 @@ class KnowledgeBase:
         n = len(self.docs)
         self._idf = {t: math.log(1 + (n - c + 0.5) / (c + 0.5)) for t, c in df.items()}
 
-    def search(self, query: str, k: int = 5, kinds: tuple[str, ...] = ()) -> list[tuple[Doc, float]]:
+    def search(self, query: str, k: int = 5, kinds: tuple[str, ...] = (),
+               hidden: frozenset = frozenset()) -> list[tuple[Doc, float]]:
+        """`hidden`: command names the asker can't use (staff commands for a member): never returned."""
         q = _content(tokens(query))
         scored = []
         for i, doc in enumerate(self.docs):
             if kinds and doc.kind not in kinds:
+                continue
+            if hidden and doc.kind == "command" and doc.id[4:] in hidden:
                 continue
             tf, length = self._tf[i], self._len[i]
             score = 0.0

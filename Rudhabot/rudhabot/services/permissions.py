@@ -45,3 +45,52 @@ class AdminPolicy:
         if getattr(user, "guild_permissions", None) is None:     # DMs: no roles to check
             return False
         return self.is_admin(user) or self._has_role(user, self.banker_role_id)
+
+
+# ---------------------------------------------------------------------------------------------- who is looking
+#: what a help entry or command needs: an economy role, or a security clearance tier (by name)
+REQUIREMENTS = ("admin", "banker", "helper", "moderator", "senior")
+
+
+class Viewer:
+    """What one person may use: shown in /help, offered by /ask. Visibility only; every command still checks."""
+
+    __slots__ = ("admin", "banker", "tier")
+
+    def __init__(self, admin: bool = False, banker: bool = False, tier: int = 0):
+        self.admin, self.banker, self.tier = admin, banker or admin, int(tier)
+
+    def can(self, requirement) -> bool:
+        if requirement is None:
+            return True
+        if requirement == "admin":
+            return self.admin
+        if requirement == "banker":
+            return self.banker
+        from rudhabot.security.clearance import Tier
+        need = {"helper": Tier.HELPER, "moderator": Tier.MODERATOR, "senior": Tier.SENIOR}[requirement]
+        return self.tier >= need
+
+    @property
+    def staff(self) -> bool:
+        return self.admin or self.banker or self.tier >= 1
+
+    def __repr__(self) -> str:
+        return f"Viewer(admin={self.admin}, banker={self.banker}, tier={self.tier})"
+
+
+MEMBER = Viewer()
+EVERYTHING = Viewer(True, True, 5)
+
+
+def viewer_for(services, user, guild_id) -> Viewer:
+    """The person's economy roles (admin, banker: the /setup roles, read live) and security clearance tier."""
+    admin = services.admin.is_admin(user)
+    banker = services.admin.is_banker(user)
+    tier = 0
+    if guild_id:
+        try:
+            tier = int(services.security.tier_of(guild_id, user.id))
+        except Exception:                               # no security runtime (yet): no clearance
+            tier = 0
+    return Viewer(admin, banker, tier)

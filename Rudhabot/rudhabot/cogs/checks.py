@@ -52,3 +52,21 @@ def economy_hold(interaction: discord.Interaction, *users) -> Optional[str]:
                      "It lifts when a moderator releases your account.")
             return f"⛔ Your account can't move money right now: {why}. {after}"
     return None
+
+
+#: Discord's slash-command picker: the permission a staff command needs before Discord shows it (the same ranks as
+#: /help's REQUIRES, mapped like security/clearance.py tier_from_permissions). Roles that should see a command without
+#: having that permission (the banker role, roles mapped with /security staff) need an override in Server Settings >
+#: Integrations > Rudhabot: a bot can't set those itself. Visibility only: every command still checks for itself.
+PICKER_PERMISSIONS = {
+    "helper": discord.Permissions(manage_messages=True),
+    "moderator": discord.Permissions(kick_members=True),
+    "senior": discord.Permissions(ban_members=True),
+    "banker": discord.Permissions(manage_guild=True),
+    "admin": discord.Permissions(administrator=True),
+}
+
+
+def staff_only(level: str):
+    """Hide a top-level command (or a GroupCog class) from members in Discord's picker."""
+    return app_commands.default_permissions(PICKER_PERMISSIONS[level])

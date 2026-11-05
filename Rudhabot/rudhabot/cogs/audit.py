@@ -16,7 +16,7 @@ from discord import app_commands
 from discord.ext import tasks
 
 from rudhabot.cogs.base import ServiceCog
-from rudhabot.cogs.checks import banker_only
+from rudhabot.cogs.checks import PICKER_PERMISSIONS, banker_only, staff_only
 from rudhabot.ui.branding import brand
 from rudhabot.ui.theme import BANKICON, CLAIRVOYANCEICON, TCG, Colors
 
@@ -98,6 +98,7 @@ class AuditCog(ServiceCog):
 
     # ------------------------------------------------------------------ banker commands
     @app_commands.command(name="audit", description="Banker: the latest economy audit entries")
+    @staff_only("banker")
     @app_commands.describe(user="Only this user's entries")
     @banker_only()
     async def audit_cmd(self, interaction: discord.Interaction, user: Optional[discord.User] = None):
@@ -106,7 +107,8 @@ class AuditCog(ServiceCog):
                               description="\n".join(entry_line(e) for e in reversed(entries))[:4096] or "No entries.")
         await interaction.response.send_message(embed=embed, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
-    review = app_commands.Group(name="review", description="Banker: Clairvoyance review signals")
+    review = app_commands.Group(name="review", description="Banker: Clairvoyance review signals",
+                                default_permissions=PICKER_PERMISSIONS["banker"])
 
     @review.command(name="list", description="Open (or all) review signals")
     @app_commands.choices(status=[app_commands.Choice(name=s, value=s) for s in ("open", "dismissed", "confirmed", "all")])
