@@ -157,6 +157,28 @@ computed only from your own ledger:
 
 They are advisory and never change, limit or charge anything.
 
+## Loans (`/loan`, `/loaninfo`, `/pay`, `/extend`)
+
+- **Terms:** 100–10,000 ra for 1–30 days at 2% a day, compounding (what's owed is the amount × 1.02 per day
+  so far). `/extend` adds days once, for a fee of 10% of the amount
+  borrowed, up to 30 days in all. One loan at a time; a frozen credit card or a bankruptcy ban blocks new loans.
+- **Borrowed money stays put until it's repaid.** While a loan is open, the part of the debt the bank balance doesn't
+  cover is reserved in the wallet: it can be spent (shop, games), but `/send` can only move what's above it, and a
+  robbery can only take what's above it. `/loaninfo` shows the sendable amount. Without this, a member could borrow,
+  send the money to an alt and let the loan default.
+- **When a loan falls due,** it is paid from the wallet, then the bank. If that isn't enough, every coin and share
+  the member holds is sold first (at market, through the normal audited trades; share sales are split into orders
+  no bigger than one order may be). Only if everything together falls short is the member made bankrupt: wallet and
+  bank are emptied, the bankrupt role is given, and new loans are banned for debt / 200 days (at least 1). Notices
+  in the notifications channel say what was sold. A banker can lift a ban early with `/banker loan-unban`.
+
+## Crypto (`/crypto`)
+
+- Four coins (SCAY, RDC, LICH, WNC) move every minute, each with its own volatility.
+- **Reverse splits instead of a price floor:** when a coin would sink below 100 ra, it has a 1-for-10 reverse split:
+  the price is multiplied by 10 and every holding is divided by 10, so each holding keeps its value and the coin
+  keeps moving. (The old hard floor pinned a falling coin at 100, which made buying at the floor a free option.)
+
 ## Rudharta Exchange (`/stocks`)
 
 Your shares appear together with your crypto in `/portfolio`, with profit or loss against what you paid.
@@ -189,15 +211,35 @@ company's asset value, so value can't reach zero: there is no default.
 - Buying and then selling immediately always loses the fee and the spread, so pump-and-dump doesn't pay. In tests, a
   round trip of 20,000 shares lost about 1%.
 
-## Casino additions
+## Games of chance
 
-| Game | Bets | Payouts | House edge (theory / 400k-hand simulation) |
-|---|---|---|---|
-| `/baccarat` | Player · Banker · Tie | 1:1 · 1:1 minus 5% · 8:1 (Player/Banker push on a tie) | 1.24% / 1.03% · 1.06% / 1.26% · 14.4% / 14.7% |
-| `/craps` | Pass Line · Don't Pass · Field | 1:1 · 1:1 (12 pushes) · 1:1, 2 pays 2:1, 12 pays 3:1 | 1.41% / 1.36% · 1.36% / 1.33% · 2.78% / 2.45% |
+Returns are what a bet pays back on average over many plays (100% = a fair game). Each is computed from the game's
+rules and checked in `tests/test_exploits.py`, `tests/test_slots.py` and the simulations noted.
 
-Baccarat uses an 8-deck shoe and the full punto banco third-card tableau. Both games use the same bet validation and
-player lock as the other games, and their results are audited like every other money change.
+| Game | Return to player | How |
+|---|---|---|
+| `/coinflip` | 100% (fair) | even money on a fair coin |
+| `/rps` | 100% (fair) | a win pays even money, a tie returns the bet |
+| `/dice` | 17%–50% | the sum of two dice; 7 pays ×3 (50%), 2 or 12 pay ×6 (17%) |
+| `/slots` | 95.1% (exactly 475,589 / 500,000) | the symbol table; any pair pays ×1.4 |
+| `/roulette` | 94.7% (Five Numbers 92.1%) | American wheel (0 and 00); 0 and 00 lose every outside bet |
+| `/highlow` | 94.8%–95.4% | the odds table; the same rank (a tie) loses |
+| `/crash` | 95% at every cash-out point | the crash point is drawn up front: P(above m) = 0.95 / m |
+| `/blackjack` | standard rules (not measured) | blackjack pays 3:2, the dealer stands on 17, double down and split |
+| `/baccarat` | Player 98.8% · Banker 98.9% · Tie 85.6% | 8-deck punto banco, full third-card tableau |
+| `/craps` | Pass 98.6% · Don't Pass 98.6% · Field 97.2% | Field: 2 pays 2:1, 12 pays 3:1; Don't Pass pushes on 12 |
+
+Baccarat and craps were also checked by 400,000-hand simulations (within 0.35 points of the theory).
+
+**Walking away never refunds a game in progress.** Every game settles by its own rules:
+- `/blackjack`: after 5 minutes without a move, the remaining hands stand and the dealer plays them out.
+- `/highlow`: after 5 minutes, the likelier guess is made.
+- `/crash`: a round lasts 30 seconds; if it hasn't crashed by then, you're cashed out at the multiplier reached (the
+  same 95% as any other cash-out point).
+- `/roulette`: the wheel spins once; a second press of SPIN, or a bet form submitted after it, is refused and charges
+  nothing. A table nobody spins for 5 minutes refunds its bets, which is fair because no number has been drawn.
+- Buttons that change a bet (double down, split) are checked against the hand as it is now, so a double click is
+  refused instead of charged twice.
 
 **While a bet is open** (any game), money can't be spent elsewhere: every money command, `/tcg pack`,
 `/tcg wish shards` and the `/shop` and `/cafe` buttons refuse with "Finish your current game first". Games settle

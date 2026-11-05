@@ -68,6 +68,12 @@ class ServiceSelect(ui.Select):
 
 
 class ServiceModal(ui.Modal):
-    def __init__(self, services, *, title: str, **kwargs):
+    def __init__(self, services, *, title: str, audit_label: str | None = None, **kwargs):
         super().__init__(title=title, **kwargs)
         self.services = services
+        self.audit_label = audit_label or type(self).__name__.removesuffix("Modal") or "form"
+
+    async def interaction_check(self, interaction: Interaction) -> bool:
+        # like the views: money changes from a submitted form are labelled, e.g. "Roulette (form)"
+        set_context(f"{self.audit_label} (form)", interaction.user.id, "component")
+        return True

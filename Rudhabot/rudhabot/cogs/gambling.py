@@ -237,7 +237,7 @@ class GamblingCog(ServiceCog):
         embed.set_author(name=interaction.user.name, icon_url=interaction.user.display_avatar.url)
         embed.add_field(name="Wallet", value=f"{CURRENCY}{account['wallet']}")
         embed.set_footer(text="Each bet is deducted immediately.")
-        view = RouletteView(interaction.user.id, self.services)       # takes the player lock
+        view = RouletteView(interaction.user.id, self.services, self.rng)       # takes the player lock
         view.original_interaction = interaction
         try:
             await interaction.response.send_message(embed=embed, view=view)

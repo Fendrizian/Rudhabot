@@ -1,4 +1,7 @@
-"""Crash: the multiplier climbs every 2 seconds and may crash; cash out before it does."""
+"""Crash: the multiplier climbs every 2 seconds and may crash; cash out before it does.
+
+A round lasts at most ROUND_SECONDS. If it hasn't crashed by then, the player is cashed out at the multiplier reached
+(never refunded): every cash-out point returns RETURN on average, so ending the round there keeps the same odds."""
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +16,9 @@ from rudhabot.views.base import ServiceView
 
 log = logging.getLogger("rudhabot.crash")
 
+RETURN = 0.95                     # average return of any cash-out strategy (a 5% house edge)
+ROUND_SECONDS = 30                # then an automatic cash-out at the multiplier reached
+
 
 def _authored(embed: discord.Embed, user) -> discord.Embed:
     embed.set_author(name=user.name, icon_url=user.display_avatar.url)
@@ -22,12 +28,10 @@ def _authored(embed: discord.Embed, user) -> discord.Embed:
 def opening_embed(bet_amount: int, user) -> discord.Embed:
     return _authored(discord.Embed(
         title=f"{CRASHICON} Crash",
-        description=f"Bet: {CURRENCY}{bet_amount}\n\nPress **Cash Out** before the multiplier crashes!",
+        description=f"Bet: {CURRENCY}{bet_amount}\n\nPress **Cash Out** before the multiplier crashes! "
+                    f"After {ROUND_SECONDS} seconds you're cashed out automatically.",
         color=Colors.GAMBLING,
     ), user)
-
-
-RETURN = 0.95                     # average return of any cash-out strategy (a 5% house edge)
 
 
 def crash_point(rng) -> float:
@@ -38,7 +42,7 @@ def crash_point(rng) -> float:
 
 class CrashView(ServiceView):
     def __init__(self, services, interaction: Interaction, bet_amount: int, rng=random):
-        super().__init__(services, timeout=30)
+        super().__init__(services, timeout=ROUND_SECONDS)
         self.interaction = interaction
         self.user_id = interaction.user.id
         self.bet_amount = bet_amount
@@ -56,21 +60,26 @@ class CrashView(ServiceView):
     async def interaction_check(self, interaction: Interaction):
         return interaction.user.id == self.user_id
 
+    def _cash_out(self) -> int:
+        """Settle at the current multiplier (call with the lock held, while the round is open)."""
+        self.cashed_out = True
+        self.running = False
+        winnings = int(self.bet_amount * self.multiplier)
+        self.services.users.credit_wallet(self.user_id, winnings)
+        self.services.sessions.end(self.user_id)          # before any Discord call: a failed edit must not lock them out
+        return winnings
+
     @ui.button(label="Cash Out", style=ButtonStyle.primary)
     async def cashout(self, i: Interaction, b: ui.Button):
         async with self.lock:
             if self.cashed_out or self.crashed:
                 return
-            self.cashed_out = True
-            self.running = False
-            winnings = int(self.bet_amount * self.multiplier)
-            self.services.users.credit_wallet(self.user_id, winnings)
+            winnings = self._cash_out()
             embed = discord.Embed(
                 title=f"{CRASHICON} Crash",
                 description=f"Multiplier: x{self.multiplier:.2f}\n\n🎉 You cashed out and won {CURRENCY}{winnings}",
                 color=Colors.SUCCESS,
             )
-            self.services.sessions.end(self.user_id)      # before any Discord call: a failed edit must not lock them out
             await i.response.edit_message(embed=_authored(embed, i.user), view=None)
 
     async def run_crash(self):
@@ -115,16 +124,18 @@ class CrashView(ServiceView):
                     self.stop()
 
     async def on_timeout(self):
-        if not self.cashed_out and not self.crashed:
-            self.running = False
-            self.services.users.credit_wallet(self.user_id, self.bet_amount)       # refund
-            self.services.sessions.end(self.user_id)
-            embed = discord.Embed(
-                title=f"{CRASHICON} Crash - TIMEOUT",
-                description=f"⏰ **Game timed out!**\n💰 **Refunded:** {CURRENCY}{self.bet_amount}",
-                color=Colors.COOLDOWN,
-            )
-            try:
-                await self.interaction.edit_original_response(embed=embed, view=None)
-            except discord.HTTPException:
-                pass
+        """The round's time is up: cash out at the multiplier reached (the same odds as pressing the button)."""
+        async with self.lock:
+            if self.cashed_out or self.crashed:
+                return
+            winnings = self._cash_out()
+        embed = discord.Embed(
+            title=f"{CRASHICON} Crash",
+            description=f"⏰ Time's up: cashed out automatically at x{self.multiplier:.2f}\n\n"
+                        f"💰 You won {CURRENCY}{winnings}",
+            color=Colors.SUCCESS,
+        )
+        try:
+            await self.interaction.edit_original_response(embed=_authored(embed, self.interaction.user), view=None)
+        except discord.HTTPException:
+            pass

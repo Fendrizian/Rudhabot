@@ -49,7 +49,9 @@ How it works:
 - **Upgrading:** `/bank upgrade` moves you to the next card once your net worth (wallet + bank) is high enough.
 - **Credit card:** shop, café, card packs and wishes can go on the card. Each month's balance becomes a statement due on the 11th. An unpaid statement adds 5% interest once and freezes the card until it's paid. Nothing is ever taken automatically. See it with `/bank card info` and pay with `/bank card pay`.
 - **Loans:** `/loan <amount> <days>` borrows 100-10,000 ra for 1-30 days at 2% a day. Check it with `/loaninfo` and repay with `/pay`. `/extend` adds days once, for a 10% fee.
-- **When a loan falls due,** it is paid from your wallet, then your bank. If that isn't enough, you go bankrupt: both are emptied, you get the bankrupt role, and you can't borrow for a while (longer for bigger debts). A banker can lift that early.
+- **Borrowed money stays put until it's repaid:** while you have a loan, `/send` (and a robber) can only take what you hold beyond what you owe. Check what you can move with `/loaninfo`.
+- **When a loan falls due,** it is paid from your wallet, then your bank. If that still isn't enough, your stocks and coins are sold to cover it. Only if everything together falls short do you go bankrupt: your wallet and bank are emptied, you get the bankrupt role, and you can't borrow for a while (longer for bigger debts). A banker can lift that early.
+- **A frozen credit card** also blocks new loans until it's unfrozen.
 
 ### Markets
 
@@ -57,7 +59,7 @@ You can invest wallet money in two stocks and four coins, and follow everything 
 
 - **Stocks** (`/stocks market`, `/stocks quote`, `/stocks buy`, `/stocks sell`): NAS (the National Shop, listed at 100) and JOOT (Joot Café, listed at 80). Their prices follow what the server actually buys at the shop and the café, so busy shopping lifts them. One person's spending only counts fully up to 2,000 a day per company, so a single big spender can't pump a price.
 - **Trading stocks:** a 0.5% fee, and big orders move the price against you. One order can trade at most 5% of a company's shares.
-- **Crypto** (`/crypto market`, `/crypto buy`, `/crypto sell`): SCAY (Sachen's & Atty's), RDC (Royal Digital Currency), LICH (Lichtensvonium) and WNC (Warnacoin). Prices move every minute; SCAY is the steadiest and WNC the wildest. Buy with an amount in ra; sell an amount of coins, or `all`.
+- **Crypto** (`/crypto market`, `/crypto buy`, `/crypto sell`): SCAY (Sachen's & Atty's), RDC (Royal Digital Currency), LICH (Lichtensvonium) and WNC (Warnacoin). Prices move every minute; SCAY is the steadiest and WNC the wildest. Buy with an amount in ra; sell an amount of coins, or `all`. A coin that sinks to 100 ra has a 1-for-10 reverse split: the price is multiplied by 10 and every holding divided by 10, so what you hold is worth the same.
 - **Wallet only:** investments are always bought from your wallet, never on the credit card.
 
 ### Shop, café and items
@@ -77,15 +79,15 @@ Every game takes a bet from your wallet; while a game is in progress, your other
 - **`/coinflip <bet> <heads|tails>`**: call the coin. Pays 2× your bet.
 - **`/dice <bet> <guess>`**: guess the sum of two dice (2-12). Harder sums pay more.
 - **`/rps <bet> <choice>`**: rock, paper or scissors against Rudhabot. A tie returns your bet.
-- **`/slots <bet>`**: spin the reels. Pays by symbol combination.
-- **`/roulette`**: American roulette, with many bet types.
-- **`/highlow <bet>`**: guess whether the next card is higher or lower. Pays by the odds table.
-- **`/crash <bet>`**: cash out before the multiplier crashes. Pays the multiplier when you cash out.
-- **`/blackjack <bet>`**: beat the dealer. Standard blackjack.
+- **`/slots <bet>`**: spin the reels. Pays by symbol combination; any pair pays 1.4×.
+- **`/roulette`**: American roulette, with many bet types. Bets are taken as you place them; the wheel spins once. A table you leave unspun for 5 minutes refunds its bets.
+- **`/highlow <bet>`**: guess whether the next card is higher or lower. Pays by the odds table; the same rank (a tie) loses. If you don't answer within 5 minutes, the likelier guess is made for you.
+- **`/crash <bet>`**: cash out before the multiplier crashes. Pays the multiplier when you cash out. After 30 seconds you're cashed out automatically at the multiplier reached.
+- **`/blackjack <bet>`**: beat the dealer. Standard blackjack. If you walk away for 5 minutes, your hands stand and the dealer plays them out.
 - **`/baccarat <bet> <on>`**: back Player, Banker or Tie. Player 1:1, Banker 1:1 less 5%, Tie 8:1.
 - **`/craps <bet> <play>`**: Pass Line or Don't Pass (1:1), or a one-roll Field bet (2:1 on a 2, 3:1 on a 12).
 
-Games are for fun: over time the house wins. Your private `/balance` tip tells you when you're down on games this week.
+Games are for fun. Coin flips and rock-paper-scissors are even bets; every other game keeps a house edge, so over time the house wins. Your private `/balance` tip tells you when you're down on games this week.
 
 ### Cloudfall and Skyfall Wishes
 

@@ -312,7 +312,7 @@ def get_commands_data():
         {
             "name": "slots",
             "args": "<bet>",
-            "description": "Play the slot machine with various payout multipliers."
+            "description": "Play the slot machine: matching symbols pay multipliers, and any pair pays 1.4×."
         },
         {
             "name": "dice",
@@ -332,12 +332,12 @@ def get_commands_data():
         {
             "name": "highlow",
             "args": "<bet>",
-            "description": "Play High-Low: Guess if the next card is higher or lower. Payouts based on odds table."
+            "description": "Play High-Low: guess if the next card is higher or lower (the same rank loses). Payouts follow the odds table."
         },
         {
             "name": "crash",
             "args": "<bet>",
-            "description": "Play Crash: Cash out before the multiplier crashes for a risky reward."
+            "description": "Play Crash: cash out before the multiplier crashes. After 30 seconds you're cashed out automatically."
         },
         {
             "name": "blackjack",
