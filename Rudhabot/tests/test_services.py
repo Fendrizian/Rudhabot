@@ -1,4 +1,5 @@
 import random
+from types import SimpleNamespace
 from datetime import datetime, timedelta
 
 from rudhabot.domain.birthday import BirthdayDate, BirthdayError
@@ -153,18 +154,34 @@ class CryptoMarketTests(EnvTestCase):
     def market(self, seed=1):
         return CryptoMarket(self.env.prices, DEFAULT_COINS, self.env.users, rng=random.Random(seed))
 
-    def test_tick_matches_the_original_price_walk(self):
-        rng, legacy = random.Random(5), {c.symbol: 100 for c in DEFAULT_COINS}
+    def test_tick_follows_the_original_walk_with_reverse_splits_instead_of_a_floor(self):
+        rng, expected = random.Random(5), {c.symbol: 100 for c in DEFAULT_COINS}
         market = CryptoMarket(self.env.prices, DEFAULT_COINS, self.env.users, rng=random.Random(5))
+        splits = 0
         for _ in range(200):
             market.tick()
-            for c in DEFAULT_COINS:                                   # the original task, verbatim
-                change = 1 + rng.uniform(-c.volatility, c.volatility)
-                legacy[c.symbol] = int(round(legacy[c.symbol] * change))
-                if legacy[c.symbol] < 100:
-                    legacy[c.symbol] = 100
-            self.assertEqual(dict(market.prices), legacy)
-        self.assertEqual(self.env.prices.load(), legacy)              # and it is persisted
+            for c in DEFAULT_COINS:                                   # the original draws, in the original order
+                price = expected[c.symbol] * (1 + rng.uniform(-c.volatility, c.volatility))
+                if price < 100:                                       # was: clamp to 100 (a floor you can't lose at)
+                    price *= 10
+                    splits += 1
+                expected[c.symbol] = max(1, int(round(price)))
+            self.assertEqual(dict(market.prices), expected)
+        self.assertGreater(splits, 0)
+        self.assertTrue(all(p >= 100 for p in expected.values()))
+        self.assertEqual(self.env.prices.load(), expected)            # and it is persisted
+
+    def test_a_reverse_split_keeps_every_holding_worth_the_same(self):
+        market = self.market()
+        self.env.users.update(1, wallet=1000)
+        market.buy(1, "WNC", 1000)                                    # 10 coins at 100
+        before = self.env.users.get(1)["crypto"]["WNC"] * market.price("WNC")
+        market._prices["WNC"] = 100
+        market._rng = SimpleNamespace(uniform=lambda a, b: a)         # every coin falls by its full volatility
+        market.tick()
+        after = self.env.users.get(1)["crypto"]["WNC"] * market.price("WNC")
+        self.assertEqual(market.price("WNC"), 880)                    # 100 * 0.88 = 88 -> x10
+        self.assertAlmostEqual(after, before * 0.88, places=2)        # the fall itself, nothing more
 
     def test_buy_then_sell_round_trip(self):
         market = self.market()
