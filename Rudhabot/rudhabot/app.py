@@ -69,7 +69,11 @@ class RudhaBot(commands.Bot):
         intents.message_content = True      # assistant mentions, spam and link detection
         intents.members = True              # join defence, probation, clearance (privileged: enable in the portal)
         intents.moderation = True           # audit-log entries (anti-nuke) and bans
-        super().__init__(command_prefix=">", intents=intents, tree_cls=RudhaTree)
+        # Rudhabot has Administrator, so it *could* ping @everyone and any role: by default it never does. Text that
+        # reaches a message (a display name, a deck name, an answer) can't turn into a mass ping; a send that should
+        # notify one member says so with its own allowed_mentions.
+        safe = discord.AllowedMentions(everyone=False, roles=False, users=True, replied_user=False)
+        super().__init__(command_prefix=">", intents=intents, tree_cls=RudhaTree, allowed_mentions=safe)
         self.services = services or Services.build(settings or Settings(), self, clock=clock, rng=rng)
         self.guild_id: Optional[int] = None
         self._commands_synced = False

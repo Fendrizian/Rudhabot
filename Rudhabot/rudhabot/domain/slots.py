@@ -1,9 +1,10 @@
 """The slot machine rules.
 
-Technicalities (kept exactly as the original command): three independent reels, each drawn with
-`rng.choices(symbols, weights=weights)`; three of a kind pays the symbol's multiplier, any other pair pays x2,
-everything else loses the bet. This class only *models* those rules and adds exact analytics; the animation and
-embeds live in the presentation layer.
+Three independent reels, each drawn with `rng.choices(symbols, weights=weights)` (as the original command did); three
+of a kind pays the symbol's multiplier, any other pair pays x1.4 (rounded down), everything else loses the bet. This
+class only *models* those rules and adds exact analytics; the animation and embeds live in the presentation layer.
+
+Return to player: about 95% (`SlotMachine().return_to_player()`). The original x2 pair returned 124.8%: a money printer.
 """
 from __future__ import annotations
 
@@ -35,7 +36,7 @@ DEFAULT_SYMBOLS: tuple[SlotSymbol, ...] = (
     SlotSymbol("seven", "Sevens", "<:slot_seven:1398952681371861022>", 2, 50),
 )
 
-PAIR_MULTIPLIER = 2
+PAIR_MULTIPLIER = Fraction(7, 5)        # x1.4: exact, so the analytics stay exact; payouts round down
 
 
 class SlotKind(Enum):
@@ -47,7 +48,7 @@ class SlotKind(Enum):
 @dataclass(frozen=True)
 class SlotOutcome:
     kind: SlotKind
-    multiplier: int
+    multiplier: Fraction | int
     symbol: Optional[SlotSymbol] = None   # the matching symbol for a triple or pair
 
     @property
@@ -55,8 +56,13 @@ class SlotOutcome:
         return self.multiplier > 0
 
     def payout(self, bet: int) -> int:
-        """Total returned to the player (stake included)."""
-        return bet * self.multiplier
+        """Total returned to the player (stake included), rounded down to whole ra."""
+        return int(bet * self.multiplier)
+
+    @property
+    def label(self) -> str:
+        """'1.4' or '50': the multiplier as shown to players."""
+        return f"{float(self.multiplier):g}"
 
     def net(self, bet: int) -> int:
         """Change in the player's wallet."""
@@ -69,7 +75,7 @@ class SlotMachine:
     def __init__(
         self,
         symbols: Sequence[SlotSymbol] = DEFAULT_SYMBOLS,
-        pair_multiplier: int = PAIR_MULTIPLIER,
+        pair_multiplier: Fraction | int = PAIR_MULTIPLIER,
         rng: random.Random = random,
     ):
         self.symbols = tuple(symbols)

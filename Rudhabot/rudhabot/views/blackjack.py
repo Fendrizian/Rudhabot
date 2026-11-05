@@ -24,138 +24,73 @@ def describe_result(result: HandResult) -> str:
 
 
 class BlackjackView(ServiceView):
+    """Hit / Stand / Double Down / Split. Each action changes the game, settles it once it is over, and redraws.
+
+    Walking away doesn't refund the bet (that made every bad hand free): at timeout the remaining hands stand and the
+    game is settled normally."""
+
     def __init__(self, game, services):
         super().__init__(services, timeout=300)
         self.game = game
+        self.settled = False
+        self.original_interaction = None          # set by the command: the timeout edits that message
         self.update_buttons()
-    
+
     def update_buttons(self):
-        # Clear existing buttons
         self.clear_items()
-        
-        if not self.game.game_over:
-            # Hit button
-            hit_button = ui.Button(label="Hit", style=ButtonStyle.danger)
-            hit_button.callback = self.hit_callback
-            self.add_item(hit_button)
-            
-            # Stand button
-            stand_button = ui.Button(label="Stand", style=ButtonStyle.success)
-            stand_button.callback = self.stand_callback
-            self.add_item(stand_button)
-            
-            # Double Down button
-            if self.game.can_double_down():
-                double_button = ui.Button(label="Double Down", style=ButtonStyle.primary)
-                double_button.callback = self.double_callback
-                self.add_item(double_button)
-            
-            # Split button
-            if self.game.can_split():
-                split_button = ui.Button(label="Split", style=ButtonStyle.secondary)
-                split_button.callback = self.split_callback
-                self.add_item(split_button)
-    
-    async def hit_callback(self, interaction: Interaction):
-        if interaction.user.id != self.game.user_id:
-            embed = discord.Embed(description="This isn't your game!", color=Colors.UNAVAILABLE)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        self.game.hit()
-        self.update_buttons()
-        embed = self.create_game_embed()
-        
-        # If game just ended, update wallet and remove from active players
         if self.game.game_over:
-            total_winnings, _ = self.game.calculate_winnings()
-            user_data = self.services.users.get(interaction.user.id)
-            user_data["wallet"] += total_winnings
-            self.services.users.update(interaction.user.id, wallet=user_data["wallet"])
-            embed = self.create_game_embed()
-        
-        await interaction.response.edit_message(embed=embed, view=self)
+            return
+        actions = [("Hit", ButtonStyle.danger, self.hit_callback), ("Stand", ButtonStyle.success, self.stand_callback)]
+        if self.game.can_double_down():
+            actions.append(("Double Down", ButtonStyle.primary, self.double_callback))
+        if self.game.can_split():
+            actions.append(("Split", ButtonStyle.secondary, self.split_callback))
+        for label, style, callback in actions:
+            button = ui.Button(label=label, style=style)
+            button.callback = callback
+            self.add_item(button)
+
+    def settle(self) -> int:
+        """Pay out once the game is over (once only). Returns what was paid."""
+        if not self.game.game_over or self.settled:
+            return 0
+        self.settled = True
+        total_winnings, _ = self.game.calculate_winnings()
+        if total_winnings:
+            self.services.users.credit_wallet(self.game.user_id, total_winnings)
+        return total_winnings
+
+    async def _act(self, interaction: Interaction, action, extra_bet: bool = False, allowed=None) -> None:
+        if self.game.game_over:                           # a click that arrived after the last move
+            embed = discord.Embed(description="This game is already over.", color=Colors.UNAVAILABLE)
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
+        if allowed is not None and not allowed():         # a stale or double click: never charge for a refused move
+            embed = discord.Embed(description="❌ You can't do that with this hand any more.", color=Colors.FAIL)
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
+        if extra_bet:                                     # doubling and splitting stake one more bet
+            wallet = self.services.users.get(self.game.user_id)["wallet"]
+            if wallet < self.game.bet_amount:
+                embed = discord.Embed(description=f"❌ You need {CURRENCY}{self.game.bet_amount} more for that!",
+                                      color=Colors.FAIL)
+                return await interaction.response.send_message(embed=embed, ephemeral=True)
+            self.services.users.credit_wallet(self.game.user_id, -self.game.bet_amount)
+        action()
+        self.settle()
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.create_game_embed(), view=self)
+
+    async def hit_callback(self, interaction: Interaction):
+        await self._act(interaction, self.game.hit)
 
     async def stand_callback(self, interaction: Interaction):
-        if interaction.user.id != self.game.user_id:
-            embed = discord.Embed(description="This isn't your game!", color=Colors.UNAVAILABLE)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        self.game.stand()
-        self.update_buttons()
-        embed = self.create_game_embed()
-        
-        # If game just ended, update wallet and remove from active players
-        if self.game.game_over:
-            total_winnings, _ = self.game.calculate_winnings()
-            user_data = self.services.users.get(interaction.user.id)
-            user_data["wallet"] += total_winnings
-            self.services.users.update(interaction.user.id, wallet=user_data["wallet"])
-            embed = self.create_game_embed()
-        
-        await interaction.response.edit_message(embed=embed, view=self)
+        await self._act(interaction, self.game.stand)
 
     async def double_callback(self, interaction: Interaction):
-        if interaction.user.id != self.game.user_id:
-            embed = discord.Embed(description="This isn't your game!", color=Colors.UNAVAILABLE)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        user_data = self.services.users.get(interaction.user.id)
-        if user_data["wallet"] < self.game.bet_amount:
-            embed = discord.Embed(description=f"❌ You need {CURRENCY}{self.game.bet_amount} more to double down!", color=Colors.FAIL)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        # Deduct additional bet
-        user_data["wallet"] -= self.game.bet_amount
-        self.services.users.update(interaction.user.id, wallet=user_data["wallet"])
-        
-        self.game.double_down()
-        self.update_buttons()
-        embed = self.create_game_embed()
-        
-        # If game just ended, update wallet and remove from active players
-        if self.game.game_over:
-            total_winnings, _ = self.game.calculate_winnings()
-            user_data = self.services.users.get(interaction.user.id)
-            user_data["wallet"] += total_winnings
-            self.services.users.update(interaction.user.id, wallet=user_data["wallet"])
-            embed = self.create_game_embed()
-        
-        await interaction.response.edit_message(embed=embed, view=self)
-        
+        await self._act(interaction, self.game.double_down, extra_bet=True, allowed=self.game.can_double_down)
+
     async def split_callback(self, interaction: Interaction):
-        if interaction.user.id != self.game.user_id:
-            embed = discord.Embed(description="This isn't your game!", color=Colors.UNAVAILABLE)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        user_data = self.services.users.get(interaction.user.id)
-        if user_data["wallet"] < self.game.bet_amount:
-            embed = discord.Embed(description=f"❌ You need {CURRENCY}{self.game.bet_amount} more to split!", color=Colors.FAIL)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        # Deduct additional bet
-        user_data["wallet"] -= self.game.bet_amount
-        self.services.users.update(interaction.user.id, wallet=user_data["wallet"])
-        
-        self.game.split()
-        self.update_buttons()
-        embed = self.create_game_embed()
-        
-        # If game just ended, update wallet and remove from active players
-        if self.game.game_over:
-            total_winnings, _ = self.game.calculate_winnings()
-            user_data = self.services.users.get(interaction.user.id)
-            user_data["wallet"] += total_winnings
-            self.services.users.update(interaction.user.id, wallet=user_data["wallet"])
-            embed = self.create_game_embed()
-        
-        await interaction.response.edit_message(embed=embed, view=self)
-    
+        await self._act(interaction, self.game.split, extra_bet=True, allowed=self.game.can_split)
+
     def create_game_embed(self):
         embed = discord.Embed(title="<:blackjack:1401208756041289758> BLACKJACK", color=Colors.GAMBLING)
         
@@ -233,39 +168,24 @@ class BlackjackView(ServiceView):
         return embed
     
     async def interaction_check(self, interaction: Interaction):
-        return interaction.user.id == self.game.user_id
-    
+        if interaction.user.id == self.game.user_id:
+            return True
+        embed = discord.Embed(description="This isn't your game!", color=Colors.UNAVAILABLE)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return False
+
     async def on_timeout(self):
-        """Handle timeout by refunding bet and ending the game"""
+        """The player walked away: their remaining hands stand, the dealer plays, and the game settles normally."""
         if not self.game.game_over:
-            # Calculate total bet amount (including doubled down and split bets)
-            total_bet_amount = self.game.bet_amount * len(self.game.player_hands)
-            for i, doubled in enumerate(self.game.doubled_down):
-                if doubled:
-                    total_bet_amount += self.game.bet_amount
-            
-            # Refund the bet
-            user_data = self.services.users.get(self.game.user_id)
-            user_data["wallet"] += total_bet_amount
-            self.services.users.update(self.game.user_id, wallet=user_data["wallet"])
-            
-            # End the game
-            self.game.end_game()
-            
-            # Create timeout embed
-            timeout_embed = discord.Embed(
-                title="<:blackjack:1401208756041289758> BLACKJACK - TIMEOUT",
-                description=f"⏰ **Game timed out!**\n\n💰 **Refunded:** {CURRENCY}{total_bet_amount}\n\nYour bet has been returned to your wallet.",
-                color=Colors.COOLDOWN
-            )
-            timeout_embed.set_footer(text=f"Final wallet: {user_data['wallet']}ra")
-            
-            try:
-                # Try to edit the original message
-                if hasattr(self, 'original_interaction'):
-                    await self.original_interaction.edit_original_response(embed=timeout_embed, view=None)
-            except discord.HTTPException:
-                pass
-        
-        # Make sure user is removed from active gambling
+            while not self.game.game_over:
+                self.game.stand()
+            self.settle()
+            self.update_buttons()
+            embed = self.create_game_embed()
+            embed.description = "⏰ Time's up: your remaining hands stood."
+            if self.original_interaction is not None:
+                try:
+                    await self.original_interaction.edit_original_response(embed=embed, view=None)
+                except discord.HTTPException:
+                    pass                                  # the message is gone; the game is settled anyway
         self.services.sessions.end(self.game.user_id)

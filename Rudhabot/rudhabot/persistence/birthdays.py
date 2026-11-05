@@ -12,6 +12,10 @@ from rudhabot.persistence.json_store import JsonStore
 class BirthdayRegistry:
     """birthday_registry.json: {user_id: {month, day, [year], [last_celebrated_year]}}"""
 
+    #: years already celebrated by members who removed their birthday: removing and re-adding it (to today) must not
+    #: pay this year's gift again
+    CELEBRATED = "_celebrated"
+
     def __init__(self, store: JsonStore):
         self._store = store
 
@@ -21,25 +25,35 @@ class BirthdayRegistry:
 
     def set(self, user_id: int | str, birthday: BirthdayDate) -> None:
         data = self._store.load()
-        previous = data.get(str(user_id), {})
+        uid = str(user_id)
         record = birthday.to_dict()
-        if "last_celebrated_year" in previous:       # changing the date must not re-trigger this year's gift
-            record["last_celebrated_year"] = previous["last_celebrated_year"]
-        data[str(user_id)] = record
+        celebrated = data.get(uid, {}).get("last_celebrated_year", data.get(self.CELEBRATED, {}).get(uid))
+        if celebrated is not None:                   # changing the date must not re-trigger this year's gift
+            record["last_celebrated_year"] = celebrated
+        data.get(self.CELEBRATED, {}).pop(uid, None)
+        data[uid] = record
         self._store.save(data)
 
     def remove(self, user_id: int | str) -> bool:
         data = self._store.load()
-        if data.pop(str(user_id), None) is None:
+        record = data.pop(str(user_id), None)
+        if record is None:
             return False
+        if record.get("last_celebrated_year") is not None:
+            data.setdefault(self.CELEBRATED, {})[str(user_id)] = record["last_celebrated_year"]
         self._store.save(data)
         return True
 
     def all(self) -> dict[int, BirthdayDate]:
-        return {int(uid): BirthdayDate.from_dict(rec) for uid, rec in self._store.load().items()}
+        return {int(uid): BirthdayDate.from_dict(rec) for uid, rec in self._store.load().items()
+                if uid != self.CELEBRATED}
 
     def last_celebrated_year(self, user_id: int | str) -> Optional[int]:
-        return self._store.load().get(str(user_id), {}).get("last_celebrated_year")
+        data = self._store.load()
+        uid = str(user_id)
+        if uid in data:
+            return data[uid].get("last_celebrated_year")
+        return data.get(self.CELEBRATED, {}).get(uid)
 
     def mark_celebrated(self, user_id: int | str, year: int) -> None:
         data = self._store.load()

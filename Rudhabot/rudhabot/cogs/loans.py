@@ -45,6 +45,10 @@ class LoansCog(ServiceCog):
         if held:
             await respond(interaction, _embed(interaction.user, held, Colors.UNAVAILABLE), ephemeral=True)
             return
+        if self.services.bank.account(interaction.user.id)["credit"].get("frozen"):
+            await respond(interaction, _embed(interaction.user, "❌ Your credit card is frozen by an unpaid statement. "
+                                              "Pay it with `/bank card pay` before taking a loan."), ephemeral=True)
+            return
         await interaction.response.defer()
         terms = self.services.settings.loans
         try:
@@ -164,7 +168,10 @@ class LoansCog(ServiceCog):
                 await self.services.loan_notices.due_soon(warning, channel)
             except Exception:
                 log.exception("loan warning for %s failed", warning.user_id)
-            self.services.loans.mark_warned(warning.user_id)      # warn once, even if this one couldn't be delivered
+            try:
+                self.services.loans.mark_warned(warning.user_id)  # warn once, even if this one couldn't be delivered
+            except Exception:
+                log.exception("could not record the loan warning for %s", warning.user_id)
 
     @settle_loans.before_loop
     @warn_loans.before_loop

@@ -365,6 +365,7 @@ class SecurityCog(ServiceCog):
     @security.command(name="release", description="Free a member from probation or quarantine")
     async def release(self, interaction: discord.Interaction, member: discord.Member):
         gid = interaction.guild.id
+        await interaction.response.defer(ephemeral=True, thinking=True)     # restoring many roles takes a while
         done = []
         try:
             if self.sec.store.quarantined(gid, member.id):

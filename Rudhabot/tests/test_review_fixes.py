@@ -137,7 +137,7 @@ class GamesNeverLeaveAPlayerLockedTests(CogTestCase):
             raise discord.HTTPException(SimpleNamespace(status=404, reason="Not Found"), "Unknown Message")
         it.edit_original_response = fail
 
-    async def test_highlow_timeout_unlocks_and_refunds_even_if_the_message_is_gone(self):
+    async def test_highlow_timeout_unlocks_and_settles_even_if_the_message_is_gone(self):
         self.fund(self.alice, 500)
         it = await self.run_command("highlow", self.alice, bet="200")
         view = it.log[-1][1]["view"]
@@ -145,7 +145,8 @@ class GamesNeverLeaveAPlayerLockedTests(CogTestCase):
         self._failing_edits(view.interaction)
         await view.on_timeout()
         self.assertNotIn(self.alice.id, self.s.sessions)
-        self.assertEqual(self.account(self.alice)["wallet"], 500)
+        self.assertTrue(view.game_over)
+        self.assertNotEqual(self.account(self.alice)["wallet"], 500)              # settled, not refunded
 
     async def test_crash_timeout_unlocks_and_refunds_even_if_the_message_is_gone(self):
         self.fund(self.alice, 500)

@@ -7,14 +7,18 @@ account across slow `await`s and then saved it, overwriting anything users did m
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 from rudhabot.clock import Clock
 from rudhabot.domain.loan import Loan
 from rudhabot.persistence.users import UserRepository
 from rudhabot.settings import LoanTerms
+
+
+log = logging.getLogger("rudhabot.loans")
 
 
 class LoanRefused(Exception):
@@ -49,6 +53,7 @@ class LoanRepayment:
 class AutoPaid:
     user_id: int
     total_due: int
+    sold: int = 0                  # raised by selling the member's crypto and shares first
 
 
 @dataclass(frozen=True)
@@ -57,6 +62,7 @@ class Bankruptcy:
     total_due: int
     ban_days: int
     ban_until: datetime
+    sold: int = 0
 
 
 @dataclass(frozen=True)
@@ -73,14 +79,32 @@ class LoanService:
     #: warn when a loan falls due between 12 and 36 hours from now (the hourly job's window)
     WARNING_WINDOW = (12 * 3600, 36 * 3600)
 
-    def __init__(self, users: UserRepository, terms: LoanTerms, clock: Clock):
+    def __init__(self, users: UserRepository, terms: LoanTerms, clock: Clock,
+                 liquidate: Optional[Callable[[str], int]] = None):
+        """`liquidate(user_id) -> ra raised`: sells a member's investments (crypto, shares) into their wallet. An
+        overdue loan that wallet and bank can't cover calls it first, so borrowed money parked in investments still
+        repays the loan before anyone is declared bankrupt."""
         self._users = users
         self._terms = terms
         self._clock = clock
+        self._liquidate = liquidate
 
     # -------------------------------------------------------------- queries
     def active_loan(self, user_id: int | str) -> Optional[Loan]:
         return Loan.from_account(self._users.get(user_id), self._terms.interest_rate)
+
+    def reserved(self, user_id: int | str) -> int:
+        """Wallet money that has to stay put while a loan is open: the part of the debt the bank can't cover.
+        Borrowed money can be spent (shop, games), but not sent away or robbed by an alt and then defaulted on."""
+        account = self._users.get(user_id)
+        loan = Loan.from_account(account, self._terms.interest_rate)
+        if loan is None:
+            return 0
+        return max(0, int(loan.total_due(self._clock.now())) - int(account.get("bank", 0)))
+
+    def movable(self, user_id: int | str) -> int:
+        """How much of the wallet may leave it for someone else (all of it without a loan)."""
+        return max(0, int(self._users.get(user_id)["wallet"]) - self.reserved(user_id))
 
     # ------------------------------------------------------------ commands
     def open(self, user_id: int | str, amount: int, days: int) -> LoanOpened:
@@ -178,6 +202,7 @@ class LoanService:
         """Collect every overdue loan: auto-pay from wallet then bank, or declare bankruptcy."""
         now = self._clock.now()
         events: list[SettlementEvent] = []
+        sold = self._sell_investments_for_short_loans(now)
         with self._users.transaction() as accounts:
             for user_id, data in accounts.items():
                 loan = Loan.from_dict(data.get("loan"), self._terms.interest_rate)
@@ -194,15 +219,36 @@ class LoanService:
                         data["bank"] = int(round(bank - shortfall))
                     data["loan"] = None
                     data["loan_warning_sent"] = False
-                    events.append(AutoPaid(int(user_id), total_due))
+                    events.append(AutoPaid(int(user_id), total_due, sold.get(user_id, 0)))
                 else:
                     ban_days = max(1, int(round(total_due / self._terms.ban_divisor)))
                     ban_until = now + timedelta(days=ban_days)
                     data["wallet"], data["bank"], data["loan"] = 0, 0, None
                     data["loan_ban_until"] = ban_until.isoformat()
                     data["loan_warning_sent"] = False
-                    events.append(Bankruptcy(int(user_id), total_due, ban_days, ban_until))
+                    events.append(Bankruptcy(int(user_id), total_due, ban_days, ban_until, sold.get(user_id, 0)))
         return events
+
+    def _sell_investments_for_short_loans(self, now: datetime) -> dict[str, int]:
+        """Before settling: members whose overdue loan their wallet and bank can't cover have their investments
+        sold. Returns {user id: ra raised}."""
+        if self._liquidate is None:
+            return {}
+        raised = {}
+        for user_id, data in self._users.all().items():
+            loan = Loan.from_dict(data.get("loan"), self._terms.interest_rate)
+            if not loan or not loan.is_due(now):
+                continue
+            if int(round(data.get("wallet", 0) + data.get("bank", 0))) >= loan.total_due(now):
+                continue
+            try:
+                amount = int(self._liquidate(user_id))
+            except Exception:
+                log.exception("selling the investments of %s for an overdue loan failed", user_id)
+                continue
+            if amount:
+                raised[user_id] = amount
+        return raised
 
     def pending_warnings(self) -> list[DueSoon]:
         """Loans falling due soon whose owner has not been warned yet (read-only)."""
@@ -219,3 +265,21 @@ class LoanService:
 
     def mark_warned(self, user_id: int | str) -> None:
         self._users.update(user_id, loan_warning_sent=True)
+
+
+def liquidate_investments(user_id, users, crypto, exchange) -> int:
+    """Sell every coin and share a member holds, into their wallet (each sale is audited by its market). Returns the
+    ra raised. Shares go in orders no bigger than one order may be."""
+    from rudhabot.services.stocks import MAX_ORDER_FRACTION
+    raised = 0
+    for coin, quantity in sorted((users.get(user_id).get("crypto") or {}).items()):
+        if quantity and quantity > 0:
+            raised += int(round(crypto.sell(user_id, coin, "all").value))
+    for holding in exchange.portfolio(user_id):
+        left = int(holding["shares"])
+        per_order = max(1, int(exchange.listing(holding["symbol"]).shares * MAX_ORDER_FRACTION))
+        while left > 0:
+            shares = min(left, per_order)
+            raised += int(exchange.sell(user_id, holding["symbol"], shares).total)
+            left -= shares
+    return raised

@@ -42,6 +42,8 @@ class LoanNotifier:
             embed = discord.Embed(title=f"{LOANAUTOICON} Loan Auto-Paid", description=description, color=GREY)
             embed.add_field(name="Amount Deducted", value=f"{CURRENCY}{event.total_due}", inline=True)
             embed.add_field(name="Status", value="☑️ Loan Cleared", inline=True)
+            if event.sold:
+                embed.add_field(name="Investments sold", value=f"{CURRENCY}{event.sold:,} of crypto and shares", inline=False)
             embed.set_footer(text=footer)
             return embed
 
@@ -60,6 +62,9 @@ class LoanNotifier:
             embed.add_field(name="Debt Amount", value=f"{CURRENCY}{event.total_due}", inline=True)
             embed.add_field(name="Ban Duration", value=f"{event.ban_days} days", inline=True)
             embed.add_field(name="Ban Until", value=event.ban_until.strftime("%d %B %Y"), inline=True)
+            if event.sold:
+                embed.add_field(name="Investments sold first", value=f"{CURRENCY}{event.sold:,} of crypto and shares",
+                                inline=False)
             return embed
 
         dm = build("You were unable to pay your loan and have been declared bankrupt!")

@@ -31,9 +31,9 @@ def _row(cells: Sequence[str]) -> str:
     return "🎰 ┃ " + " ┃ ".join(cells) + " ┃ 🎰"
 
 
-def paytable(symbols: Sequence[SlotSymbol] = DEFAULT_SYMBOLS, pair_multiplier: int = PAIR_MULTIPLIER) -> str:
+def paytable(symbols: Sequence[SlotSymbol] = DEFAULT_SYMBOLS, pair_multiplier=PAIR_MULTIPLIER) -> str:
     triples = "  ".join(f"{s.emoji}×{s.triple_multiplier}" for s in symbols)
-    return f"Any pair **×{pair_multiplier}**\nThree of a kind: {triples}"
+    return f"Any pair **×{float(pair_multiplier):g}**\nThree of a kind: {triples}"
 
 
 def spinning_frame(user, stopped: Sequence[SlotSymbol], bet: int) -> discord.Embed:
@@ -68,7 +68,7 @@ def headline(outcome: SlotOutcome) -> str:
 def result_frame(user, reels: Sequence[SlotSymbol], outcome: SlotOutcome, bet: int, wallet_after: int) -> discord.Embed:
     winnings = outcome.payout(bet)
     if outcome.won:
-        verdict = f"🎉 You win! {CURRENCY}{winnings} (x{outcome.multiplier})"
+        verdict = f"🎉 You win! {CURRENCY}{winnings} (x{outcome.label})"
         big = outcome.kind is SlotKind.TRIPLE and outcome.multiplier >= JACKPOT_THRESHOLD
         color = Colors.INCOME if big else Colors.SUCCESS
         change = f"+{CURRENCY}{outcome.net(bet)}"

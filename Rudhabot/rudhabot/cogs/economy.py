@@ -163,10 +163,12 @@ class EconomyCog(ServiceCog):
                 f"⏳ You need to wait **{format_remaining(remaining, always_minutes=True)}** before you can rob someone again.", Colors.COOLDOWN))
             return
         if self.rng.choice([True, False]):
-            if victim["wallet"] < 50:
+            # money the target needs to repay a loan can't be stolen (an alt can't "rob" a loan away and default)
+            robbable = max(0, victim["wallet"] - self.services.loans.reserved(target.id))
+            if robbable < 50:
                 await respond(interaction, _plain(interaction.user, f"❌ {target.mention} doesn't have enough money for you to rob."))
                 return
-            stolen = max(1, int((self.rng.randint(50, 75) / 100) * victim["wallet"]))
+            stolen = max(1, int((self.rng.randint(50, 75) / 100) * robbable))
             self.users.update(interaction.user.id, wallet=attacker["wallet"] + stolen, last_rob=Cooldown.stamp(now))
             self.users.update(target.id, wallet=victim["wallet"] - stolen)
             await respond(interaction, _plain(interaction.user, f"You successfully robbed {target.mention}!\n"
@@ -241,6 +243,13 @@ class EconomyCog(ServiceCog):
             return
         if give > sender["wallet"]:
             await respond(interaction, _plain(interaction.user, "❌ You don't have enough money in your wallet."), ephemeral=True)
+            return
+        reserved = self.services.loans.reserved(interaction.user.id)
+        if reserved and give > sender["wallet"] - reserved:
+            movable = max(0, sender["wallet"] - reserved)
+            await respond(interaction, _plain(interaction.user,
+                f"❌ You have a loan to repay, so {CURRENCY}{reserved:,} of your wallet has to stay until it's paid. "
+                f"You can send up to {CURRENCY}{movable:,}."), ephemeral=True)
             return
         receiver = self.users.get(target.id)
         self.users.update(interaction.user.id, wallet=sender["wallet"] - give)

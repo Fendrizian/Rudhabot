@@ -27,6 +27,15 @@ def opening_embed(bet_amount: int, user) -> discord.Embed:
     ), user)
 
 
+RETURN = 0.95                     # average return of any cash-out strategy (a 5% house edge)
+
+
+def crash_point(rng) -> float:
+    """Where this round crashes: 1.00 (instantly) with probability 1 - RETURN, otherwise RETURN / U for U in (0, 1]."""
+    u = 1.0 - rng.random()                                   # (0, 1]
+    return max(1.0, RETURN / u)
+
+
 class CrashView(ServiceView):
     def __init__(self, services, interaction: Interaction, bet_amount: int, rng=random):
         super().__init__(services, timeout=30)
@@ -37,6 +46,9 @@ class CrashView(ServiceView):
         self.cashed_out = False
         self.crashed = False
         self.multiplier = 1.0
+        # The crash point is drawn once, up front: P(it is above m) = RETURN / m, so cashing out at *any* multiplier
+        # returns RETURN on average. (The old per-step crash chance let early cash-outs return up to 115%.)
+        self.crash_point = crash_point(rng)
         self.running = True
         self.lock = asyncio.Lock()
         self.task = asyncio.create_task(self.run_crash())
@@ -66,16 +78,15 @@ class CrashView(ServiceView):
             while self.running:
                 await asyncio.sleep(2)
                 self.multiplier += self.rng.uniform(0.1, 0.5)
-                crash_chance = min(0.05 + self.multiplier * 0.07, 0.95)
                 async with self.lock:
                     if not self.running:
                         break                                    # cashed out meanwhile
-                    if self.rng.random() < crash_chance:
+                    if self.multiplier >= self.crash_point:
                         self.crashed = True
                         self.running = False
                         embed = discord.Embed(
                             title=f"{CRASHICON} Crash",
-                            description=f"Multiplier crashed at x{self.multiplier:.2f}!\n\n💸 You lose {CURRENCY}{self.bet_amount}",
+                            description=f"Multiplier crashed at x{self.crash_point:.2f}!\n\n💸 You lose {CURRENCY}{self.bet_amount}",
                             color=Colors.LOSS,
                         )
                         self.services.sessions.end(self.user_id)

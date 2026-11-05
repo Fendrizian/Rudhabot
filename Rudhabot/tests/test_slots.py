@@ -6,8 +6,13 @@ from rudhabot.domain.slots import DEFAULT_SYMBOLS, SlotKind, SlotMachine
 from tests.legacy_slots_reference import SYMBOLS, WEIGHTS, legacy_spin
 
 
-class SlotTechnicalitiesUnchanged(unittest.TestCase):
-    """The slot machine was upgraded visually only: odds, payouts and RNG usage must equal the original."""
+def new_multiplier(legacy_multiplier):
+    """The original paid x2 for a pair (a 124.8% return); pairs now pay x1.4. Triples and misses are unchanged."""
+    return Fraction(7, 5) if legacy_multiplier == 2 else legacy_multiplier
+
+
+class SlotRulesTests(unittest.TestCase):
+    """Reels, symbols, weights and RNG usage still equal the original; only the pair payout changed (x2 -> x1.4)."""
 
     def test_symbol_table_matches_the_original(self):
         self.assertEqual([s.emoji for s in DEFAULT_SYMBOLS], SYMBOLS)
@@ -21,7 +26,7 @@ class SlotTechnicalitiesUnchanged(unittest.TestCase):
             reels = [machine.spin_reel() for _ in range(SlotMachine.REELS)]
             outcome = machine.evaluate(reels)
             self.assertEqual([s.emoji for s in reels], legacy_reels, f"seed {seed}")
-            self.assertEqual(outcome.multiplier, legacy_multiplier, f"seed {seed}")
+            self.assertEqual(outcome.multiplier, new_multiplier(legacy_multiplier), f"seed {seed}")
             # same number of RNG draws consumed => every later random event in the bot replays identically
             self.assertEqual(legacy_rng.getstate(), new_rng.getstate(), f"seed {seed}")
 
@@ -31,7 +36,7 @@ class SlotTechnicalitiesUnchanged(unittest.TestCase):
         by_emoji = {s.emoji: s for s in DEFAULT_SYMBOLS}
         for combo in product(SYMBOLS, repeat=3):
             _, expected = self._legacy_evaluate(list(combo))
-            self.assertEqual(machine.evaluate([by_emoji[e] for e in combo]).multiplier, expected, combo)
+            self.assertEqual(machine.evaluate([by_emoji[e] for e in combo]).multiplier, new_multiplier(expected), combo)
 
     @staticmethod
     def _legacy_evaluate(result):
@@ -42,8 +47,9 @@ class SlotTechnicalitiesUnchanged(unittest.TestCase):
 
     def test_exact_return_to_player_and_hit_rate(self):
         machine = SlotMachine()
-        # A documented fact about the (deliberately unchanged) economy: slots pay out MORE than they take in.
-        self.assertEqual(machine.return_to_player(), Fraction(124753, 100000))
+        # the house keeps about 5% (the original x2 pair returned 124.753%: a money printer)
+        self.assertEqual(machine.return_to_player(), Fraction(475589, 500000))      # 95.12%
+        self.assertLess(machine.return_to_player(), 1)
         self.assertEqual(machine.hit_rate(), Fraction(6851, 12500))        # 54.808% of spins pay out
 
     def test_outcome_money_math(self):
@@ -52,6 +58,7 @@ class SlotTechnicalitiesUnchanged(unittest.TestCase):
         triple = machine.evaluate([seven, seven, seven])
         self.assertEqual((triple.kind, triple.multiplier, triple.payout(10), triple.net(10)), (SlotKind.TRIPLE, 50, 500, 490))
         pair = machine.evaluate([seven, DEFAULT_SYMBOLS[0], seven])
-        self.assertEqual((pair.kind, pair.symbol, pair.net(10)), (SlotKind.PAIR, seven, 10))
+        self.assertEqual((pair.kind, pair.symbol, pair.payout(10), pair.net(10), pair.label), (SlotKind.PAIR, seven, 14, 4, "1.4"))
+        self.assertEqual(pair.payout(3), 4)                                            # rounded down
         miss = machine.evaluate([DEFAULT_SYMBOLS[0], DEFAULT_SYMBOLS[1], DEFAULT_SYMBOLS[2]])
         self.assertEqual((miss.kind, miss.net(10)), (SlotKind.MISS, -10))

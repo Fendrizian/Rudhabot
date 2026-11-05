@@ -18,9 +18,9 @@ class SlotsCommandTests(CogTestCase):
         self.script.reels += reels
         return await self.run_command("slots", self.alice, bet=bet)
 
-    async def test_pair_pays_double_and_uses_four_api_calls_with_a_suspense_frame(self):
+    async def test_pair_pays_x1_4_and_uses_four_api_calls_with_a_suspense_frame(self):
         it = await self.play([CHERRY, CHERRY, LEMON])
-        self.assertEqual(self.account(self.alice)["wallet"], 1100)               # x2 on 100 => +100
+        self.assertEqual(self.account(self.alice)["wallet"], 1040)               # x1.4 on 100 => +40
         self.assertEqual([kind for kind, _ in it.log], ["send", "edit", "edit", "edit"])
         frames = [k["embed"] for _, k in it.log]
         self.assertIn("Spinning reel 1 of 3", frames[0].description)
@@ -32,7 +32,8 @@ class SlotsCommandTests(CogTestCase):
         final = frames[3]
         self.assertIn("A PAIR OF CHERRIES", final.description)
         self.assertIn("You win!", final.description)
-        self.assertEqual({f.name: f.value for f in final.fields}["Balance"].endswith("1100"), True)
+        self.assertIn("(x1.4)", final.description)
+        self.assertEqual({f.name: f.value for f in final.fields}["Balance"].endswith("1040"), True)
 
     async def test_triple_sevens_is_the_gold_jackpot_x50(self):
         it = await self.play([SEVEN, SEVEN, SEVEN], bet="10")
@@ -81,7 +82,8 @@ class SlotsCommandTests(CogTestCase):
             self.s.slots._rng = random.Random(seed)
             _, multiplier = legacy_spin(random.Random(seed))
             await self.run_command("slots", self.alice, bet="100")
-            expected = 1000 + (100 * multiplier - 100 if multiplier else -100)
+            paid = 140 if multiplier == 2 else 100 * multiplier                   # pairs now pay x1.4
+            expected = 1000 + (paid - 100 if multiplier else -100)
             self.assertEqual(self.account(self.alice)["wallet"], expected, f"seed {seed}")
 
     async def test_money_received_during_the_spin_is_not_overwritten(self):
@@ -112,17 +114,22 @@ class LockFixTests(CogTestCase):
         it = await self.run_command("balance", self.alice, user=None)
         self.assertIn("Balance", it.text())
 
-    async def test_highlow_takes_the_bet_and_refunds_it_on_timeout(self):
+    async def test_highlow_takes_the_bet_and_plays_the_likelier_guess_on_timeout(self):
         self.fund(self.alice, 100)
         it = await self.run_command("highlow", self.alice, bet="40")
         self.assertEqual(self.account(self.alice)["wallet"], 60)
         self.assertIn(self.alice.id, self.s.sessions)
         view = it.log[0][1]["view"]
         self.assertFalse(await view.interaction_check(FakeInteraction(self.bot, self.bob)))   # only the player may click
-        await view.on_timeout()
-        self.assertEqual(self.account(self.alice)["wallet"], 100)
+        guess = view.likelier_guess()
+        await view.on_timeout()                                   # no refund: walking away was a free look at the card
+        wallet = self.account(self.alice)["wallet"]
+        payout = __import__("rudhabot.views.highlow", fromlist=["ODDS_TABLE"]).ODDS_TABLE[view.first_rank][guess]
+        self.assertIn(wallet, (60, 60 + int(40 + 40 * payout)))
         self.assertNotIn(self.alice.id, self.s.sessions)
-        self.assertIn("Final wallet: 100ra", it.log[-1][1]["embed"].footer.text)              # shows the refunded balance
+        final = it.log[-1][1]["embed"]
+        self.assertIn(f"guessed **{guess}** for you", final.description)
+        self.assertIn(f"Final wallet: {wallet}ra", final.footer.text)
 
     async def test_while_playing_guarded_commands_are_refused_with_the_standard_message(self):
         self.s.sessions.start(self.alice.id)

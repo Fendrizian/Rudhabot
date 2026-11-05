@@ -308,15 +308,14 @@ class GamblingCog(ServiceCog):
         self.users.update(interaction.user.id, wallet=account["wallet"] - amount)
         game = BlackjackGame(interaction.user.id, amount, self.sessions, self.rng)
         view = BlackjackView(game, self.services)
-        embed = view.create_game_embed()
+        view.original_interaction = interaction
         if game.player_hands[0].is_blackjack():                      # natural blackjack settles immediately
             game.dealer_play()
             game.end_game()
+            view.settle()
             view.update_buttons()
-            total_winnings, _ = game.calculate_winnings()
-            self.users.credit_wallet(interaction.user.id, total_winnings)
-            embed = view.create_game_embed()
-        await interaction.response.send_message(embed=embed, view=view)
+            return await interaction.response.send_message(embed=view.create_game_embed(), view=view)
+        await self._send_or_release(interaction, amount, embed=view.create_game_embed(), view=view)
 
     # ----------------------------------------------------------------- baccarat
     async def _place(self, interaction, bet: str) -> int | None:

@@ -1,4 +1,8 @@
-"""High-Low: guess whether the next card is higher or lower. The bet is deducted up front by the command."""
+"""High-Low: guess whether the next card is higher or lower. The bet is deducted up front by the command.
+
+A tie (the same rank again) loses: with ties refunded, every guess returned 102.5-103% (and "higher" on a 2 or
+"lower" on an Ace could never lose). Now every guess returns about 95%. A player who walks away isn't refunded
+(that was a free look at the first card): at timeout Rudhabot makes the likelier guess for them."""
 from __future__ import annotations
 
 import functools
@@ -49,6 +53,7 @@ def opening_embed(first_rank: str, first_suit: str, user) -> discord.Embed:
     odds = ODDS_TABLE[first_rank]
     text = f"**Higher**: {odds['higher']}:1\n" if odds['higher'] is not None else "**Higher**: Not available\n"
     text += f"**Lower**: {odds['lower']}:1" if odds['lower'] is not None else "**Lower**: Not available"
+    text += "\n-# The same rank again (a tie) loses. If you don't pick within 5 minutes, the likelier guess is made."
     embed.add_field(name="Payout Odds", value=text, inline=False)
     return embed
 
@@ -75,48 +80,52 @@ class HighLowView(ServiceView):
     async def interaction_check(self, interaction: Interaction):
         return interaction.user.id == self.user_id
 
-    async def finish(self, i: Interaction, guess):
-        if self.game_over:
-            return
+    def likelier_guess(self) -> str:
+        """The guess with more winning ranks (what a sensible player would pick)."""
+        above = sum(1 for r in RANKS if RANK_VALUES[r] > self.first_value)
+        below = sum(1 for r in RANKS if RANK_VALUES[r] < self.first_value)
+        if ODDS_TABLE[self.first_rank]["lower"] is None:
+            return "higher"
+        if ODDS_TABLE[self.first_rank]["higher"] is None:
+            return "lower"
+        return "higher" if above >= below else "lower"
+
+    def _resolve(self, guess: str, user, note: str = "") -> discord.Embed:
+        """Draw the next card, settle the bet (a tie loses) and end the session. Returns the result embed."""
+        self.game_over = True
         next_rank, next_suit = draw_card(self.rng)
         next_value = RANK_VALUES[next_rank]
         next_emoji = card_emojis.get(f"{next_rank}{next_suit}", "🎴")
-        result_text = f"Next card: {next_emoji} **{next_rank}{next_suit}**\n"
+        result_text = note + f"Next card: {next_emoji} **{next_rank}{next_suit}**\n"
         payout = ODDS_TABLE[self.first_rank][guess]
-        users = self.services.users
-        if next_value == self.first_value:
-            result_text += "It's a tie! Your bet is returned."
-            color = Colors.GAMBLING
-            users.credit_wallet(self.user_id, self.bet_amount)
-            result_text += f"\n\n💰 Bet refunded: {CURRENCY}{self.bet_amount}"
-        elif (guess == "higher" and next_value > self.first_value) or (guess == "lower" and next_value < self.first_value):
+        if (guess == "higher" and next_value > self.first_value) or (guess == "lower" and next_value < self.first_value):
             winnings = int(self.bet_amount + self.bet_amount * payout)
-            users.credit_wallet(self.user_id, winnings)
+            wallet = self.services.users.credit_wallet(self.user_id, winnings)
             result_text += f"You guessed **{guess}** and were correct!\n\n🎉 You win! {CURRENCY}{winnings} (Payout: {payout}:1)"
             color = Colors.SUCCESS
         else:
-            result_text += f"You guessed **{guess}** and were wrong.\n\n💸 You lose! {CURRENCY}{self.bet_amount}"
+            wallet = self.services.users.get(self.user_id)["wallet"]
+            why = "It's the same rank: a tie loses." if next_value == self.first_value else \
+                f"You guessed **{guess}** and were wrong."
+            result_text += f"{why}\n\n💸 You lose! {CURRENCY}{self.bet_amount}"
             color = Colors.LOSS
-        self.game_over = True
         result = discord.Embed(title=f"{HIGHLOWICON} HIGH-LOW", description=result_text, color=color)
-        result.set_author(name=i.user.name, icon_url=i.user.display_avatar.url)
+        result.set_author(name=user.name, icon_url=user.display_avatar.url)
+        result.set_footer(text=f"Final wallet: {wallet}ra")
         self.services.sessions.end(self.user_id)          # before any Discord call: a failed edit must not lock them out
-        await i.response.edit_message(embed=result, view=None)
+        return result
+
+    async def finish(self, i: Interaction, guess):
+        if self.game_over:
+            return
+        await i.response.edit_message(embed=self._resolve(guess, i.user), view=None)
 
     async def on_timeout(self):
         if self.game_over:
             return
-        wallet = self.services.users.credit_wallet(self.user_id, self.bet_amount)      # refund the bet
-        embed = discord.Embed(
-            title=f"{HIGHLOWICON} HIGH-LOW - TIMEOUT",
-            description=f"⏰ **Game timed out!**\n💰 **Refunded:** {CURRENCY}{self.bet_amount}\n\n"
-                        f"Your bet has been returned to your wallet.",
-            color=Colors.COOLDOWN,
-        )
-        embed.set_footer(text=f"Final wallet: {wallet}ra")
-        self.game_over = True
-        self.services.sessions.end(self.user_id)
+        guess = self.likelier_guess()
+        embed = self._resolve(guess, self.interaction.user, note=f"⏰ Time's up: Rudhabot guessed **{guess}** for you.\n")
         try:
             await self.interaction.edit_original_response(embed=embed, view=None)
         except discord.HTTPException:
-            pass                                          # the message is gone; the refund and unlock already happened
+            pass                                          # the message is gone; the bet is settled and unlocked anyway

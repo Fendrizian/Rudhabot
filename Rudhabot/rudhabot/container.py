@@ -32,7 +32,7 @@ from rudhabot.services.review import ReviewService
 from rudhabot.services.security import SecurityService
 from rudhabot.services.stocks import StockExchange, initial_state
 from rudhabot.services.crypto_market import CryptoMarket
-from rudhabot.services.loans import LoanService
+from rudhabot.services.loans import LoanService, liquidate_investments
 from rudhabot.services.clairvoyance import ClairvoyanceService
 from rudhabot.services.lottery import LotteryService
 from rudhabot.services.permissions import AdminPolicy
@@ -120,6 +120,11 @@ class Services:
         tcg.gacha = gacha
         tcg.bank = bank
 
+        crypto = CryptoMarket(PriceBook(value("crypto_prices", paths.crypto, lambda: starting_prices(symbols))),
+                              coins, users, rng)
+        # an overdue loan the wallet and bank can't cover sells the member's investments before bankruptcy
+        loans = LoanService(users, settings.loans, clock,
+                            liquidate=lambda uid: liquidate_investments(uid, users, crypto, exchange))
         assistant = _build_assistant(settings, tcg, clairvoyance)
         security = _build_security(settings, storage, clock, client, assistant, lambda: profile.role("admin"))
         standing = StandingService(security, reviews, clock)       # one view of a member across every system
@@ -137,9 +142,8 @@ class Services:
             shop=shop,
             sessions=GamblingSessions(),
             admin=AdminPolicy(lambda: profile.role("admin"), lambda: profile.role("banker")),
-            loans=LoanService(users, settings.loans, clock),
-            crypto=CryptoMarket(PriceBook(value("crypto_prices", paths.crypto, lambda: starting_prices(symbols))),
-                                coins, users, rng),
+            loans=loans,
+            crypto=crypto,
             lottery=LotteryService(users, LotteryLedger(value("lottery", paths.lottery, empty_ledger)), Lottery(rng=rng),
                                    clock),
             birthdays=BirthdayService(BirthdayRegistry(value("birthday_registry", paths.birthday_registry, dict)),
