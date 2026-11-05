@@ -26,7 +26,8 @@
   - `/loaninfo` shows what can be sent;
   - an overdue loan sells crypto and shares before bankruptcy;
   - a frozen card blocks new loans.
-- **Birthday gift:** removing and re-adding a birthday no longer pays the gift again that year.
+- **Birthday gift:** removing and re-adding a birthday no longer pays the gift again that year. Only the year of
+  the last gift is kept after a removal (never the date), and only until that year ends.
 - **Crypto:** a coin sinking to 100 ra now has a value-preserving 1-for-10 reverse split instead of sitting on a floor
   it could only rise from (buying there was risk-free).
 
