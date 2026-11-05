@@ -2128,10 +2128,18 @@ def legal_actions(g: Game) -> list[Act]:
 
 
 def apply(g: Game, key: str) -> None:
+    """Apply the legal action `key` (re-validated against the current state); raises IllegalAction otherwise."""
     acts = {a.key: a for a in legal_actions(g)}
     act = acts.get(key)
     if act is None:
         raise IllegalAction(f"{key!r} is not a legal action now")
+    apply_trusted(g, act)
+
+
+def apply_trusted(g: Game, act: Act) -> None:
+    """Apply `act` without re-checking it. Only for AI search on clones: `act` must come from `legal_actions` on this
+    same position (or an identical clone of it). Real matches always go through `apply`, which validates."""
+    key = act.key
     g.history.append(key)
     if g.pending:
         pr = g.pending.pop(0)

@@ -1,6 +1,7 @@
 """Reproducible training pipeline for Clairvoyance, Rudhabot's Cloudfall model.
 
-    python -m rudhabot.ml.train --version clairvoyance-v3 --init clairvoyance-v2      # the v3 build (warm start)
+    python -m rudhabot.ml.train --version clairvoyance-v4 --init clairvoyance-v3 --look 5   # the v4 build
+    python -m rudhabot.ml.train --version clairvoyance-v3 --init clairvoyance-v2 --look 0   # the v3 build (1-ply)
     python -m rudhabot.ml.train --version clairvoyance-v2                              # v2 recipe from scratch
     python -m rudhabot.ml.train --version smoke --games 60 --test-games 20 --gens 1 --eval-games 10 --no-current
 
@@ -8,7 +9,9 @@ Pipeline (all data is engine self-play; every step is seeded):
   gen 0  data from the warm-start model's served policy (--init), or from heuristic-search players (ε-greedy)
          -> train (Monte-Carlo targets for heuristic data, TD(λ) for model data)
   gen k  the newest network's policy plays (mixed with heuristic and random seats) -> retrain on gens k and k-1 with
-         TD(λ) targets (expert iteration); 40% of decks are legal random mutations of the archetypes
+         TD(λ) targets (expert iteration); 40% of decks are legal random mutations of the archetypes.
+         With --look N the network's seats search with the turn lookahead (policy.plan_actions), so the games come
+         from the stronger player and the TD targets from its line values
          training options: EMA weight averaging (--ema), hand-hidden augmentation for the spectator win bar
          (--hide-hand), early stopping on held-out games
   cal    Platt scaling on separate calibration games
@@ -98,13 +101,19 @@ def card_values(net, inputs, sample: int = 2000, seed: int = 0) -> dict:
     return values
 
 
-def choose_blend_weight(path: str, weights, seeds, processes: int, previous_spec=None, log=print) -> tuple[float, dict]:
+def served_spec(path: str, weight: float, look: int = 0, **kw) -> PolicySpec:
+    return PolicySpec("blend", path, weight=weight, look=look, **kw) if weight > 0 else \
+        PolicySpec("net", path, look=look, **kw)
+
+
+def choose_blend_weight(path: str, weights, seeds, processes: int, previous_spec=None, log=print,
+                        look: int = 0) -> tuple[float, dict]:
     """Serving blend weight w (logit(P_net) + w * logit(P_heuristic)) with the best mean arena score vs the heuristic
     and, if there is one, the previously served model. Chosen on training arena seeds; confirm on fresh seeds with
     the benchmark."""
     results, best = {}, None
     for w in weights:
-        spec = PolicySpec("blend", path, weight=w) if w > 0 else PolicySpec("net", path)
+        spec = served_spec(path, w, look)
         row = {"vs_heuristic": arena(spec, PolicySpec("heuristic"), seeds, processes)}
         if previous_spec is not None:
             row["vs_previous"] = arena(spec, previous_spec, seeds, processes)
@@ -135,6 +144,7 @@ def main() -> None:
     parser.add_argument("--mutate", type=float, default=0.4, help="probability each deck is a mutated archetype")
     parser.add_argument("--eval-games", type=int, default=200, help="arena seeds (each played twice, seats swapped)")
     parser.add_argument("--blend-weights", default="0.5", help="comma-separated serving blend weights to compare")
+    parser.add_argument("--look", type=int, default=5, help="turn lookahead for the network's seats (0 = 1-ply)")
     parser.add_argument("--processes", type=int, default=0)
     parser.add_argument("--seed", type=int, default=11)
     parser.add_argument("--no-current", action="store_true", help="register without making it the current version")
@@ -154,7 +164,7 @@ def main() -> None:
             raise SystemExit(f"--init {args.init} is a {net.ARCH} network, not {args.arch}")
         net.calibration = (1.0, 0.0)                    # recalibrated at the end
         init_weight = store.manifest()["versions"][args.init].get("serving", {}).get("blend_weight", 0.5)
-        primary = PolicySpec("blend", init_path, epsilon=0.1, temperature=0.02, weight=init_weight)
+        primary = PolicySpec("blend", init_path, epsilon=0.1, temperature=0.02, weight=init_weight, look=args.look)
         print(f"[init] warm start from {args.init} ({net.n_params():,} params); its served policy plays gen 0")
     else:
         primary = PolicySpec("heuristic", epsilon=0.1, temperature=0.02)
@@ -179,8 +189,8 @@ def main() -> None:
                         "test_states": int(len(test[2])), "history": history})
         net.meta = {"version": args.version, "schema": _schema(net.ARCH)}
         net.save(tmp_path)
-        primary = PolicySpec("blend", tmp_path, epsilon=0.1, temperature=0.02, weight=0.5) if args.init else \
-            PolicySpec("net", tmp_path, epsilon=0.1, temperature=0.02)
+        primary = PolicySpec("blend", tmp_path, epsilon=0.1, temperature=0.02, weight=0.5, look=args.look) \
+            if args.init else PolicySpec("net", tmp_path, epsilon=0.1, temperature=0.02, look=args.look)
 
     print("[calibrate] Platt scaling on separate calibration games")
     cal_rec = RecordSpec(arch=args.arch, rate=args.record, td_lambda=1.0, mutate=args.mutate)
@@ -200,17 +210,19 @@ def main() -> None:
     if previous:
         try:
             prev_weight = store.manifest()["versions"][previous].get("serving", {}).get("blend_weight", 0.5)
-            previous_spec = PolicySpec("blend", store.current_path(previous), weight=prev_weight)
+            previous_spec = served_spec(store.current_path(previous), prev_weight, args.look)   # same search depth
         except Exception as error:                       # previous artifact missing: report, don't fail the build
             print(f"  previous model unavailable: {error}")
     print("[eval] serving blend weight")
     weights = [float(w) for w in args.blend_weights.split(",") if w.strip()]
-    blend_weight, blend_search = choose_blend_weight(tmp_path, weights, seeds, args.processes, previous_spec)
+    blend_weight, blend_search = choose_blend_weight(tmp_path, weights, seeds, args.processes, previous_spec,
+                                                     look=args.look)
     print(f"  chosen blend weight: {blend_weight}")
     print("[eval] arenas")
-    served = PolicySpec("blend", tmp_path, weight=blend_weight) if blend_weight > 0 else PolicySpec("net", tmp_path)
+    served = served_spec(tmp_path, blend_weight, args.look)
     strength = {
         "net_vs_heuristic": arena(PolicySpec("net", tmp_path), PolicySpec("heuristic"), seeds, args.processes),
+        "served_vs_one_ply": arena(served, served_spec(tmp_path, blend_weight, 0), seeds, args.processes),
         "blend_vs_heuristic": arena(served, PolicySpec("heuristic"), seeds, args.processes),
         "blend_vs_heuristic_mutated_decks": arena(served, PolicySpec("heuristic"), seeds, args.processes, mutate=1.0),
         "net_vs_random": arena(PolicySpec("net", tmp_path), PolicySpec("random"), seeds, args.processes),
@@ -228,8 +240,10 @@ def main() -> None:
                 "metrics use true game outcomes",
         "generations": gen_log, "metrics": metrics, "strength": strength, "blend_search": blend_search,
         "latency": lat, "build_seconds": round(time.time() - t0, 1), "card_values": card_values(net, test[0]),
-        "serving": {"move_policy": f"blend: logit(P_net) + {blend_weight:g} * logit(P_heuristic), 1-ply determinized "
-                                   "afterstate search", "blend_weight": blend_weight,
+        "serving": {"move_policy": f"blend: logit(P_net) + {blend_weight:g} * logit(P_heuristic), "
+                                   + (f"determinized turn lookahead (top {args.look} first moves)" if args.look else
+                                      "1-ply determinized afterstate search"),
+                    "blend_weight": blend_weight, "lookahead_top": args.look,
                     "probabilities": "calibrated network only"},
     }
     path = store.register(args.version, net, info, make_current=not args.no_current)

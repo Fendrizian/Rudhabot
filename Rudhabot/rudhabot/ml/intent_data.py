@@ -40,6 +40,22 @@ INTENTS: dict[str, tuple[str, str, bool]] = {
     "lottery": ("check the lottery", "lottery", True),
     "birthday": ("see upcoming birthdays", "birthday upcoming", True),
     "chat": ("just chat or ask something else", "ask", False),
+    # intent-v3 (November 2026): commands added since v2, and the games v2 only knew as "games"
+    "guide": ("read the Rudhabot guidebook", "guide", True),
+    "collect": ("collect the income your roles earn", "collect", True),
+    "income": ("see which roles earn an income", "income", True),
+    "send": ("send money to another member", "send", False),
+    "rob": ("try to rob another member", "rob", False),
+    "sell": ("sell an item from your inventory", "sell", False),
+    "use": ("use an item, like a mystery box or food", "use", False),
+    "history": ("see your recent transactions", "bank history", True),
+    "slots": ("play the slot machine", "slots", False),
+    "roulette": ("play roulette", "roulette", True),
+    "crash": ("play crash", "crash", False),
+    "highlow": ("play high-low", "highlow", False),
+    "coinflip": ("bet on a coin flip", "coinflip", False),
+    "dice": ("bet on a dice roll", "dice", False),
+    "rps": ("play rock paper scissors for a bet", "rps", False),
 }
 
 TRAIN: dict[str, list[str]] = {
@@ -183,6 +199,69 @@ for _intent, _phrases in TRAIN_V2_ADDITIONS.items():
 # the bank intent used to cover savings accounts, which were merged into the bank balance
 TRAIN["bank"] = [p for p in TRAIN["bank"] if "savings" not in p and p not in ("bank account", "my bank", "bank status")]
 
+# intent-v3 additions (November 2026): the fifteen new intents, and boundary wording for the older ones they sit next
+# to (help vs guide, crime vs rob, craps vs dice, shop items vs stocks and coins, buying vs using an item).
+TRAIN_V3_ADDITIONS: dict[str, list[str]] = {
+    "guide": ["guide", "guidebook", "the rudhabot guidebook", "show me the guide", "rudhabot manual",
+              "read the manual", "open the manual", "guide chapter", "explain everything in detail",
+              "full guide to the bot", "beginner's guide", "where is the guidebook", "guide to the economy",
+              "handbook", "read the handbook", "detailed guide please"],
+    "collect": ["collect role income", "collect my income", "role income", "claim role income", "my role pay",
+                "collect salary", "claim my salary", "role reward", "get my role income", "collect my role reward",
+                "payday", "collect money from roles", "role payout", "cash in my roles"],
+    "income": ["income", "role incomes", "income list", "which roles pay", "role salary list",
+               "what do roles earn", "income for each role", "how much does my role pay", "list incomes",
+               "roles that earn money", "best paying role", "income table", "salaries"],
+    "send": ["send money", "give money", "send ra", "give ra to a friend", "transfer ra", "pay someone",
+             "pay a friend", "send 100 to him", "share money with my friend", "donate ra to someone",
+             "transfer to another user", "gift money", "wire money to a member", "send coins to a friend"],
+    "rob": ["rob", "rob someone", "rob a member", "rob a player", "rob him", "rob her", "steal from someone",
+            "steal someone's money", "mug someone", "rob a user's wallet", "pickpocket a member", "rob my friend",
+            "steal from a player", "i want to rob a person"],
+    "sell": ["sell", "sell an item", "sell item", "sell my stuff", "sell things from my inventory",
+             "sell back an item", "sell my cap", "sell my tumbler", "sell a hoodie", "sell items to the shop",
+             "how much can i sell for", "resell an item", "sell my vase", "trade in an item"],
+    "use": ["use", "use item", "use an item from my inventory", "unwrap a mystery box", "open a box", "use a mystery box",
+            "eat food", "eat my cake", "drink a coffee", "consume an item", "use my golden ticket",
+            "scratch my lottery ticket", "unbox", "open my boxes", "eat something from my inventory"],
+    "history": ["history", "bank history", "transactions", "transaction history", "recent transactions",
+                "my transactions", "money history", "what did i spend", "spending history", "payment history",
+                "show my history", "past transactions", "where has my ra gone", "statement of my account"],
+    "slots": ["slots", "slot machine", "spin slots", "play the slots", "slots 50", "spin the slots",
+              "slot game", "jackpot slots", "reels", "spin to win", "one armed bandit", "fruit machine",
+              "bet on slots", "slots 1000"],
+    "roulette": ["roulette", "play roulette", "roulette wheel", "spin for red", "bet on black", "red or black",
+                 "roulette red", "put it all on red", "bet on a number in roulette", "roulette 17", "even or odd bet",
+                 "wheel spin bet", "roulette table"],
+    "crash": ["crash", "crash game", "play crash", "crash 100", "rocket game", "multiplier game", "cash out game",
+              "crash gamble", "ride the multiplier", "crash bet", "launch the rocket", "how high will it go game"],
+    "highlow": ["highlow", "high low", "higher or lower", "hi lo", "high-low", "higher lower card",
+                "play higher or lower", "highlow 100", "guess higher", "guess lower", "next card higher or lower",
+                "hilo game"],
+    "coinflip": ["coinflip", "coin flip", "flip a coin", "pick heads or pick tails", "heads", "tails", "coinflip 100",
+                 "toss a coin", "bet on heads", "flip for money", "coin flip bet", "double or nothing coin"],
+    "dice": ["dice", "dice game", "roll a die", "roll the dice", "guess the roll", "dice 100", "bet on a number 2 to 12",
+             "pick a number and roll", "die roll bet", "dice bet on 6", "roll dice for money", "guess a dice number"],
+    "rps": ["rps", "play roshambo", "rps match", "rock", "paper", "scissors", "rps 50",
+            "wager on rps", "i pick rock", "roshambo", "rps game", "throw paper"],
+    "help": ["commands", "command list", "all commands", "what commands do you have", "show commands",
+             "which commands exist"],
+    "crime": ["commit crime", "do crime for money", "crime spree", "break the law for money", "a life of crime"],
+    "craps": ["craps table", "craps 100", "come out roll", "craps bet"],
+    "stocks": ["sell stocks", "sell my shares", "stock quote", "nas quote", "share prices"],
+    "crypto": ["sell crypto coins", "coin chart", "scay price", "sell my scay"],
+    "buy": ["buy a cake", "purchase an item", "buy a cap", "buy a tumbler"],
+    "games": ["casino", "gambling", "all casino games", "gambling menu", "which games are there to bet on"],
+    "chat": ["what's the best food", "how does electricity work", "i'm tired", "who built you", "tell me about history",
+             "what's 10 percent of 50", "who is the best football player", "what is a rainbow", "can dogs swim",
+             "i love this server", "random question", "how do computers work", "why is the sky blue",
+             "what's a good name for a cat", "i'm happy today", "tell me something interesting"],
+}
+
+for _intent, _phrases in TRAIN_V3_ADDITIONS.items():
+    TRAIN.setdefault(_intent, [])
+    TRAIN[_intent] += [p for p in _phrases if p not in TRAIN[_intent]]
+
 TEST: dict[str, list[str]] = {
     "help": ["what are all the things this bot does", "i'm lost, show me around"],
     "balance": ["am i broke", "tell me how much cash i've got"],
@@ -266,4 +345,46 @@ TEST_2: dict[str, list[str]] = {
     "chat": ["what's the tallest mountain", "tell me something funny", "good night rudhabot", "how old is the universe",
              "can you help me with my homework", "what's your favourite colour", "who invented the telephone",
              "sing me a song"],
+}
+
+
+# A third held-out set, written in November 2026 *before* intent-v3's training phrases, and frozen since. Never trained
+# on or augmented. It covers the fifteen intents added in v3 (4-5 phrasings each) and, for the older intents, new
+# phrasings near the boundaries v3 adds (help vs guide, crime vs rob, craps vs dice, selling items vs selling stocks
+# or coins, buying vs using an item), plus more general conversation.
+TEST_3: dict[str, list[str]] = {
+    "guide": ["open the guidebook", "is there a manual for this bot", "read the rudhabot guide",
+              "where can i read how everything works in detail", "guidebook chapter on the bank"],
+    "collect": ["claim my role money", "collect income from my roles", "grab my role salary",
+                "get the pay for my role", "collect"],
+    "income": ["which roles give money", "list of role incomes", "how much does each role earn",
+               "what role pays the most", "show role salaries"],
+    "send": ["give 200 ra to my friend", "transfer money to someone", "pay another member 50",
+             "send cash to @someone", "how do i give money to a person"],
+    "rob": ["rob that guy", "steal from another member", "try robbing someone's wallet",
+            "can i rob a user", "take money from someone by force"],
+    "sell": ["sell my hoodie back", "how do i sell an item", "get rid of an item for money",
+             "sell 2 coffees from my inventory"],
+    "use": ["open my mystery box", "use an item", "eat the sandwich i bought", "use my lottery ticket",
+            "drink my coffee"],
+    "history": ["show my recent transactions", "where did my money go", "transaction log",
+                "my bank history", "list my last payments"],
+    "slots": ["spin the slot machine", "slots 100", "pull the one armed bandit", "play slots",
+              "let me spin the reels"],
+    "roulette": ["spin the roulette wheel", "bet on red", "roulette please", "put money on black 17"],
+    "crash": ["play the crash game", "crash 200", "cash out before it crashes", "rocket multiplier game"],
+    "highlow": ["higher or lower card game", "play highlow", "high low 50", "guess if the next card is higher"],
+    "coinflip": ["flip a coin for 100", "heads or tails bet", "coin toss", "bet on tails"],
+    "dice": ["guess the dice number", "bet on a die roll", "roll a dice and guess 4", "dice game 50"],
+    "rps": ["rock paper scissors", "play rps for 20", "i choose scissors", "bet on rock paper scissors"],
+    "help": ["list every command you have", "what commands can i use"],
+    "crime": ["do a crime for some quick money", "commit a felony"],
+    "craps": ["craps pass line 100", "play at the craps table"],
+    "stocks": ["sell my shares of nas", "stock prices today"],
+    "crypto": ["sell some scay", "crypto chart"],
+    "buy": ["buy a mystery box", "purchase a coffee"],
+    "games": ["what gambling games do you have", "show me all the casino games"],
+    "daily": ["daily reward please", "claim my daily"],
+    "chat": ["what is the best pizza topping", "how do magnets work", "i'm so tired today", "who is your creator",
+             "tell me about the roman empire", "what's 15 percent of 80"],
 }

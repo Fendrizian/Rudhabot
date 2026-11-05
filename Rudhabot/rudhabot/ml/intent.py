@@ -1,17 +1,21 @@
 """Clairvoyance intent router: maps what someone types to an existing Rudhabot capability, fast and offline.
 
-    python -m rudhabot.ml.intent          # train, evaluate on the held-out phrasings, save models/intent-v2.*
+    python -m rudhabot.ml.intent          # train, evaluate on the held-out phrasings, save models/intent-v3.*
 
 Model   hashed character n-grams (2-5, word-bounded) + word unigrams/bigrams -> 8,192-dim TF vector (L2-normalised)
-        -> 96 ReLU -> softmax over the intents in `intent_data.INTENTS`. Temperature-calibrated on held-out seeds.
+        -> 128 ReLU -> softmax over the intents in `intent_data.INTENTS`. Temperature-calibrated on held-out seeds.
 Data    developer-written phrases (`intent_data.py`), augmented with politeness, casing and typo variants. The TEST
         phrasings are written separately and never trained on or augmented.
 Use     `IntentRouter.route(text)` returns the ranked intents with calibrated confidence. The caller decides:
         confident (>= the model's `confident` threshold) -> offer that command; unsure -> ask a clarifying
         question with the top options; "chat" -> hand to the OpenAI assistant. The router never runs anything.
-Eval    two held-out test sets (TEST, TEST_2) plus grouped 5-fold cross-validation over the training phrases (a
-        phrase and its augmented variants never straddle folds). The confident threshold is the lowest one whose
-        cross-validated precision reaches TARGET_PRECISION, so offered commands are right that often.
+Eval    three held-out test sets (TEST, TEST_2, TEST_3, each frozen before the training data of the version it was
+        written for) plus grouped 5-fold cross-validation over the training phrases (a phrase and its augmented
+        variants never straddle folds). The confident threshold is the lowest one whose cross-validated precision
+        reaches TARGET_PRECISION, so offered commands are right that often. The previous model, if present, is scored
+        on the same test phrases (`compare_previous`).
+Args    after routing, `intent_args` reads amounts, choices and mentions out of the message so /ask can show the
+        command pre-filled (text only; nothing runs with them).
 """
 from __future__ import annotations
 
@@ -25,9 +29,10 @@ from typing import Optional
 
 import numpy as np
 
-from rudhabot.ml.intent_data import INTENTS, TEST, TEST_2, TRAIN
+from rudhabot.ml.intent_data import INTENTS, TEST, TEST_2, TEST_3, TRAIN
 
-MODEL_FILE = "intent-v2.npz"          # what the bot loads (models/<MODEL_FILE>)
+MODEL_FILE = "intent-v3.npz"          # what the bot loads (models/<MODEL_FILE>)
+PREVIOUS_FILE = "intent-v2.npz"       # scored on the same test phrases for comparison
 TARGET_PRECISION = 0.90          # a suggestion is a button the user may ignore; v1's fixed 0.60 sat at ~0.91
 DIM = 8192
 LABELS = tuple(INTENTS)
@@ -223,7 +228,7 @@ def _dataset(phrases: dict[str, list[str]], rng: random.Random, aug: int):
     return np.stack([featurise(t) for t in texts]), np.array(labels)
 
 
-HIDDEN, EPOCHS, AUG = 96, 40, 8
+HIDDEN, EPOCHS, AUG = 128, 40, 8      # hidden 128 chosen by grouped cross-validation (v2: 96)
 
 
 def _metrics(p: np.ndarray, y: np.ndarray, threshold: float, texts=None) -> dict:
@@ -261,6 +266,35 @@ def evaluate(net: IntentNet, test: dict, threshold: float) -> dict:
     texts = [t for k, v in test.items() if k in LABELS for t in v]
     X, y = _dataset({k: v for k, v in test.items() if k in LABELS}, random.Random(0), 0)
     return _metrics(net.proba(X), y, threshold, texts)
+
+
+def compare_previous(path: str, tests: dict[str, dict]) -> Optional[dict]:
+    """Score an older model (with its own label set) on the same test phrases. Phrases whose intent it doesn't know
+    count as errors in `all` and are left out of `known`, so both the overall and the like-for-like view are there."""
+    if not os.path.exists(path):
+        return None
+    with np.load(path, allow_pickle=False) as d:
+        labels = tuple(str(x) for x in d["labels"])
+        W1, b1, W2, b2 = d["W1"].astype(np.float32), d["b1"], d["W2"], d["b2"]
+        temperature = float(d["temperature"][0])
+        meta = json.loads(bytes(d["meta"]).decode()) if "meta" in d and d["meta"].size else {}
+    threshold = float(meta.get("confident_threshold", IntentRouter.CONFIDENT))
+    out = {"model": os.path.basename(path).removesuffix(".npz"), "labels": len(labels), "confident_threshold": threshold}
+    for name, test in tests.items():
+        rows = [(t, k) for k, v in test.items() for t in v]
+        X = np.stack([featurise(t) for t, _ in rows])
+        z = (np.maximum(X @ W1 + b1, 0) @ W2 + b2) / temperature
+        p = np.exp(z - z.max(1, keepdims=True)); p /= p.sum(1, keepdims=True)
+        pred = [labels[i] for i in p.argmax(1)]
+        conf = p.max(1)
+        right = np.array([a == k for a, (_, k) in zip(pred, rows)])
+        known = np.array([k in labels for _, k in rows])
+        keep = conf >= threshold
+        out[name] = {"n": len(rows), "accuracy": float(right.mean()), "known_n": int(known.sum()),
+                     "known_accuracy": float(right[known].mean()) if known.any() else None,
+                     "confident_precision": float(right[keep].mean()) if keep.any() else None,
+                     "confident_coverage": float(keep.mean())}
+    return out
 
 
 def _train(phrases: dict, seed: int):
@@ -328,20 +362,30 @@ def main() -> None:
               "temperature": final.temperature, "confident_threshold": threshold, "target_precision": TARGET_PRECISION,
               "cross_validation": _metrics(cv_p, cv_y, threshold),
               "test": evaluate(final, TEST, threshold), "test_2": evaluate(final, TEST_2, threshold),
-              "data": "developer-written phrases with augmentation; TEST and TEST_2 phrasings written separately and "
-                      "never trained on; TEST_2 was frozen before this version's training data was written"}
+              "test_3": evaluate(final, TEST_3, threshold),
+              "previous": compare_previous(os.path.join(args.models, PREVIOUS_FILE),
+                                           {"test": TEST, "test_2": TEST_2, "test_3": TEST_3}),
+              "data": "developer-written phrases with augmentation; TEST, TEST_2 and TEST_3 phrasings written "
+                      "separately and never trained on; TEST_2 was frozen before intent-v2's training data was "
+                      "written and TEST_3 before intent-v3's"}
     os.makedirs(args.models, exist_ok=True)
-    meta = {k: v for k, v in report.items() if k not in ("test", "test_2", "cross_validation")}
+    meta = {k: v for k, v in report.items() if k not in ("test", "test_2", "test_3", "cross_validation", "previous")}
     final.save(os.path.join(args.models, f"{args.version}.npz"), meta)
     with open(os.path.join(args.models, f"{args.version}.json"), "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2)
-    for name in ("cross_validation", "test", "test_2"):
+    for name in ("cross_validation", "test", "test_2", "test_3"):
         r = report[name]
         print(f"{name:16s} n={r['n']:4d} acc {r['accuracy']:.3f} cmd-acc {r['command_accuracy']:.3f} "
               f"F1 {r['macro_f1']:.3f} ECE {r['ece']:.3f} | confident: coverage {r['confident']['coverage']:.3f} "
               f"precision {r['confident']['precision']:.3f} | chat->command {r['chat_offered_as_command']:.3f} "
               f"task->chat {r['task_sent_to_chat']:.3f}")
+    if report["previous"]:
+        prev = report["previous"]
+        for name in ("test", "test_2", "test_3"):
+            print(f"{prev['model']:16s} {name}: acc {prev[name]['accuracy']:.3f} (on intents it knows "
+                  f"{prev[name]['known_accuracy']:.3f}, n={prev[name]['known_n']})")
     print("test_2 errors:", report["test_2"]["errors"])
+    print("test_3 errors:", report["test_3"]["errors"])
 
 
 if __name__ == "__main__":

@@ -6,18 +6,21 @@ Routing (fast and free first, then the language model):
      buttons for the top options.                                         General conversation -> the OpenAI assistant
      (or Rudhabot's local docs when OpenAI isn't configured).
   3. A button runs the *real* slash command: its own checks (permissions, "not in a game", ...) and its own logic, for
-     the person who asked only. Commands that need details (amounts, bets) are explained instead of guessed.
+     the person who asked only. Commands that need details (amounts, bets) are never run with guessed details: the
+     card shows the command to type, pre-filled with whatever the message said (`ml/intent_args.py`).
 """
 from __future__ import annotations
 
 import logging
 import re
+from typing import Optional
 
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
 
 from rudhabot.cogs.base import ServiceCog
+from rudhabot.ml import intent_args
 from rudhabot.ml.intent import IntentRouter
 from rudhabot.ml.intent_data import INTENTS
 from rudhabot.services.audit import set_context
@@ -80,14 +83,30 @@ async def run_intent(interaction: discord.Interaction, intent: str) -> None:
         await interaction.client.tree.on_error(interaction, app_commands.CommandInvokeError(command, error))
 
 
-def suggestion(router: IntentRouter, user_id: int, text: str):
-    """(embed, view) offering the command(s) the message most likely means, or None for general conversation."""
+def prefilled(tree: Optional[app_commands.CommandTree], path: str, text: str, resolve_item=None) -> Optional[str]:
+    """The command to type, with the arguments read from the message (`intent_args`), or None if it takes none or
+    nothing could be read. Shown as text only: nothing runs with arguments the person didn't type into the command."""
+    command = find_command(tree, path) if tree is not None else None
+    params = list(getattr(command, "parameters", []) or [])
+    if command is None or isinstance(command, app_commands.Group) or not params:
+        return None
+    spec = [(p.name, [(c.name, str(c.value)) for c in (p.choices or [])]) for p in params]
+    values = intent_args.extract(text, spec, resolve_item)
+    return intent_args.usage(path, [(p.name, p.required) for p in params], values) if values else None
+
+
+def suggestion(router: IntentRouter, user_id: int, text: str, tree: Optional[app_commands.CommandTree] = None,
+               resolve_item=None):
+    """(embed, view) offering the command(s) the message most likely means, or None for general conversation.
+    With the command tree, a command that needs arguments also shows them pre-filled from the message."""
     route = router.route(text)
     if route is None or route.intent == "chat":
         return None
     if route.confidence >= router.confident:
-        description, path, _ = INTENTS[route.intent]
-        embed = discord.Embed(description=f"It looks like you want to **{description}**.", color=ASK_COLOR)
+        description, path, runnable = INTENTS[route.intent]
+        typed = None if runnable else prefilled(tree, path, text, resolve_item)
+        embed = discord.Embed(description=f"It looks like you want to **{description}**."
+                                          + (f"\nType `{typed}` to do it." if typed else ""), color=ASK_COLOR)
         view = ui.View(timeout=None)
         view.add_item(RunIntent(user_id, route.intent))
         router.record("offered", route.intent)
@@ -125,6 +144,10 @@ class AssistantCog(ServiceCog):
     async def cog_load(self) -> None:
         self.bot.add_dynamic_items(RunIntent)
 
+    def _resolve_item(self, name: str):
+        catalog = getattr(self.services, "catalog", None)
+        return catalog.resolve(name) if catalog is not None else None
+
     def _hidden(self, user, guild_id) -> frozenset:
         """Help entries this person can't use and guidebook chapters they can't read: /ask never cites them."""
         from rudhabot.services.permissions import viewer_for
@@ -136,7 +159,7 @@ class AssistantCog(ServiceCog):
     @app_commands.command(name="ask", description="Ask Rudhabot anything, or say what you want to do")
     @app_commands.describe(question="e.g. 'show my inventory' or 'how does Corruption work?'", private="Only you see the answer")
     async def ask(self, interaction: discord.Interaction, question: app_commands.Range[str, 3, 500], private: bool = True):
-        routed = suggestion(self.services.intents, interaction.user.id, question)
+        routed = suggestion(self.services.intents, interaction.user.id, question, self.bot.tree, self._resolve_item)
         if routed is not None:
             embed, view = routed
             return await interaction.response.send_message(embed=embed, view=view, ephemeral=private)
@@ -155,7 +178,7 @@ class AssistantCog(ServiceCog):
         if not text:
             text = "help"
         try:
-            routed = suggestion(self.services.intents, message.author.id, text)
+            routed = suggestion(self.services.intents, message.author.id, text, self.bot.tree, self._resolve_item)
             if routed is not None:
                 embed, view = routed
                 await message.reply(embed=embed, view=view, mention_author=False)

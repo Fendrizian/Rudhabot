@@ -1,14 +1,23 @@
-"""Move selection for the Clairvoyance: 1-ply afterstate search over the engine's legal actions.
+"""Move selection for the Clairvoyance: afterstate search over the engine's legal actions.
 
 The engine enumerates legal moves; an evaluator scores the state each move leads to; the policy picks one. The AI therefore
 can only ever *choose among moves the rules already allow*. Before searching, hidden information is re-sampled
 ("determinization"): the searcher's own deck order and the opponent's hand+deck are shuffled from what that player could
 know, so the AI never benefits from seeing cards a human in its seat could not see.
+
+Two depths:
+- 1-ply (`score_actions`): score the position right after each legal move.
+- Turn lookahead (`plan_actions`): a Cloudfall turn is a run of decisions by the same player (play cards, use
+  abilities, go to the Clash, declare attackers). For the most promising first moves, the search plays out the rest of
+  that run greedily and scores where the *whole line* leaves the game, so a move is judged by the turn it starts,
+  not only by the position one step later. Each line stops as soon as the opponent has to decide (or the turn or game
+  ends), so the search never assumes what the opponent will do. Optionally it averages several determinizations.
 """
 from __future__ import annotations
 
 import math
 import random
+from dataclasses import dataclass
 from typing import Optional, Protocol, Sequence
 
 import numpy as np
@@ -98,31 +107,126 @@ def determinize(g: Game, me: int, rng: random.Random) -> Game:
     return c
 
 
+def _children(base: Game, acts) -> list[Game]:
+    out = []
+    for act in acts:
+        child = base.clone()
+        E.apply_trusted(child, act)          # acts were listed on this very position
+        out.append(child)
+    return out
+
+
 def score_actions(g: Game, evaluator: Evaluator, rng: random.Random, use_determinization: bool = True):
-    """[(Act, value-for-the-decider)] for every legal action, best first."""
+    """[(Act, value-for-the-decider)] for every legal action, best first (1-ply)."""
     me = E.decider(g)
     acts = E.legal_actions(g)
     if len(acts) <= 1:
         return [(a, 0.5) for a in acts]
     base = determinize(g, me, rng) if use_determinization else g.clone()
-    children = []
-    for act in acts:
-        child = base.clone()
-        E.apply(child, act.key)
-        children.append(child)
-    values = evaluator.values(children, me)
+    values = evaluator.values(_children(base, acts), me)
     ranked = sorted(zip(acts, values.tolist()), key=lambda pair: -pair[1])
     return ranked
 
 
-def choose_scored(g: Game, evaluator: Evaluator, rng: random.Random, temperature: float = 0.0, epsilon: float = 0.0):
-    """(action, estimated value of the state it leads to for the decider, or None if not evaluated)."""
+@dataclass(frozen=True)
+class Lookahead:
+    """Turn-lookahead settings: roll out the `top` best 1-ply moves for up to `max_steps` further decisions, averaged
+    over `samples` determinizations, evaluating at most `budget` positions per sample (then lines stop where they are)."""
+    top: int = 4
+    max_steps: int = 8
+    samples: int = 1
+    budget: int = 800
+
+
+@dataclass(frozen=True)
+class Plan:
+    act: E.Act
+    value: float                       # estimated value for the decider where the line leaves the game
+    line: tuple[str, ...] = ()         # the follow-up moves the search expects to make in this run of decisions,
+                                       # up to the first one that depends on cards it can't see
+    searched: bool = False             # False: 1-ply estimate only (not among the top candidates)
+
+
+# Prompts whose options are cards from a hidden zone (the deck): in a determinized copy those are sampled cards.
+_HIDDEN_PROMPTS = ("p:look_take:", "p:look_bottom:", "p:take_card:", "p:delivery:", "p:mulligan:")
+
+
+def _shown(parent: Game, act: E.Act, me: int, deck_size: int) -> bool:
+    """Whether a follow-up move may be shown in a hint: not once the line has drawn from the decider's deck or meets a
+    prompt listing deck cards, because in the determinized copy those cards are a guess, not the real deck."""
+    return len(parent.players[me].deck) >= deck_size and not act.key.startswith(_HIDDEN_PROMPTS)
+
+
+def _same_run(g: Game, me: int, active: int, rnd: int) -> bool:
+    """Still `me` deciding, in the same turn: the line may go on."""
+    return not g.over and g.active == active and g.round == rnd and E.decider(g) == me
+
+
+def plan_actions(g: Game, evaluator: Evaluator, rng: random.Random, look: Lookahead = Lookahead()) -> list[Plan]:
+    """Every legal action as a Plan, best first: the `look.top` most promising first moves are judged by the line they
+    start (see the module docstring); the rest keep their 1-ply estimate and rank after them."""
+    me = E.decider(g)
+    acts = E.legal_actions(g)
+    if len(acts) <= 1:
+        return [Plan(a, 0.5) for a in acts]
+    n, active, rnd, deck_size = len(acts), g.active, g.round, len(g.players[me].deck)
+    totals = np.zeros(n)
+    roll: list[int] = []
+    lines: dict[int, list[str]] = {}
+    hidden_from: set[int] = set()                         # lines whose later moves depend on sampled cards
+    for sample in range(max(1, look.samples)):
+        children = _children(determinize(g, me, rng), acts)
+        values = evaluator.values(children, me).astype(np.float64)
+        if sample == 0:                                   # the candidates are fixed by the first sample
+            roll = [int(i) for i in np.argsort(-values, kind="stable")[:look.top]]
+            lines = {i: [] for i in roll}
+        frontier = [i for i in roll if _same_run(children[i], me, active, rnd)]
+        evaluated = n
+        for _ in range(look.max_steps):
+            if not frontier or evaluated >= look.budget:
+                break
+            batch, owner, moves = [], [], []
+            for i in frontier:
+                options = E.legal_actions(children[i])
+                batch.extend(_children(children[i], options))
+                owner.extend([i] * len(options))
+                moves.extend(options)
+            scores = evaluator.values(batch, me)
+            evaluated += len(batch)
+            best: dict[int, int] = {}
+            for j, i in enumerate(owner):
+                if i not in best or scores[j] > scores[best[i]]:
+                    best[i] = j
+            for i, j in best.items():
+                if sample == 0 and i not in hidden_from:
+                    if _shown(children[i], moves[j], me, deck_size):
+                        lines[i].append(moves[j].label)
+                    else:
+                        hidden_from.add(i)
+                children[i], values[i] = batch[j], float(scores[j])
+            frontier = [i for i in frontier if _same_run(children[i], me, active, rnd)]
+        totals += values
+    means = totals / max(1, look.samples)
+    searched = set(roll)
+    order = sorted(range(n), key=lambda i: (i not in searched, -means[i]))
+    return [Plan(acts[i], float(means[i]), tuple(lines.get(i, ())), i in searched) for i in order]
+
+
+def _rank(g: Game, evaluator: Evaluator, rng: random.Random, look: Optional[Lookahead]):
+    if look is None:
+        return score_actions(g, evaluator, rng)
+    return [(p.act, p.value) for p in plan_actions(g, evaluator, rng, look)]
+
+
+def choose_scored(g: Game, evaluator: Evaluator, rng: random.Random, temperature: float = 0.0, epsilon: float = 0.0,
+                  look: Optional[Lookahead] = None):
+    """(action, estimated value for the decider, or None if not evaluated). `look` turns on the turn lookahead."""
     acts = E.legal_actions(g)
     if len(acts) == 1:
         return acts[0], None
     if epsilon and rng.random() < epsilon:
         return rng.choice(acts), None
-    ranked = score_actions(g, evaluator, rng)
+    ranked = _rank(g, evaluator, rng, look)
     if temperature <= 0:
         return ranked[0]
     logits = np.array([v for _, v in ranked]) / temperature
@@ -131,8 +235,9 @@ def choose_scored(g: Game, evaluator: Evaluator, rng: random.Random, temperature
     return ranked[int(rng.choices(range(len(ranked)), weights=probs.tolist())[0])]
 
 
-def choose(g: Game, evaluator: Evaluator, rng: random.Random, temperature: float = 0.0, epsilon: float = 0.0):
-    return choose_scored(g, evaluator, rng, temperature, epsilon)[0]
+def choose(g: Game, evaluator: Evaluator, rng: random.Random, temperature: float = 0.0, epsilon: float = 0.0,
+           look: Optional[Lookahead] = None):
+    return choose_scored(g, evaluator, rng, temperature, epsilon, look)[0]
 
 
 class RandomPolicy:
@@ -144,11 +249,12 @@ class RandomPolicy:
 
 
 class SearchPolicy:
-    def __init__(self, evaluator: Evaluator, temperature: float = 0.0, epsilon: float = 0.0):
-        self.evaluator, self.temperature, self.epsilon = evaluator, temperature, epsilon
-        self.name = evaluator.name
-        self.last_value: Optional[float] = None       # value of the chosen move's afterstate (for TD targets)
+    def __init__(self, evaluator: Evaluator, temperature: float = 0.0, epsilon: float = 0.0,
+                 look: Optional[Lookahead] = None):
+        self.evaluator, self.temperature, self.epsilon, self.look = evaluator, temperature, epsilon, look
+        self.name = evaluator.name + (f"+look{look.top}" if look else "")
+        self.last_value: Optional[float] = None       # value of the chosen move's afterstate or line (TD targets)
 
     def pick(self, g: Game, rng: random.Random):
-        act, self.last_value = choose_scored(g, self.evaluator, rng, self.temperature, self.epsilon)
+        act, self.last_value = choose_scored(g, self.evaluator, rng, self.temperature, self.epsilon, self.look)
         return act

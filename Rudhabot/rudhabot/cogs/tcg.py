@@ -53,6 +53,15 @@ def thread_name(title: str) -> str:
     return re.sub(r"\s{2,}", " ", re.sub(r"<a?:\w+:\d+>", "", title)).strip()[:90] or "Cloudfall match"
 
 
+def _hint_line(h) -> str:
+    """One coach hint: the move, its estimated win chance and change, and the rest of the turn it plans."""
+    text = f"**{h.label}** · win {round(h.win * 100)}% ({h.delta * 100:+.0f})"
+    if h.line:
+        plan = " → ".join(h.line[:4]) + (" → …" if len(h.line) > 4 else "")
+        text += f"\n-# then: {plan}"[:400]
+    return text
+
+
 class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description="Asgrelia: Cloudfall trading card game"):
     deck = app_commands.Group(name="deck", description="Build, view and test your Cloudfall decks")
     wishes = app_commands.Group(name="wish", description="Skyfall Wishes: banners, shards, crafting and the Convergence")
@@ -489,7 +498,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
                 return await _reply(interaction, _note("Coaching is off in this match (rated games are unassisted)."))
             await interaction.response.defer(ephemeral=True, thinking=True)
             hints = await self.clairvoyance.hints(match.game)
-            text = "\n".join(f"**{h.label}** · win {round(h.win * 100)}% ({h.delta * 100:+.0f})" for h in hints) or "No hint."
+            text = "\n".join(_hint_line(h) for h in hints) or "No hint."
             embed = discord.Embed(title=f"{CLAIRVOYANCEICON} Clairvoyance's top moves", description=text, color=Colors.TCG_SKY)
             embed.set_footer(text=f"{self.clairvoyance.version} · estimates, not guarantees · only you can see this")
             return await interaction.followup.send(embed=brand(embed, "coach"), ephemeral=True)

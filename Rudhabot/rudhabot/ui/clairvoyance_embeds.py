@@ -23,6 +23,8 @@ def status_embed(services, guild_id: Optional[int] = None) -> discord.Embed:
     # ---- Cloudfall value network
     st = services.clairvoyance.status()
     tcg = f"`{st['model']}`" + (f" · {st['params']:,} params" if st.get("params") else "")
+    if st.get("search"):
+        tcg += f" · {st['search']}"
     if not st["ready"]:
         tcg += f"\n⚠️ {st['load_error']} (heuristic AI in use)"
     m = st.get("metrics")
@@ -34,8 +36,9 @@ def status_embed(services, guild_id: Optional[int] = None) -> discord.Embed:
     router = services.intents
     learn = getattr(router, "outcomes", None)
     from rudhabot.ml.intent_data import INTENTS
-    intent = (f"{len(INTENTS)} intents · confident from {router.confident:.0%}" if router.ready
-              else f"unavailable: {router.error}")
+    version = (getattr(router.net, "meta", {}) or {}).get("model") if router.ready else None
+    intent = (f"{f'`{version}` · ' if version else ''}{len(INTENTS)} intents · confident from {router.confident:.0%}"
+              " · reads amounts and choices for pre-filled commands" if router.ready else f"unavailable: {router.error}")
     if learn:
         intent += f"\n{learn.get('offered', 0)} suggestions · {learn.get('run', 0)} run · {learn.get('clarified', 0)} " \
                   "clarifying questions"

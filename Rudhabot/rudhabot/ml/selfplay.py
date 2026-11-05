@@ -19,7 +19,7 @@ import numpy as np
 
 from rudhabot.ml.features import encoder_for
 from rudhabot.ml.nn import _Net, load_net
-from rudhabot.ml.policy import BlendEvaluator, HeuristicEvaluator, NetEvaluator, RandomPolicy, SearchPolicy
+from rudhabot.ml.policy import BlendEvaluator, HeuristicEvaluator, Lookahead, NetEvaluator, RandomPolicy, SearchPolicy
 from rudhabot.tcg import engine as E
 from rudhabot.tcg.cards import CARDS
 from rudhabot.tcg.decks import ARCHETYPES, validate_deck
@@ -36,6 +36,12 @@ class PolicySpec:
     epsilon: float = 0.0
     temperature: float = 0.0
     weight: float = 0.5             # heuristic weight for "blend"
+    look: int = 0                   # turn lookahead: how many first moves to play out (0 = 1-ply search)
+    samples: int = 1                # determinizations averaged by the lookahead
+
+    @property
+    def lookahead(self) -> Optional[Lookahead]:
+        return Lookahead(top=self.look, samples=self.samples) if self.look > 0 else None
 
 
 @dataclass(frozen=True)
@@ -53,13 +59,13 @@ def build_policy(spec: PolicySpec):
     if spec.kind == "random":
         return RandomPolicy()
     if spec.kind == "heuristic":
-        return SearchPolicy(HeuristicEvaluator(), spec.temperature, spec.epsilon)
+        return SearchPolicy(HeuristicEvaluator(), spec.temperature, spec.epsilon, spec.lookahead)
     net = _NET_CACHE.get(spec.model_path)
     if net is None:
         net = _NET_CACHE[spec.model_path] = load_net(spec.model_path)
     if spec.kind == "blend":
-        return SearchPolicy(BlendEvaluator(net, spec.weight), spec.temperature, spec.epsilon)
-    return SearchPolicy(NetEvaluator(net), spec.temperature, spec.epsilon)
+        return SearchPolicy(BlendEvaluator(net, spec.weight), spec.temperature, spec.epsilon, spec.lookahead)
+    return SearchPolicy(NetEvaluator(net), spec.temperature, spec.epsilon, spec.lookahead)
 
 
 def deck_pair(seed: int) -> tuple[str, str]:

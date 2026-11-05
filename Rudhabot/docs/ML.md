@@ -10,7 +10,7 @@ pretrained weights and no user data:
 | Task | Model (served) | Trained on | Used for |
 |---|---|---|---|
 | **Cloudfall value network** | `clairvoyance-v3`: slot-encoder network, 175k params | engine self-play only | AI opponent, coaching hints, the live win bar, turning points, Deck Doctor, similar cards |
-| **Intent router** | `intent-v2`: hashed n-gram MLP, 30 intents | developer-written phrases | `/ask` and @mentions: map plain words to an existing command, or ask a clarifying question |
+| **Intent router** | `intent-v3`: hashed n-gram MLP, 45 intents, plus rule-based argument reading | developer-written phrases | `/ask` and @mentions: map plain words to an existing command (pre-filled when it needs details), or ask a clarifying question |
 | **Anomaly monitor** | isolation forest + personal baselines + rules | the server's last 7 days of hourly activity windows | review signals for moderators (`/review`) |
 | **Message-risk model** | `message-risk-v1`: hashed-embedding multi-task network, 8.4M params | public licence-checked datasets + synthetic server chat | security evidence for scam, spam and malicious-URL messages |
 | **Incident model** | `incident-v1`: MLP over multi-scale activity counts, 7.8k params | wargame simulator days | security evidence: "an attack of kind X is under way" |
@@ -44,6 +44,40 @@ re-samples hidden information (determinization), so it gets no information a hum
   same embedding; 68 → 48, ReLU). The slot encodings stay positional (adjacency matters for Taint spread and
   Thunderclap) and join the global features and pooled hand/board embeddings in a 256 → 128 → 1 MLP. 175,217 parameters,
   pure numpy with hand-written backprop (numerically gradient-checked).
+
+### Reasoning: the turn lookahead (`ml/policy.py: plan_actions`)
+A Cloudfall turn is a run of decisions by one player: play cards, use abilities, go to the Clash, declare attackers.
+Up to v3 the AI looked one step ahead: it scored the position right after each legal move. It now plans the turn:
+1. Score every legal move one step ahead, as before.
+2. For the 5 most promising, play out the rest of that run of decisions (each next step picked by the same
+   evaluator, up to 8 steps and 800 positions), and judge the move by where the *whole line* leaves the game.
+3. Rank those 5 by their line's value; the rest keep their one-step score and rank after them.
+
+Guarantees, all tested (`tests/test_lookahead.py`):
+- **It plans only its own decisions in the current turn.** A line stops the moment the opponent has to decide (an
+  intercept, a reaction) or the turn or game ends, so it never assumes what the opponent will do.
+- **Hidden cards are read only through determinization**, as before: with determinization fixed, two games that
+  differ only in hidden zones plan identically.
+- **Only legal moves.** It ranks exactly the engine's legal actions; moves are applied to search copies with
+  `engine.apply_trusted` (the checked `engine.apply` without its re-validation, only ever given actions listed on that
+  same position; a test checks they produce identical states). Real matches still go through `engine.apply`.
+- **Coach hints show the plan:** each suggested move carries the follow-up the AI has in mind ("then: Go to the Clash
+  → Attack with ..."). The shown line stops before any move that depends on cards drawn or looked at during the
+  line, because in the search copy those cards are a guess, not your real deck.
+
+Used by: normal and hard AI seats, and coach hints. Easy seats stay one step ahead (weaker on purpose).
+`serving.lookahead_top` in the manifest sets the depth per version (0 turns it off).
+
+Tuning (same network, clairvoyance-v3, 300 seeds × 2 seats on seeds 6,600,000+, used for nothing else):
+
+| Search vs v3 one step ahead | Score | 95% CI |
+|---|---|---|
+| lookahead, top 3 | 60.1% | 56.1–63.9 |
+| **lookahead, top 5** (served) | **62.2%** | 58.2–66.0 |
+| lookahead, top 4, two determinizations averaged | 60.1% | 56.1–63.9 |
+
+Averaging two determinizations didn't help, at twice the cost. Cost per AI move: about 10 ms on average (p95
+about 30 ms) versus about 1.4 ms one step ahead, far inside the 4-second budget.
 
 ### How v3 was trained (same architecture and features as v2)
 `python -m rudhabot.ml.train --version clairvoyance-v3 --init clairvoyance-v2 --games 8000 --test-games 600 --gens 3
@@ -117,35 +151,48 @@ measured 66.5% vs the heuristic on its own arena seeds and 60.3% here. The bench
 
 ## 2. Intent router (`python -m rudhabot.ml.intent`)
 
-- **Task:** map a message to one of 30 intents. Each intent is an existing capability (balance, inventory, shop,
-  `/look`, loans, bank tiers, credit card, stocks, `/portfolio`, each game, Cloudfall play/rules/collection, wishes, …)
-  or "chat".
+- **Task:** map a message to one of 45 intents. Each intent is an existing capability (balance, inventory, shop,
+  `/look`, `/use`, `/sell`, loans, bank tiers and history, credit card, stocks, `/portfolio`, `/send`, `/rob`, role
+  incomes, the guidebook, each game, Cloudfall play/rules/collection, wishes, …) or "chat".
   - "chat" goes to the OpenAI assistant, or to the local docs.
   - At or above the model's **confident threshold**, the intent is offered as a button that runs the **real** command,
-    with its own checks, for the person who asked only. Commands that need details (amounts, bets) are explained.
+    with its own checks, for the person who asked only.
   - Between 25% and that threshold, Rudhabot asks which of the top options was meant.
-- **Model:** hashed character 2–5-grams plus word uni/bi-grams form an 8,192-d TF vector, then a ReLU layer and a
+- **Arguments (new in v3, `ml/intent_args.py`):** for a command that needs details, the card shows the command to type
+  pre-filled from the message, e.g. "flip a coin for 100 on heads" → `/coinflip bet:100 choice:heads`. It reads
+  amounts ("all", 1,000, 2.5k), the command's own choices (by value or name, so "don't pass" beats "pass", and "rock
+  paper scissors" picks none), dice guesses, mentions and shop items. These are plain rules, and they only produce
+  text: nothing ever runs with arguments the person didn't type into the command.
+- **Model:** hashed character 2–5-grams plus word uni/bi-grams form an 8,192-d TF vector, then a ReLU layer (128 units
+  in v3, chosen by cross-validation over 96, 128 and 192 units and a longer, more augmented 96-unit recipe) and a
   softmax; temperature-calibrated on held-out seed phrases.
 - **Data:** developer-written phrases (`ml/intent_data.py`), augmented with politeness, casing and typo variants.
-- **Evaluation:** two held-out test sets that are never trained on: `TEST` (58 phrases, from v1) and `TEST_2` (135
-  phrases, written and frozen *before* v2's training data was changed), plus grouped 5-fold cross-validation over the
-  training phrases. The confident threshold is the lowest whose cross-validated precision reaches 90%.
+- **Evaluation:** three held-out test sets, never trained on, each frozen before the training data of the version it
+  was written for: `TEST` (58 phrases, from v1), `TEST_2` (135, before v2) and `TEST_3` (90, before v3: the fifteen
+  new intents plus new phrasings near the boundaries they add). Plus grouped 5-fold cross-validation over the training
+  phrases. The confident threshold is the lowest whose cross-validated precision reaches 90%. A test checks that no
+  test phrase appears in the training data; three v3 training phrases that collided with `TEST_3`, and five
+  near-copies, were removed or reworded before training.
 
-| | intent-v1 | **intent-v2** |
+| | intent-v2 | **intent-v3** |
 |---|---|---|
-| Intents | 28 | 30 |
-| Training phrases (before augmentation) | ~280 | 520 |
-| Accuracy, `TEST` (58 phrases) | 81.0% | **81.0%** |
-| Accuracy, `TEST_2` | 84.8% (the 125 phrases it can route) | **87.4%** (135 phrases) |
-| Grouped 5-fold cross-validated accuracy | n/a | 78.8% |
-| Confident threshold / coverage / precision on `TEST_2` | 0.60 / 84.8% / 90.6% | 0.72 / 76.3% / **99.0%** |
-| Small talk confidently offered as a command (`TEST_2`) | 25.0% | **12.5%** |
-| A task sent to chat instead (`TEST_2`) | 0.9% | 3.9% |
-| Calibration error (`TEST_2`) | n/a | 0.050 |
+| Intents | 30 | **45** |
+| Training phrases (before augmentation) | 520 | 767 |
+| Accuracy, `TEST` (58) | 81.0% | 79.3% |
+| Accuracy, `TEST_2` (135) | 87.4% | 85.9% |
+| Accuracy, `TEST_3` (90) | 22.2% (90.9% on the 22 phrases it can route) | **95.6%** |
+| Accuracy, all 283 held-out phrases | 65.4% | **87.6%** |
+| Grouped 5-fold cross-validated accuracy | 78.8% (30 intents) | 78.0% (45 intents) |
+| Confident threshold / coverage / precision, `TEST_2` | 0.72 / 76.3% / 99.0% | 0.75 / 78.5% / 95.3% |
+| Confident coverage / precision, `TEST_3` | n/a | 87.8% / 98.7% |
+| Small talk confidently offered as a command (`TEST_2` / `TEST_3`) | 12.5% / n/a | 12.5% / 0% |
+| A task sent to chat instead (`TEST_2` / `TEST_3`) | 3.9% / n/a | 2.4% / 0% |
+| Calibration error (`TEST_2`) | 0.050 | 0.052 |
 
-Every misrouted test phrase is listed in `models/intent-v2.json`. Fixes beyond accuracy: the `card` intent pointed at
-`/card info`, which doesn't exist (it is `/bank card info`); `bank` still described the removed savings account (it now
-opens `/bank tiers`); the trainer's first epoch saw the data sorted by intent.
+On the two older sets v3 is 1 and 2 phrases behind v2, the cost of choosing among half as many intents again; it was
+not tuned on those sets' errors (that would make them useless as tests). Every misrouted test phrase is listed in
+`models/intent-v3.json`, with v2 scored on the same phrases under `previous`. `intent-v2.npz` is kept for that
+comparison; it can't be served with v3's intent list.
 
 ## 3. Anomaly monitor (`ml/anomaly.py`, `services/review.py`)
 

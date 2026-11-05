@@ -22,7 +22,8 @@ import numpy as np
 from rudhabot.ml.features import encoder_for
 from rudhabot.ml.nn import _Net
 from rudhabot.ml.model_store import ArtifactError, ModelStore
-from rudhabot.ml.policy import BlendEvaluator, HeuristicEvaluator, NetEvaluator, choose, score_actions, terminal_value
+from rudhabot.ml.policy import (BlendEvaluator, HeuristicEvaluator, Lookahead, NetEvaluator, choose, plan_actions,
+                                terminal_value)
 from rudhabot.tcg import engine as E
 from rudhabot.tcg.cards import CARD_IDS, CARD_INDEX
 from rudhabot.tcg.decks import ARCHETYPES
@@ -30,11 +31,12 @@ from rudhabot.tcg.state import Game
 
 log = logging.getLogger("rudhabot.clairvoyance")
 
-DIFFICULTIES = {          # (softmax temperature over win-probabilities, ε random-move rate)
-    "easy": (0.08, 0.25),
-    "normal": (0.02, 0.05),
-    "hard": (0.0, 0.0),
+DIFFICULTIES = {          # (softmax temperature over win-probabilities, ε random-move rate, turn lookahead?)
+    "easy": (0.08, 0.25, False),
+    "normal": (0.02, 0.05, True),
+    "hard": (0.0, 0.0, True),
 }
+LOOKAHEAD_TOP = 5         # first moves the turn lookahead plays out (manifest `serving.lookahead_top` overrides; 0 = off)
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,7 @@ class Hint:
     label: str
     win: float
     delta: float
+    line: tuple[str, ...] = ()      # the moves Clairvoyance would follow up with in the same turn
 
 
 class ClairvoyanceService:
@@ -101,13 +104,22 @@ class ClairvoyanceService:
         return BlendEvaluator(self.net, self._blend_weight) if self._blend_weight > 0 else NetEvaluator(self.net)
 
     @property
+    def lookahead(self) -> Optional[Lookahead]:
+        """The turn lookahead used by normal and hard AI seats and by coach hints (None = 1-ply search)."""
+        entry = self.store.manifest().get("versions", {}).get(self.version, {}) if self.net else {}
+        top = int(entry.get("serving", {}).get("lookahead_top", LOOKAHEAD_TOP))
+        return Lookahead(top=top) if top > 0 else None
+
+    @property
     def ready(self) -> bool:
         return self.net is not None
 
     def status(self) -> dict:
         lat = np.array(self.latency_ms) if self.latency_ms else np.array([0.0])
         entry = self.store.manifest().get("versions", {}).get(self.version, {}) if self.net else {}
+        look = self.lookahead
         return {"model": self.version, "ready": self.ready, "load_error": self.load_error, "serving": entry.get("serving"),
+                "search": f"turn lookahead (top {look.top} first moves)" if look else "1-ply",
                 "calls": dict(self.stats), "latency_ms_p50": float(np.percentile(lat, 50)),
                 "latency_ms_p95": float(np.percentile(lat, 95)),
                 # "model" in v2 manifests, "oracle" in the legacy oracle-v1 entry
@@ -157,8 +169,8 @@ class ClairvoyanceService:
                                lambda: float(self.heuristic.values([snapshot], seat)[0]))
 
     def choose_sync(self, g: Game, difficulty: str = "normal"):
-        temperature, epsilon = DIFFICULTIES.get(difficulty, DIFFICULTIES["normal"])
-        return choose(g, self.move_evaluator, self.rng, temperature, epsilon)
+        temperature, epsilon, deep = DIFFICULTIES.get(difficulty, DIFFICULTIES["normal"])
+        return choose(g, self.move_evaluator, self.rng, temperature, epsilon, self.lookahead if deep else None)
 
     async def choose_move(self, g: Game, difficulty: str = "normal") -> str:
         """Return the key of the AI's chosen legal action (the caller applies it through the engine)."""
@@ -168,10 +180,12 @@ class ClairvoyanceService:
         return act.key
 
     def hints_sync(self, g: Game, k: int = 3) -> list[Hint]:
+        """The top `k` moves with calibrated win estimates; with the lookahead, each judged by the turn it starts and
+        carrying the follow-up moves Clairvoyance has in mind."""
         seat = E.decider(g)
         now = self._value(g, seat)
-        ranked = score_actions(g, self.evaluator, self.rng)
-        return [Hint(act.label, value, value - now) for act, value in ranked[:k]]
+        plans = plan_actions(g, self.evaluator, self.rng, self.lookahead or Lookahead(top=0, max_steps=0))
+        return [Hint(p.act.label, p.value, p.value - now, p.line) for p in plans[:k]]
 
     async def hints(self, g: Game, k: int = 3) -> list[Hint]:
         snapshot = g.clone()

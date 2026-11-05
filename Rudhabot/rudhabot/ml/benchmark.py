@@ -12,8 +12,10 @@ seeds), against the *true* game outcome:
   paired CIs      for each pair of models, the difference in log-loss / Brier / AUC with a 95% interval from a
                   bootstrap that resamples whole games (states of one game are correlated, so rows are not resampled).
   strength        seat-swapped arenas (Wilson 95% intervals): each model's served policy vs the heuristic and vs
-                  random, and every pair of models head-to-head.
-  latency         one evaluation and one full AI move (p50 / p95), single thread.
+                  random, and every pair of models head-to-head, all with the same move search (the turn lookahead
+                  the bot serves, or `--look 0` for 1-ply).
+  search          each model with the turn lookahead vs the same model with 1-ply search.
+  latency         one evaluation and one full AI move, 1-ply and with the lookahead (p50 / p95), single thread.
 
 Writes a JSON report and a Markdown summary.
 """
@@ -39,6 +41,7 @@ from rudhabot.ml.model_store import ModelStore  # noqa: E402
 from rudhabot.ml.nn import load_net  # noqa: E402
 from rudhabot.ml.policy import HeuristicEvaluator  # noqa: E402
 from rudhabot.ml.selfplay import PolicySpec, arena, build_policy, game_decks  # noqa: E402
+from rudhabot.services.clairvoyance import LOOKAHEAD_TOP  # noqa: E402
 from rudhabot.tcg import engine as E  # noqa: E402
 
 HEURISTIC_PLAY_SEEDS = 7_700_000          # the same seeds as the v1-vs-v2 benchmark, for continuity
@@ -146,11 +149,14 @@ def paired_differences(rows, a: str, b: str, resamples: int = 1000, seed: int = 
             for k in point}
 
 
-def serving_spec(store: ModelStore, version: str) -> PolicySpec:
-    """The move policy each version is served with (blend weight from its manifest entry, default 0.5)."""
+def serving_spec(store: ModelStore, version: str, look: "int | None" = None) -> PolicySpec:
+    """The move policy each version is served with: blend weight and lookahead from its manifest entry (defaults 0.5
+    and the service's LOOKAHEAD_TOP, exactly as ClairvoyanceService reads them); `look` overrides the lookahead."""
     entry = store.manifest()["versions"][version]
-    weight = entry.get("serving", {}).get("blend_weight", 0.5)
-    return PolicySpec("blend", os.path.join(store.directory, entry["file"]), weight=weight)
+    serving = entry.get("serving", {})
+    top = int(serving.get("lookahead_top", LOOKAHEAD_TOP)) if look is None else look
+    return PolicySpec("blend", os.path.join(store.directory, entry["file"]), weight=serving.get("blend_weight", 0.5),
+                      look=top)
 
 
 def markdown(report: dict) -> str:
@@ -186,10 +192,19 @@ def markdown(report: dict) -> str:
               "|---|---|---|---|"]
     for key, a in report["strength"].items():
         lines.append(f"| {key} | {a['score'] * 100:.1f}% | {a['ci95'][0] * 100:.1f}–{a['ci95'][1] * 100:.1f} | {a['games']} |")
-    lines += ["", "## Latency (single thread)", "", "| Model | eval p50 | eval p95 | move p50 | move p95 |", "|---|---|---|---|---|"]
+    if report.get("search"):
+        lines += ["", "## Search depth (same network, seat-swapped, Wilson 95%)", "", "| Matchup | Score | 95% CI | Games |",
+                  "|---|---|---|---|"]
+        for key, a in report["search"].items():
+            lines.append(f"| {key} | {a['score'] * 100:.1f}% | {a['ci95'][0] * 100:.1f}–{a['ci95'][1] * 100:.1f} | "
+                         f"{a['games']} |")
+    lines += ["", "## Latency (single thread)", "",
+              "| Model | eval p50 | eval p95 | 1-ply move p50 | p95 | lookahead move p50 | p95 |",
+              "|---|---|---|---|---|---|---|"]
     for name, lat in report["latency"].items():
         lines.append(f"| {name} | {lat['eval_ms_p50']:.3f} ms | {lat['eval_ms_p95']:.3f} ms | {lat['move_ms_p50']:.2f} ms | "
-                     f"{lat['move_ms_p95']:.2f} ms |")
+                     f"{lat['move_ms_p95']:.2f} ms | {lat.get('lookahead_move_ms_p50', 0):.1f} ms | "
+                     f"{lat.get('lookahead_move_ms_p95', 0):.1f} ms |")
     return "\n".join(lines) + "\n"
 
 
@@ -201,6 +216,7 @@ def main() -> None:
     parser.add_argument("--rate", type=float, default=0.15, help="fraction of decision points sampled")
     parser.add_argument("--arena-seeds", type=int, default=300, help="each played twice, seats swapped")
     parser.add_argument("--processes", type=int, default=0)
+    parser.add_argument("--look", type=int, default=-1, help="lookahead for every arena (-1: as served, 0: 1-ply)")
     parser.add_argument("--out", default="models/benchmark")
     args = parser.parse_args()
     t0 = time.time()
@@ -210,19 +226,22 @@ def main() -> None:
     paths = {v: os.path.join(store.directory, manifest["versions"][v]["file"]) for v in names}
     procs = args.processes or max(1, mp.cpu_count())
     current = manifest.get("current")
-    player = serving_spec(store, current) if current in names else PolicySpec("heuristic", epsilon=0.1, temperature=0.02)
+    look = None if args.look < 0 else args.look
+    player = serving_spec(store, current, look) if current in names else \
+        PolicySpec("heuristic", epsilon=0.1, temperature=0.02)
 
     print(f"[states] heuristic-played games ({args.games})")
     heur_rows = collect(range(HEURISTIC_PLAY_SEEDS, HEURISTIC_PLAY_SEEDS + args.games),
                         PolicySpec("heuristic", epsilon=0.1, temperature=0.02), paths, args.rate, procs)
     print(f"[states] model-played games ({args.games}, policy {os.path.basename(player.model_path or player.kind)})")
     model_rows = collect(range(MODEL_PLAY_SEEDS, MODEL_PLAY_SEEDS + args.games),
-                         PolicySpec(player.kind, player.model_path, epsilon=0.05, temperature=0.02, weight=player.weight),
+                         PolicySpec(player.kind, player.model_path, epsilon=0.05, temperature=0.02, weight=player.weight,
+                                    look=player.look),
                          paths, args.rate, procs)
     report = {"created": datetime.now(timezone.utc).isoformat(timespec="seconds"), "versions": names,
               "seeds": {"heuristic_play": HEURISTIC_PLAY_SEEDS, "model_play": MODEL_PLAY_SEEDS, "arenas": ARENA_SEEDS},
               "probabilities": {"heuristic_play": table(heur_rows, names), "model_play": table(model_rows, names)},
-              "paired": {}, "strength": {}, "latency": {}}
+              "paired": {}, "strength": {}, "search": {}, "latency": {}}
     for i, a in enumerate(names):
         for b in names[i + 1:]:
             for source, rows in (("heuristic_play", heur_rows), ("model_play", model_rows)):
@@ -231,7 +250,7 @@ def main() -> None:
                                                                                              f"{b}@public")
     print("[strength] arenas")
     seeds = range(ARENA_SEEDS, ARENA_SEEDS + args.arena_seeds)
-    specs = {v: serving_spec(store, v) for v in names}
+    specs = {v: serving_spec(store, v, look) for v in names}
     for v in names:
         report["strength"][f"{v} vs heuristic"] = arena(specs[v], PolicySpec("heuristic"), seeds, procs)
         report["strength"][f"{v} vs heuristic (mutated decks)"] = arena(specs[v], PolicySpec("heuristic"), seeds, procs, mutate=1.0)
@@ -239,6 +258,11 @@ def main() -> None:
     for i, a in enumerate(names):
         for b in names[i + 1:]:
             report["strength"][f"{a} vs {b}"] = arena(specs[a], specs[b], seeds, procs)
+    print("[search] lookahead vs 1-ply, same network")
+    for v in names:
+        if specs[v].look:
+            report["search"][f"{v}: lookahead (top {specs[v].look}) vs 1-ply"] = arena(specs[v], serving_spec(store, v, 0),
+                                                                                       seeds, procs)
     print("[latency]")
     for v in names:
         report["latency"][v] = latency(_net(paths[v]), n=2000)

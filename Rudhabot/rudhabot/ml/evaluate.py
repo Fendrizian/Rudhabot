@@ -56,7 +56,7 @@ def prob_metrics(p: np.ndarray, y: np.ndarray) -> dict:
 def latency(net, n: int = 300, seed: int = 0) -> dict:
     """Measured wall-clock for (a) one network evaluation and (b) a full AI move decision on real mid-game states."""
     from rudhabot.ml.features import encoder_for
-    from rudhabot.ml.policy import NetEvaluator, choose
+    from rudhabot.ml.policy import Lookahead, NetEvaluator, choose
     from rudhabot.ml.selfplay import deck_pair
     from rudhabot.tcg import engine as E
     from rudhabot.tcg.decks import ARCHETYPES
@@ -72,7 +72,7 @@ def latency(net, n: int = 300, seed: int = 0) -> dict:
             E.apply(g, rng.choice(E.legal_actions(g)).key)
         if not g.over:
             states.append(g)
-    evals, moves, branching = [], [], []
+    evals, moves, deep, branching = [], [], [], []
     evaluator = NetEvaluator(net)
     for i in range(n):
         g = states[i % len(states)]
@@ -85,9 +85,13 @@ def latency(net, n: int = 300, seed: int = 0) -> dict:
         t = time.perf_counter()
         choose(g, evaluator, rng)
         moves.append(time.perf_counter() - t)
+        t = time.perf_counter()
+        choose(g, evaluator, rng, look=Lookahead(top=5))
+        deep.append(time.perf_counter() - t)
     ms = lambda xs, q: float(np.percentile(np.array(xs) * 1000, q))
     return {"eval_ms_p50": ms(evals, 50), "eval_ms_p95": ms(evals, 95), "move_ms_p50": ms(moves, 50),
-            "move_ms_p95": ms(moves, 95), "mean_branching": float(np.mean(branching)), "states": len(states)}
+            "move_ms_p95": ms(moves, 95), "lookahead_move_ms_p50": ms(deep, 50), "lookahead_move_ms_p95": ms(deep, 95),
+            "mean_branching": float(np.mean(branching)), "states": len(states)}
 
 
 def main() -> None:
