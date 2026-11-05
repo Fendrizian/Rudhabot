@@ -177,7 +177,9 @@ class BlackjackView(ServiceView):
     async def on_timeout(self):
         """The player walked away: their remaining hands stand, the dealer plays, and the game settles normally."""
         if not self.game.game_over:
-            while not self.game.game_over:
+            for _ in range(len(self.game.player_hands) + 1):  # each stand moves to the next hand: bounded anyway
+                if self.game.game_over:
+                    break
                 self.game.stand()
             self.settle()
             self.update_buttons()

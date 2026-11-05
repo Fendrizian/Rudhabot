@@ -269,17 +269,24 @@ class LoanService:
 
 def liquidate_investments(user_id, users, crypto, exchange) -> int:
     """Sell every coin and share a member holds, into their wallet (each sale is audited by its market). Returns the
-    ra raised. Shares go in orders no bigger than one order may be."""
+    ra raised. Shares go in orders no bigger than one order may be. A sale that fails is logged and skipped, so the
+    others still happen and what they raised is still counted."""
     from rudhabot.services.stocks import MAX_ORDER_FRACTION
     raised = 0
     for coin, quantity in sorted((users.get(user_id).get("crypto") or {}).items()):
         if quantity and quantity > 0:
-            raised += int(round(crypto.sell(user_id, coin, "all").value))
+            try:
+                raised += int(round(crypto.sell(user_id, coin, "all").value))
+            except Exception:
+                log.exception("selling %s %s for an overdue loan failed", user_id, coin)
     for holding in exchange.portfolio(user_id):
         left = int(holding["shares"])
-        per_order = max(1, int(exchange.listing(holding["symbol"]).shares * MAX_ORDER_FRACTION))
-        while left > 0:
-            shares = min(left, per_order)
-            raised += int(exchange.sell(user_id, holding["symbol"], shares).total)
-            left -= shares
+        try:
+            per_order = max(1, int(exchange.listing(holding["symbol"]).shares * MAX_ORDER_FRACTION))
+            while left > 0:
+                shares = min(left, per_order)
+                raised += int(exchange.sell(user_id, holding["symbol"], shares).total)
+                left -= shares
+        except Exception:
+            log.exception("selling %s %s shares for an overdue loan failed", user_id, holding["symbol"])
     return raised

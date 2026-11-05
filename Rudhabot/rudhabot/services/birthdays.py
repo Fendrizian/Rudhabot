@@ -65,7 +65,7 @@ class BirthdayService:
         return self._registry.get(user_id)
 
     def remove_birthday(self, user_id: int) -> bool:
-        return self._registry.remove(user_id)
+        return self._registry.remove(user_id, current_year=self.today().year)
 
     def upcoming(self, limit: int = 10, only: Optional[Container[int]] = None) -> list[Upcoming]:
         today = self.today()
@@ -82,6 +82,7 @@ class BirthdayService:
         """Give today's birthday gift to everyone who hasn't had one this year. Safe to call as often as you like:
         each user is greeted at most once per year (marked *before* paying, so a crash can't double-pay)."""
         today = self.today()
+        self._registry.prune_celebrated(today.year)
         greetings = []
         for user_id, birthday in self._registry.all().items():
             if not birthday.is_on(today) or self._registry.last_celebrated_year(user_id) == today.year:
