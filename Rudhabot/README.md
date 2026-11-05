@@ -37,6 +37,8 @@ A Discord economy and games bot (discord.py 2.x) built around **its own intellig
 
 ## Run
 
+Python 3.11 or newer (tested on 3.13) and discord.py 2.5 or newer (tested on 2.7.1).
+
 ```bash
 pip install -r requirements.txt
 ```
