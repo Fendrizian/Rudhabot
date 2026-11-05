@@ -145,6 +145,8 @@ class Assistant:
             lines.append(f"**{doc.title}**: {snippet}")
             if doc.kind == "command":
                 commands.append("/" + doc.id[4:])
+            elif doc.kind == "guide" and "/guide" not in commands:
+                commands.append("/guide")
             if doc.kind == "card":
                 cards.append(doc.title)
         self.stats["local"] += 1

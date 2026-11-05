@@ -46,13 +46,15 @@ class Doc:
     id: str
     title: str
     text: str
-    kind: str          # "command" | "rule" | "card" | "protocol"
+    kind: str          # "command" | "guide" | "rule" | "card" | "protocol"
 
 
 def build_documents() -> list[Doc]:
     from rudhabot.views.help import get_commands_data
     docs = [Doc(f"cmd:{c['name']}", f"/{c['name']} {c['args']}".strip(), c["description"], "command")
             for c in get_commands_data()]
+    from rudhabot.views.guide import chapters
+    docs += [Doc(f"guide:{c.key}", f"Guidebook: {c.title}", c.text, "guide") for c in chapters()]
     docs += [Doc(f"rule:{title}", title, text, "rule") for title, text in RULES.items()]
     for card in CARDS:
         meta = [card.kind, f"cost {card.cost}"]
@@ -79,13 +81,14 @@ class KnowledgeBase:
 
     def search(self, query: str, k: int = 5, kinds: tuple[str, ...] = (),
                hidden: frozenset = frozenset()) -> list[tuple[Doc, float]]:
-        """`hidden`: command names the asker can't use (staff commands for a member): never returned."""
+        """`hidden`: command names the asker can't use (staff commands for a member) and doc ids they can't read
+        (staff guidebook chapters, `guide:<key>`): never returned."""
         q = _content(tokens(query))
         scored = []
         for i, doc in enumerate(self.docs):
             if kinds and doc.kind not in kinds:
                 continue
-            if hidden and doc.kind == "command" and doc.id[4:] in hidden:
+            if hidden and (doc.id in hidden or (doc.kind == "command" and doc.id[4:] in hidden)):
                 continue
             tf, length = self._tf[i], self._len[i]
             score = 0.0

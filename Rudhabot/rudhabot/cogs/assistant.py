@@ -126,10 +126,12 @@ class AssistantCog(ServiceCog):
         self.bot.add_dynamic_items(RunIntent)
 
     def _hidden(self, user, guild_id) -> frozenset:
-        """Help entries this person can't use: /ask never cites or suggests them."""
+        """Help entries this person can't use and guidebook chapters they can't read: /ask never cites them."""
         from rudhabot.services.permissions import viewer_for
+        from rudhabot.views.guide import hidden_chapter_ids
         from rudhabot.views.help import hidden_commands
-        return frozenset(hidden_commands(viewer_for(self.services, user, guild_id)))
+        viewer = viewer_for(self.services, user, guild_id)
+        return frozenset(hidden_commands(viewer) | hidden_chapter_ids(viewer))
 
     @app_commands.command(name="ask", description="Ask Rudhabot anything, or say what you want to do")
     @app_commands.describe(question="e.g. 'show my inventory' or 'how does Corruption work?'", private="Only you see the answer")

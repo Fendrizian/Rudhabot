@@ -2,6 +2,20 @@
 
 ## Help visibility and role incomes (November 2026)
 
+### The Rudhabot Guidebook: `/guide`
+- **What it is:** the guidebook (14 chapters in two parts) is now in the bot, so the reviewed doc and the bot say the
+  same thing. Members read Part 1 (getting started, earning, the bank, markets, shop, games, Cloudfall, lottery and
+  birthdays, staying safe). Staff also see the Part 2 chapters for their rank: who sees what, bankers, moderators,
+  security, admins.
+- **Reading it:**
+  - `/guide [chapter]` opens the contents or jumps to a chapter. It autocompletes to your own chapters.
+  - Previous / Next read straight through.
+  - The menus never expire, and someone else's click gets their own private copy.
+- **Private by default:** `public:True` posts a member chapter in the channel. Staff chapters always stay private.
+- **`/ask`** can now answer from the guidebook ("why can't I send money"), never quoting a staff chapter to a member.
+- **The text** lives in `rudhabot/assets/guidebook.md`, written for Discord (no tables). The bot reads it at
+  start-up.
+
 ### Members see only what they can use
 - **`/help`** shows each person only the commands they can use: the Banker, Admin, Moderation and Security entries
   appear only to people with that role or clearance (the lowest rank that can use a command at all).

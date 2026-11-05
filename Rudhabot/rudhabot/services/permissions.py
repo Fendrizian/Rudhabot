@@ -49,7 +49,7 @@ class AdminPolicy:
 
 # ---------------------------------------------------------------------------------------------- who is looking
 #: what a help entry or command needs: an economy role, or a security clearance tier (by name)
-REQUIREMENTS = ("admin", "banker", "helper", "moderator", "senior")
+REQUIREMENTS = ("staff", "admin", "banker", "helper", "moderator", "senior")      # staff: any staff rank or role
 
 
 class Viewer:
@@ -63,6 +63,8 @@ class Viewer:
     def can(self, requirement) -> bool:
         if requirement is None:
             return True
+        if requirement == "staff":
+            return self.staff
         if requirement == "admin":
             return self.admin
         if requirement == "banker":

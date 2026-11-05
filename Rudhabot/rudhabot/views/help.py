@@ -19,6 +19,7 @@ from discord import ButtonStyle, Interaction, ui
 
 from rudhabot.services.permissions import MEMBER, Viewer, viewer_for
 from rudhabot.ui.theme import BOTICON, COMPONENT_FALLBACK, TCG, Colors
+from rudhabot.views.navigation import show_for_clicker
 
 PER_PAGE = 8                 # commands per page, in sections and in the full list
 COLOR = Colors.HELP
@@ -55,7 +56,8 @@ def image_upload(embed: discord.Embed) -> dict:
 
 # (key, title, emoji, one-line summary, command names; displayed alphabetically by alphabetical())
 SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
-    ("start", "Getting started", "👋", "Help and the /ask assistant (or just @mention Rudhabot)", ("help", "ask")),
+    ("start", "Getting started", "👋", "Help, the guidebook and the /ask assistant (or just @mention Rudhabot)",
+     ("help", "guide", "ask")),
     ("economy", "Economy", "💰", "Earn, send and compare money",
      ("work", "daily", "crime", "collect", "income", "send", "rob", "leaderboard")),
     ("bank", "Bank", "🏦", "Deposits, interest, card tiers, credit cards and loans",
@@ -206,16 +208,9 @@ def viewer_of(interaction: Interaction) -> Viewer:
 
 
 async def _show(interaction: Interaction, embed: discord.Embed, view: ui.View) -> None:
-    """Edit the help message for the person who opened it; give anyone else their own private copy."""
-    message = getattr(interaction, "message", None)
-    meta = getattr(message, "interaction_metadata", None) if message is not None else None
-    owner = getattr(getattr(meta, "user", None), "id", None)
-    if owner is None or owner == interaction.user.id or getattr(message, "flags", None) and message.flags.ephemeral:
-        # the banner belongs to the overview only: re-attach it there, drop it everywhere else
-        image = help_file() if shows_image(embed) else None
-        await interaction.response.edit_message(embed=embed, view=view, attachments=[image] if image else [])
-    else:
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True, **image_upload(embed))
+    """Edit the help message for the person who opened it; give anyone else their own private copy. The banner
+    belongs to the overview only: it is re-attached there and dropped everywhere else."""
+    await show_for_clicker(interaction, embed, view, upload=help_file if shows_image(embed) else None)
 
 
 class SectionSelect(ui.DynamicItem[ui.Select], template=r"help:menu"):
@@ -293,6 +288,11 @@ def get_commands_data():
             "name": "help",
             "args": "",
             "description": "Shows this help message with all available commands."
+        },
+        {
+            "name": "guide",
+            "args": "[chapter] [public]",
+            "description": "The Rudhabot Guidebook: how everything works, in plain words, chapter by chapter. Private unless you set public (member chapters only); staff also see the chapters for their rank."
         },
         {
             "name": "ask",

@@ -149,7 +149,7 @@ python -m rudhabot.ml.anomaly --tune
 | Area | Commands |
 |---|---|
 | Cloudfall | `/tcg starter`, `/tcg collection`, `/tcg pack`, `/tcg deck build/view/use/analyze`, `/tcg card`, `/tcg rules`, `/tcg practice`, `/tcg challenge`, `/tcg match`, `/tcg forfeit`, `/tcg ladder`, `/tcg forget-me` |
-| Assistant | `/ask <question> [private]` |
+| Assistant | `/ask <question> [private]`, `/guide [chapter] [public]` (the Rudhabot Guidebook) |
 | Bank | `/deposit`, `/withdraw` (monthly card limits), `/balance` (bank earns daily interest; card tier), `/bank tiers | history | upgrade`, `/bank card info | pay` |
 | Markets | `/portfolio` (crypto + stocks), `/stocks market | quote | buy | sell`, `/crypto market | buy | sell` |
 | Casino | `/baccarat`, `/craps` |
