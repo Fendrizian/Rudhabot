@@ -12,7 +12,7 @@ Rudhabot is the Rudharta server's own bot: an economy with a bank and markets, g
 Type `/help` to see what you can do, and `/ask` (or @mention Rudhabot) when you're not sure which command you need. Read this guide any time with `/guide`.
 
 - **`/help`** lists only the commands you can use, grouped into sections: Economy, Bank, Shop & Café, Markets, Gambling games, Cloudfall, Lottery & birthdays. Pick a section from the menu, or press **Full list**.
-- **`/ask`** understands plain words. "Show my inventory" or "how do loans work" either offers the right command with a button, or answers from Rudhabot's own documentation. Answers are private unless you set `private:False`.
+- **`/ask`** understands plain words. "Show my inventory" or "how do loans work" either offers the right command with a button, or answers from Rudhabot's own documentation. For a command that needs details, it shows the command to type, filled in from what you said ("flip a coin for 100 on heads" gives `/coinflip bet:100 choice:heads`); it never bets or sends anything for you. Answers are private unless you set `private:False`.
 - **@Rudhabot** in a channel works like `/ask`, and replies in the channel.
 - Most results are visible to the channel. Anything about only you, such as your balance tips or a command that failed, is sent privately.
 
@@ -94,7 +94,7 @@ Games are for fun. Coin flips and rock-paper-scissors are even bets; every other
 *Asgrelia: Cloudfall* is the server's own trading card game: claim a free starter deck, learn against the AI, then duel other members for rating and ra.
 
 1. **Start:** `/tcg starter <deck>` gives you one of six archetype starter decks. `/tcg rules` explains the game, and `/tcg card <name>` looks up any card.
-2. **Practice:** `/tcg practice` plays against Clairvoyance, Rudhabot's own trained AI, with coaching hints. Practice is unrated and pays nothing.
+2. **Practice:** `/tcg practice` plays against Clairvoyance, Rudhabot's own trained AI, with coaching hints. On normal and hard it plans its whole turn before it moves, and a hint shows the rest of the turn it has in mind for each suggested move. Practice is unrated and pays nothing.
 3. **Duel:** `/tcg challenge <member>` starts a rated match in its own thread, with a live win-chance bar for spectators. You act through private menus that only offer legal moves.
 4. **Grow your collection:** open packs with `/tcg pack` (250 ra for 5 cards, wallet or card), and build decks with `/tcg deck build`, `view` and `use`. `/tcg deck analyze` asks Clairvoyance's Deck Doctor how your deck fares against every archetype.
 

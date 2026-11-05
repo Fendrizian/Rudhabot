@@ -9,7 +9,7 @@ pretrained weights and no user data:
 
 | Task | Model (served) | Trained on | Used for |
 |---|---|---|---|
-| **Cloudfall value network** | `clairvoyance-v3`: slot-encoder network, 175k params | engine self-play only | AI opponent, coaching hints, the live win bar, turning points, Deck Doctor, similar cards |
+| **Cloudfall value network** | `clairvoyance-v4`: slot-encoder network, 175k params, with a turn-lookahead search | engine self-play only | AI opponent, coaching hints, the live win bar, turning points, Deck Doctor, similar cards |
 | **Intent router** | `intent-v3`: hashed n-gram MLP, 45 intents, plus rule-based argument reading | developer-written phrases | `/ask` and @mentions: map plain words to an existing command (pre-filled when it needs details), or ask a clarifying question |
 | **Anomaly monitor** | isolation forest + personal baselines + rules | the server's last 7 days of hourly activity windows | review signals for moderators (`/review`) |
 | **Message-risk model** | `message-risk-v1`: hashed-embedding multi-task network, 8.4M params | public licence-checked datasets + synthetic server chat | security evidence for scam, spam and malicious-URL messages |
@@ -26,8 +26,8 @@ ledger.
 - Review signals never change balances or permissions.
 - Insights never change limits, interest or charges.
 
-A consolidated, reviewer-friendly summary of every training run (oracle-v1, v2, v3, intent v1/v2, anomaly v1/v2) is
-produced as `clairvoyance-training-results.zip` (see its README).
+A consolidated, reviewer-friendly summary of every training run (oracle-v1, v2, v3, v4, the lookahead tuning,
+intent v1/v2/v3, anomaly v1/v2) is produced as `clairvoyance-training-results.zip` (see its README).
 
 ## 1. Cloudfall value network
 
@@ -39,7 +39,7 @@ re-samples hidden information (determinization), so it gets no information a hum
 ### Architectures
 - **v1 `ClairvoyanceNet`** (`oracle-v1`, kept for rollback): 235 dense features plus three card-count vectors pooled
   through a 16-d learned card embedding; an MLP of 128 → 64 → 1. 46,465 parameters.
-- **v2 `ClairvoyanceSlotNet`** (`clairvoyance-v2`, `clairvoyance-v3`): each of the 8 field slots is encoded by one
+- **v2 `ClairvoyanceSlotNet`** (`clairvoyance-v2`, `clairvoyance-v3`, `clairvoyance-v4`): each of the 8 field slots is encoded by one
   shared encoder (the slot's 20 attributes, the card embedding of the unit there, and its attachments pooled through the
   same embedding; 68 → 48, ReLU). The slot encodings stay positional (adjacency matters for Taint spread and
   Thunderclap) and join the global features and pooled hand/board embeddings in a 256 → 128 → 1 MLP. 175,217 parameters,
@@ -101,7 +101,7 @@ about 30 ms) versus about 1.4 ms one step ahead, far inside the 4-second budget.
 
 Build: 23 minutes on 4 cores (v2 took 66 minutes for fewer games; see Efficiency).
 
-### Measured results (fresh-seed benchmark: `python -m rudhabot.ml.benchmark`)
+### v1–v3 measured results (fresh-seed benchmark: `python -m rudhabot.ml.benchmark`, one-step search)
 All three models on *the same* positions from 500 heuristic-played and 500 AI-played games (true outcomes);
 paired 95% intervals come from a bootstrap that resamples whole games. Lower log-loss / Brier / ECE is better.
 
@@ -128,6 +128,50 @@ Head to head: v3 beats v2 53.1% and v1 54.0% (600 games each); v2 beats v1 54.2%
 Training-time numbers in the manifest (training arena seeds) differ a little from these fresh-seed numbers, e.g. v2
 measured 66.5% vs the heuristic on its own arena seeds and 60.3% here. The benchmark numbers are the honest ones.
 
+### v4: trained by the planning AI (`clairvoyance-v4`, served)
+`python -m rudhabot.ml.train --version clairvoyance-v4 --init clairvoyance-v3 --look 5 --games 6000 --test-games 600
+--gens 3 --epochs 10 --lr 1e-3 --ema 0.999 --hide-hand 0.15 --eval-games 300 --blend-weights 0,0.25,0.5 --no-current`,
+then `python -m rudhabot.ml.recalibrate --version clairvoyance-v4`. Same architecture and features as v3.
+
+- **What changed:** every game was played by the planning AI (the turn lookahead), starting from v3's served
+  policy, so the network learned from a stronger player's positions, and its TD(λ) targets came from the values of
+  whole planned lines instead of single steps. Three generations × 6,000 games (18,000 in all; 278,078 training
+  positions in the last generation), the same mix of heuristic and random seats and mutated decks as v3.
+- **Serving weight:** the arenas picked 0, the network alone (0 / 0.25 / 0.5 scored 64.1% / 63.6% / 63.5% on average
+  against the heuristic and v3). The hand-written heuristic no longer helps once the AI plans its turn.
+- **Calibration:** Platt scale 0.565 at the end of training, refit to 0.710 on 1,600 fresh calibration games (ECE on
+  that set 0.024 → 0.014). The weight is 0, so no move choice changed.
+- **Build:** 100 minutes on 4 cores, shared with other jobs for its first half hour (v3: 23 minutes). Planning
+  makes each self-play game several times slower.
+
+Fresh-seed benchmark (`models/benchmark-v3-v4.md`; the same seeds as every earlier benchmark), both models with the
+lookahead the bot serves:
+
+| | clairvoyance-v3 | **clairvoyance-v4** |
+|---|---|---|
+| Head to head (600 games) | 44.2% | **55.8% (51.8–59.8)** |
+| vs heuristic | 72.0% (68.3–75.4) | **74.9% (71.3–78.2)** |
+| … with mutated (unfamiliar) decks | 74.2% | **74.8%** |
+| vs random play | 99.0% | 98.0% |
+| Log-loss, AI-played positions | 0.522 | **0.516** |
+| Calibration error (ECE), AI-played positions | 0.045 | **0.032** |
+| Log-loss / ECE, heuristic-played positions | 0.470 / 0.008 | 0.469 / 0.009 |
+| Spectator win bar log-loss (hand hidden) | 0.481 | 0.479 |
+| Lookahead vs one step, same network | 62.5% (58.6–66.3) | 57.7% (53.7–61.6) |
+| One AI move, p50 / p95 (lookahead, one thread) | 3.1 / 25.3 ms | 3.4 / 24.2 ms |
+
+- **Established at 95%:** v4 beats v3 head to head; v4 predicts the planning AI's own positions better (Δ log-loss
+  −0.006, interval −0.012 to −0.0002; Brier too).
+- **A tie:** heuristic-played positions and the spectator win bar (differences of 0.001–0.002 in log-loss, both
+  intervals include zero).
+- **The whole upgrade, measured directly:** v4 with the lookahead beats v3 as it was served before this round (one
+  step ahead) **66.3% (62.5–70.0)** over 600 games. Against the heuristic, the served AI went from 63.7% (v3, one
+  step) to 74.9%.
+- The lookahead adds less to v4 (57.7%) than to v3 (62.5%): v4 was trained on planned play, so its one-step
+  estimates already anticipate more of the turn.
+- AI-played positions now come from the planning AI, which plays sharper games; that is why every model's log-loss
+  on them is higher than in the v1–v3 table above. Compare models within one table, not across them.
+
 ### Efficiency
 - **Subnormal weights:** weight decay had driven 27,827 of v2's weights below 1.2e-38, which CPUs multiply ~100×
   slower. `load_net` and training now set them to exactly 0 (predictions change by less than float32 precision):
@@ -145,8 +189,9 @@ measured 66.5% vs the heuristic on its own arena seeds and 60.3% here. The bench
   (architecture, feature-schema hash, config, per-epoch history, metrics, arenas, blend search, recalibration,
   latency and learned card values).
 - **Safety on load:** a schema or architecture mismatch is refused and the bot falls back to the heuristic.
-- **Rollback:** `CLAIRVOYANCE_VERSION=clairvoyance-v2` (or `oracle-v1`), or `/clairvoyance reload version:<name>`.
-  `CLAIRVOYANCE_ENABLED=0` turns the model off.
+- **Rollback:** `CLAIRVOYANCE_VERSION=clairvoyance-v3` (or `clairvoyance-v2`, `oracle-v1`), or
+  `/clairvoyance reload version:<name>`. `CLAIRVOYANCE_ENABLED=0` turns the model off. The lookahead applies to
+  every version (its manifest entry's `serving.lookahead_top`, default 5; 0 turns it off).
 - **Monitoring:** `/clairvoyance status` shows the version, health, metrics, arena results, calls, fallbacks and latency.
 
 ## 2. Intent router (`python -m rudhabot.ml.intent`)
@@ -454,7 +499,8 @@ with `/clairvoyance report`). It covers:
 - birthdays ahead.
 
 ## Next steps
-1. **Play:** search two plies within your own turn; more generations from v3.
+1. **Play:** the turn lookahead is in; next, look one reply ahead at the opponent's intercepts (sampled from what
+   they could hold), and more generations from v4.
 2. **Prediction:** the early game is where every model is weakest; features for deck composition remaining could help.
 3. **Intent:** collect consented real phrasings (for example `/ask` texts that users approve) to retrain and evaluate.
 4. **Anomaly:** the bar now learns from moderators' outcomes. Next: per-feature explanations staff can rate.

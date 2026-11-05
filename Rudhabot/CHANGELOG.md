@@ -1,5 +1,86 @@
 # Changelog
 
+## Final checkup, refactor and Clairvoyance upgrade (November 2026)
+
+### Exploits closed
+- **Mentions:** the bot never pings @everyone or roles. It has Administrator, and display names reach some message
+  text, so a nickname of "@everyone" could have pinged the whole server. Only members are ever pinged.
+- **Casino odds** (the bigger house edge chosen):
+  - slots returned 124.8%: a pair now pays ×1.4 (95.1%);
+  - crash returned up to 114.9%: the crash point is drawn up front, so every cash-out point returns 95%;
+  - high-low returned up to 103%: a tie (same rank) now loses (94.8–95.4%).
+
+  Coin flip and rock-paper-scissors stay even bets. Every game's return is in `docs/ECONOMY.md`.
+- **Roulette paid one stake twice** when SPIN was pressed twice quickly (about 189% return). The first press now
+  closes the table. A bet form submitted after the spin is refused and charges nothing; it used to be taken and never
+  settled.
+- **Walking away is never a refund:**
+  - blackjack hands stand and settle after 5 minutes;
+  - high-low makes the likelier guess;
+  - a crash round cashes out at the multiplier reached after 30 seconds;
+  - an unspun roulette table still refunds (no number was drawn).
+
+  A double click on Double Down or Split is refused instead of charging twice.
+- **Loans couldn't be laundered and defaulted on any more:**
+  - `/send` and `/rob` can't touch the wallet money a loan needs;
+  - `/loaninfo` shows what can be sent;
+  - an overdue loan sells crypto and shares before bankruptcy;
+  - a frozen card blocks new loans.
+- **Birthday gift:** removing and re-adding a birthday no longer pays the gift again that year.
+- **Crypto:** a coin sinking to 100 ra now has a value-preserving 1-for-10 reverse split instead of sitting on a floor
+  it could only rise from (buying there was risk-free).
+
+### Fixes
+- `/security release` defers before restoring roles, which could take longer than 3 seconds.
+- One storage error can no longer stop the loan-warning loop.
+- Money changes from submitted forms are labelled in the audit trail.
+
+### Refactor (no behaviour change)
+- **Security service:** split into focused mixins: moderation, verdict learning, recovery.
+- **`/help`:** its data moved to `views/help_data.py`.
+- **Source hygiene:**
+  - no invisible characters in the source;
+  - dead code and unused parameters removed;
+  - pyflakes is clean across the bot and the tests.
+
+### Clairvoyance: better reasoning, new models
+- **Cloudfall plans its turn.** For the five most promising moves, the AI plays out the rest of its own turn and
+  judges each move by the whole line. It never assumes the opponent's replies, and sees hidden cards only through
+  determinization.
+  - With the same v3 network, it beats the old one-step AI **62.2%** (95% interval 58.2–66.0%) over 600
+    seat-swapped games, at about 10 ms a move.
+  - Normal and hard seats use it; easy stays one step ahead.
+  - **Coach hints now show the plan** ("then: Go to the Clash → Attack with …"), cut before anything that depends on
+    cards the AI had to guess.
+- **`clairvoyance-v4`** is served. It was trained on 18,000 games played by the planning AI, so it learned from
+  stronger play and from whole planned lines. On fresh seeds, with the same lookahead:
+  - it beats v3 head to head **55.8%** (51.8–59.8%);
+  - it beats the heuristic 74.9% (v3: 72.0%);
+  - it predicts the AI's own positions better (log-loss 0.516 vs 0.522, significant);
+  - against the AI members played until now (v3, one step ahead), the new AI scores **66.3%** (62.5–70.0%).
+
+  The arenas chose the network alone over blending in the hand-written heuristic. v3 stays for rollback
+  (`CLAIRVOYANCE_VERSION=clairvoyance-v3`).
+- **`intent-v3`:** 45 intents, up from 30.
+  - New intents: `/guide`, `/collect`, `/income`, `/send`, `/rob`, `/sell`, `/use`, `/bank history`, and every casino
+    game by name.
+  - New frozen test set: 95.6% (v2: 22.2%).
+  - All 283 held-out phrases: 87.6% (v2: 65.4%).
+  - The two older sets are 1 and 2 phrases behind v2.
+- **`/ask` reads the details:** a command that needs arguments is shown pre-filled from the message ("flip a coin for
+  100 on heads" → `/coinflip bet:100 choice:heads`). It is only shown as text, never run.
+- **`/clairvoyance status`** shows the search depth and the intent model version.
+- **Recalibration** now rescales the blend weight automatically, so it never changes a move choice.
+
+### Docs
+- `docs/ECONOMY.md`: games of chance (every return, the walking-away rules), loans, crypto.
+- `docs/ML.md`: the turn lookahead, intent-v3, v4.
+- The guidebook (in the bot and the review doc): the new game, loan, crypto, `/ask` and coaching rules.
+
+### Tests
+- **New:** `tests/test_exploits.py`, `tests/test_lookahead.py`, `tests/test_intent_args.py`.
+- **Updated:** the slots, high-low and crypto tests for the new rules.
+
 ## Help visibility and role incomes (November 2026)
 
 ### Livelier earning, and robbery notices

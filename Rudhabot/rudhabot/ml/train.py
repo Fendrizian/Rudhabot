@@ -240,7 +240,8 @@ def main() -> None:
                 "metrics use true game outcomes",
         "generations": gen_log, "metrics": metrics, "strength": strength, "blend_search": blend_search,
         "latency": lat, "build_seconds": round(time.time() - t0, 1), "card_values": card_values(net, test[0]),
-        "serving": {"move_policy": f"blend: logit(P_net) + {blend_weight:g} * logit(P_heuristic), "
+        "serving": {"move_policy": ("network alone" if blend_weight == 0 else
+                                    f"blend: logit(P_net) + {blend_weight:g} * logit(P_heuristic)") + ", "
                                    + (f"determinized turn lookahead (top {args.look} first moves)" if args.look else
                                       "1-ply determinized afterstate search"),
                     "blend_weight": blend_weight, "lookahead_top": args.look,

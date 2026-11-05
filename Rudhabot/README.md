@@ -97,8 +97,9 @@ presses **Act**.
    - Check or copy it with `python -m rudhabot.persistence.database info|check|backup <dir>`.
    - `RUDHABOT_STORAGE=json` keeps the old one-file-per-store layout; `... export <dir>` writes the database back out
      as JSON.
-8. **Model:** `clairvoyance-v3` ships in `models/` (and `oracle-v1` / `clairvoyance-v2` for rollback). The bot works
-   without it (`CLAIRVOYANCE_ENABLED=0`): it falls back to a deterministic heuristic AI.
+8. **Model:** `clairvoyance-v4` ships in `models/` (and `oracle-v1` / `clairvoyance-v2` / `clairvoyance-v3` for
+   rollback), with `intent-v3` for `/ask`. The bot works without them (`CLAIRVOYANCE_ENABLED=0`): it falls back to a
+   deterministic heuristic AI, and `/ask` to its docs.
 
 Data (inside `RUDHABOT_DATA_DIR`): `rudhabot.db` holds every store:
 - accounts, the bank, the audit ledger, Cloudfall profiles and live matches (restored after a restart);
@@ -115,10 +116,11 @@ in one transaction. A change made to the database by another process is noticed 
 python -m unittest discover -s tests -t .      # offline: no Discord connection, no OpenAI calls
 ```
 
-Rebuild, recalibrate and benchmark the Cloudfall model (each about 25, 2 and 4 minutes on 4 cores):
+Rebuild, recalibrate and benchmark the Cloudfall model (each about 100, 4 and 20 minutes on 4 cores, with the
+planning AI playing; `--look 0` trains with one-step search in about a quarter of the time):
 
 ```bash
-python -m rudhabot.ml.train --version my-model --init clairvoyance-v3 --ema 0.999 --hide-hand 0.15 --no-current
+python -m rudhabot.ml.train --version my-model --init clairvoyance-v4 --look 5 --ema 0.999 --hide-hand 0.15 --no-current
 ```
 
 ```bash
@@ -126,7 +128,7 @@ python -m rudhabot.ml.recalibrate --version my-model
 ```
 
 ```bash
-python -m rudhabot.ml.benchmark --versions clairvoyance-v3,my-model
+python -m rudhabot.ml.benchmark --versions clairvoyance-v4,my-model
 ```
 
 Retrain and benchmark the security models (the public datasets are downloaded and checksum-verified; about 11
