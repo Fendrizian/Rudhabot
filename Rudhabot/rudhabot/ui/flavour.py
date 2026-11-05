@@ -66,7 +66,7 @@ WORK = (
     "You restocked the shelves at the National Shop and found a better way to stack rice sacks. Your manager paid you "
     "{amount}",
     "You guided tourists through the old streets of Rudharta and earned {amount} in tips.",
-    "You fixed the royal palace's Wi-Fi, so Archie could finally watch his shows again. He paid you {amount}",
+    "You fixed the royal palace's Wi-Fi, so Princess Archie could finally watch her shows again. She paid you {amount}",
     "You caught fish in the river near Sawahsari and sold the whole catch for {amount}",
     "You moderated a Rudhanese debate where nobody shouted. A historic first! You were paid {amount}",
     "You translated the national anthem into 12 languages and one made-up one. You earned {amount}",
@@ -143,7 +143,7 @@ CRIME_CAUGHT = (
     "You slipped on a banana peel during your getaway. The police fined you {fine}",
     "You tried to smuggle rice out of Sawahsari, but the farmers chased you down. You were fined {fine}",
     "Your disguise was a fake mustache that fell off mid-heist. You were fined {fine}",
-    "You tried to forge Archie's signature but spelled his name wrong. You were fined {fine}",
+    "You tried to forge Princess Archie's signature but spelled her name wrong. You were fined {fine}",
     "You got stuck in the vending machine you were robbing. The firefighters who freed you also fined you {fine}",
     "You tried to sell counterfeit Cloudfall cards to the game's own designer. You were fined {fine}",
     "You sneezed while hiding from the guards. You were fined {fine}",
