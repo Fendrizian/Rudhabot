@@ -43,7 +43,6 @@ def rarity(card: Card) -> int:
 
 
 POOL: dict[int, list[str]] = {r: [c.id for c in CARDS if rarity(c) == r] for r in (2, 3, 4, 5)}
-STARS = {5: "★★★★★", 4: "★★★★", 3: "★★★", 2: "★★"}
 
 
 @dataclass(frozen=True)

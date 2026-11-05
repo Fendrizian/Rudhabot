@@ -248,7 +248,7 @@ class ClairvoyanceService:
         return await self._run("gauntlet", lambda: self.gauntlet_sync(deck, games_per_archetype),
                                lambda: {"matchups": {}, "seconds": 0, "model": "unavailable"}, timeout=60.0)
 
-    def turning_points_sync(self, g_final: Game, decks, names, seed, keys, level=3, first=None, k=2) -> list[dict]:
+    def turning_points_sync(self, decks, names, seed, keys, level=3, first=None, k=2) -> list[dict]:
         """Replay a finished match and find the moves with the largest public win-probability swing for player 0."""
         g = E.new_game(decks, names, seed, level=level, first=first)
         prev = self.public_win_probability_sync(g, 0)

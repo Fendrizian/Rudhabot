@@ -88,7 +88,7 @@ def after_action(incident: dict, actions: list[dict]) -> str:
 
 
 def _neutralise(text: str) -> str:
-    return text.replace("@everyone", "@​everyone").replace("@here", "@​here").replace("<@", "<@​")
+    return text.replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere").replace("<@", "<@\u200b")
 
 
 class Briefer:

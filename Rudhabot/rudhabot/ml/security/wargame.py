@@ -21,7 +21,6 @@ from rudhabot.security.events import AuditEntry, Message, Tick
 from rudhabot.security.policy import SecurityConfig
 
 ALERT = 0.5
-FAMILY_INDEX = {None: 0}
 DETECTORS = ("join_surge", "join_cohort", "spammer_flag", "ban_evasion", "flood", "duplicate", "coordinated",
              "mention_bomb", "mention_flood", "everyone_attempt", "invite", "link", "attachment", "channel_surge",
              "webhook_flood", "nuke_budget", "nuke_warning", "escalation", "config_weakened", "automod_removed",
@@ -79,7 +78,7 @@ def run_day(engine: GuildEngine, day: Day, *, incident_model: Optional[Callable]
     probationed: set[int] = set()
     next_minute = day.start + 60
 
-    def attack_for(ts: float, family_hint: Optional[str] = None):
+    def attack_for(ts: float):
         for a in day.attacks:
             if a["start"] - 60 <= ts <= a["end"] + 600:
                 return a

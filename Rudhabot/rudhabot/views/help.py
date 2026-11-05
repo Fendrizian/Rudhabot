@@ -148,7 +148,7 @@ def overview_embed(viewer: Viewer = MEMBER) -> discord.Embed:
     embed.set_thumbnail(url=THUMBNAIL)
     commands = _by_name(viewer)
     sections = visible_sections(viewer)
-    for key, title, emoji, summary, names in sections:
+    for _key, title, emoji, summary, names in sections:
         count = sum(1 for n in names if n in commands)
         embed.add_field(name=f"{emoji} {title}", value=f"{summary} · {count}", inline=True)
     embed.set_footer(text=f"{len(commands)} commands you can use, in {len(sections)} sections")

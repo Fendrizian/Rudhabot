@@ -63,6 +63,3 @@ class TcgRepository:
         if self._matches.value().pop(match_id, None) is not None:
             self._matches.persist(match_id)
 
-
-def empty_matches() -> dict:
-    return {}

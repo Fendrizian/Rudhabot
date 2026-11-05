@@ -447,7 +447,7 @@ class TcgCog(ServiceCog, commands.GroupCog, group_name="tcg", group_description=
             record = summary["record"]
             try:
                 tps = await self.clairvoyance._run("turning_points", lambda: self.clairvoyance.turning_points_sync(
-                    g, record["decks"], record["names"], record["seed"], record["keys"], record.get("level", 3),
+                    record["decks"], record["names"], record["seed"], record["keys"], record.get("level", 3),
                     record.get("first")), lambda: [])
             except Exception:
                 tps = []

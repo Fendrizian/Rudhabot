@@ -88,7 +88,7 @@ def diff(snapshot: dict, guild: GuildModel, bot_top_position: Optional[int] = No
                 plan.steps.append(Step("set_overwrite", f"#{now.name}: permissions for "
                                        f"{'@everyone' if ow.target_id == guild.id else ow.target_type + ' ' + str(ow.target_id)} back to the snapshot",
                                        {"channel_id": now.id, **ow.to_dict()}))
-        for target_id, mine in current.items():
+        for target_id in current:
             if target_id not in {o.target_id for o in old.overwrites}:
                 plan.notes.append(f"#{now.name}: an overwrite was added since the snapshot (left in place)")
     s = snapshot.get("settings", {})

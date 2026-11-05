@@ -35,9 +35,3 @@ def error_embed(message: str, user=None) -> discord.Embed:
         embed.set_author(name=user.name, icon_url=user.display_avatar.url)
     return embed
 
-
-def success_embed(message: str, user=None, color: int = Colors.SUCCESS) -> discord.Embed:
-    embed = discord.Embed(description=message, color=color)
-    if user is not None:
-        embed.set_author(name=user.name, icon_url=user.display_avatar.url)
-    return embed

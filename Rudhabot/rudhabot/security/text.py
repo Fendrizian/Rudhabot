@@ -19,8 +19,8 @@ from typing import Iterable, Optional
 
 import numpy as np
 
-ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍⁠﻿­᠎‪‫‬‭‮⁦⁧⁨⁩"))
-BIDI_OVERRIDES = "‪‫‬‭‮⁦⁧⁨⁩"
+ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff\u00ad\u180e\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069"))
+BIDI_OVERRIDES = "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069"
 
 # letters from other scripts that render like Latin ones (the common subset of Unicode's confusables list)
 _CONFUSABLE = {
@@ -192,10 +192,6 @@ def snippet(text: str, limit: int = 200) -> str:
     """The most an incident ever keeps of a message: invisible characters removed, at most `limit` characters."""
     text = _SPACE.sub(" ", strip_invisible(text)).strip()
     return text if len(text) <= limit else text[:limit - 1] + "…"
-
-
-def redact_mentions(text: str) -> str:
-    return re.sub(r"<@[!&]?\d+>", "@user", text)
 
 
 def unique(items: Iterable) -> list:

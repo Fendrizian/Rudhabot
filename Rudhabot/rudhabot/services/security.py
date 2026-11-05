@@ -746,7 +746,7 @@ class SecurityService(RecoveryMixin):
             try:
                 await rt.port.remove_roles(user_id, [role], f"Rudhabot: probation released by {actor_id}")
             except ActionFailed as error:
-                raise Refused(f"Couldn't remove the probation role: {error}")
+                raise Refused(f"Couldn't remove the probation role: {error}") from None
         self.store.end_probation(guild_id, user_id)
         return "Probation lifted."
 
@@ -1005,7 +1005,7 @@ class SecurityService(RecoveryMixin):
         cfg = rt.config
         score, findings = posture_audit(model, configured={"alert_channel": cfg["alert_channel"],
                                                            "probation_role": cfg["probation_role"], "mode": cfg["mode"]},
-                                        stale_staff=stale, staff_ids=staff)
+                                        stale_staff=stale)
         from rudhabot.security.posture import Finding
         for detector, p in sorted(self.calibration(guild_id)["detectors"].items()):
             if p["total"] >= 5 and p["precision"] < 0.5:

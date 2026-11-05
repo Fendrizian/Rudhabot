@@ -312,7 +312,7 @@ class TcgService:
             try:
                 self._apply(match, key)
             except E.IllegalAction:
-                raise TcgError("That move isn't legal any more. Press **Act** again.")
+                raise TcgError("That move isn't legal any more. Press **Act** again.") from None
             match.record["timeouts"][seat] = 0
             self._persist(match)
             new_log = match.game.log[before:]

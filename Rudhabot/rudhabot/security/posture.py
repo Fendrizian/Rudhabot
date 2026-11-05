@@ -35,8 +35,7 @@ class Finding:
         return {"severity": self.severity, "title": self.title, "detail": self.detail, "fix": self.fix}
 
 
-def audit(guild: GuildModel, *, configured: dict, stale_staff: Iterable[int] = (),
-          staff_ids: Iterable[int] = ()) -> tuple[int, list[Finding]]:
+def audit(guild: GuildModel, *, configured: dict, stale_staff: Iterable[int] = ()) -> tuple[int, list[Finding]]:
     f: list[Finding] = []
     add = lambda sev, title, detail, fix: f.append(Finding(sev, title, detail, fix))
     bot_perms = guild.base_permissions(guild.bot_id)

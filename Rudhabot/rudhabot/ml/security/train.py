@@ -61,7 +61,7 @@ def augment(text: str, rng: random.Random) -> str:
         else:
             out.append(ch)
         if ch.isalpha() and rng.random() < 0.02:
-            out.append("​")
+            out.append("\u200b")
     text = "".join(out)
     if rng.random() < 0.3:
         text = text.upper() if rng.random() < 0.5 else text.lower()
@@ -164,7 +164,7 @@ def episodes(flags, threshold: float) -> tuple[int, int, dict]:
     """Group per-minute model readings into episodes (consecutive minutes above threshold): returns
     (false episodes outside attacks, total quiet minutes, per-family detection)."""
     false_eps, prev_false = 0, False
-    for ts, p, label in flags:
+    for _ts, p, label in flags:
         flagged = p >= threshold
         if flagged and label is None:
             if not prev_false:

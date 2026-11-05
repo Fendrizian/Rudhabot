@@ -34,7 +34,6 @@ FAMILIES = ("join_raid", "spam_raid", "phishing", "mention_bomb", "staff_nuke", 
 HELD_OUT = ("slow_drip", "malicious_bot")          # never seen when training the incident model
 NORMAL_EVENTS = ("announcement", "battle", "onboarding_wave", "celebration", "staff_cleanup", "restructure")
 
-CHANNELS = {"general": 101, "roleplay": 102, "trading": 103, "announcements": 104, "off-topic": 105, "help": 106}
 RELAXED = (102,)
 GUILD = 1
 BOT = 99

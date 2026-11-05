@@ -160,14 +160,6 @@ def encode_many_v2(games: list[Game], me: int):
     return tuple(np.stack([p[i] for p in parts]) for i in range(5))
 
 
-def hide_hand_v2(arrays):
-    """Spectator-safe copy: zero the own-hand bag."""
-    glob, slots, cids, att, bags = arrays
-    bags = bags.copy()
-    bags[:, 0, :] = 0
-    return glob, slots, cids, att, bags
-
-
 def _encode_v1(g: Game, me: int):
     return encode(g, me)
 

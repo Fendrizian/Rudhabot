@@ -141,7 +141,7 @@ class BetAmountModal(ServiceModal):
 
         # Update the embed
         bet_descriptions = []
-        for bet_type, payout, amount in view.bets:
+        for bet_type, _payout, amount in view.bets:
             bet_name = bet_type.replace("_", " ").title()
             bet_descriptions.append(f"{bet_name}: {CURRENCY}{amount}")
 
@@ -228,7 +228,7 @@ class CustomNumberBetModal(ServiceModal):
 
         # Update the embed
         bet_descriptions = []
-        for bet_type, payout, amount in view.bets:
+        for bet_type, _payout, amount in view.bets:
             bet_name = bet_type.replace("_", " ").title()
             bet_descriptions.append(f"{bet_name}: {CURRENCY}{amount}")
 

@@ -23,8 +23,6 @@ from rudhabot.security.signals import Signal
 
 AUTO_KINDS = frozenset({"delete_messages", "slowmode", "probation", "timeout", "quarantine", "delete_webhook",
                         "kick_bot", "revert_permissions"})
-PROPOSAL_KINDS = frozenset({"timeout", "kick", "ban", "pause_invites", "pause_dms", "lockdown", "restore",
-                            "revert_permissions"})
 MAX_AUTO_TIMEOUT_S = 600
 
 
