@@ -27,6 +27,7 @@ from rudhabot.services.audit import AuditService
 from rudhabot.services.bank import BankService
 from rudhabot.services.birthdays import BirthdayService
 from rudhabot.services.gacha import GachaService
+from rudhabot.services.incomes import RoleIncomes
 from rudhabot.services.review import ReviewService
 from rudhabot.services.security import SecurityService
 from rudhabot.services.stocks import StockExchange, initial_state
@@ -81,6 +82,7 @@ class Services:
     standing: StandingService
     profile: ServerProfile
     realm: RealmService
+    incomes: RoleIncomes
 
     @classmethod
     def build(cls, settings: Settings, client: discord.Client, *, clock: Clock | None = None,
@@ -123,6 +125,8 @@ class Services:
         standing = StandingService(security, reviews, clock)       # one view of a member across every system
         security.protect = standing.protect
         realm = RealmService(value("economy_daily", paths.economy_daily, dict), clock)   # snapshots + weekly report
+        incomes = RoleIncomes(value("role_incomes", paths.role_incomes, dict),
+                              docs("income_collections", paths.income_collections), users, clock)   # /collect
         services = cls(
             settings=settings,
             clock=clock,
@@ -160,6 +164,7 @@ class Services:
             standing=standing,
             profile=profile,
             realm=realm,
+            incomes=incomes,
         )
         realm.bind(services)
         return services

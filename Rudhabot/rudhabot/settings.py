@@ -45,6 +45,8 @@ class Paths:
     intent_outcomes: str = "intent_outcomes.json"   # suggestion counts (JSON backend only; no text)
     server_profile: str = "server_profile.json"     # /setup overrides (JSON backend only)
     economy_daily: str = "economy_daily.json"       # daily economy snapshots (JSON backend only)
+    role_incomes: str = "role_incomes.json"         # /set-income: which roles earn what (JSON backend only)
+    income_collections: str = "income_collections.json"   # when each member last collected each income
     database: str = "rudhabot.db"           # SQLite storage (RUDHABOT_STORAGE=sqlite, the default)
     backups: str = "backups"                # daily database backups
 

@@ -1,5 +1,37 @@
 # Changelog
 
+## Help visibility and role incomes (November 2026)
+
+### Members see only what they can use
+- **`/help`** shows each person only the commands they can use: the Banker, Admin, Moderation and Security entries
+  appear only to people with that role or clearance (the lowest rank that can use a command at all).
+  - Sections with nothing to show disappear from the overview, the menu, the full list and the counts.
+  - Clicking someone else's help menu shows your own commands.
+  - The section option offers only your sections.
+- **Private replies:** staff get `/help` as a private reply, so staff sections never show to members in a channel;
+  members keep the public reply.
+- **`/ask`** never cites or suggests a command the asker can't use.
+- **Discord's command list** now hides staff commands from members:
+  - Manage Messages for Helper commands;
+  - Kick Members for `/kick`;
+  - Ban Members for bans;
+  - Administrator for admin commands;
+  - Manage Server for `/banker`, `/audit`, `/review`.
+
+  The banker role, and any `/security staff` role without the matching permission, needs an override in Server
+  Settings → Integrations → Rudhabot; `/setup` says so. Every command still checks permissions itself.
+
+### Role incomes
+- **`/collect`:** collect the income your roles earn, all ready ones at once, to your wallet. Each role has its own
+  cooldown (24 h unless set otherwise), and missed periods don't pile up.
+- **`/income`:** every role income, biggest first, with yours marked and when they're ready.
+- **`/set-income <role> <amount> [hours]`** (Admin only, since incomes create money):
+  - sets or changes an income; `amount:0` removes it;
+  - limits: up to 1,000,000 per collection, 1-720 h, at most 25 roles; not @everyone or bot roles;
+  - every change goes to the audit channel.
+- **Background:** incomes of deleted roles are dropped automatically. Payouts are audited as `/collect` and show up
+  in the weekly report.
+
 ## One server, one system (November 2026)
 
 Rudhabot now works as one integrated system for its home server. Most of this runs in the background; the visible

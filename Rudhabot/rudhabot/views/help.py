@@ -57,7 +57,7 @@ def image_upload(embed: discord.Embed) -> dict:
 SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     ("start", "Getting started", "👋", "Help and the /ask assistant (or just @mention Rudhabot)", ("help", "ask")),
     ("economy", "Economy", "💰", "Earn, send and compare money",
-     ("work", "daily", "crime", "send", "rob", "leaderboard")),
+     ("work", "daily", "crime", "collect", "income", "send", "rob", "leaderboard")),
     ("bank", "Bank", "🏦", "Deposits, interest, card tiers, credit cards and loans",
      ("balance", "deposit", "withdraw", "bank tiers | history", "bank upgrade",
       "bank card info | pay", "loan", "loaninfo", "pay", "extend")),
@@ -75,7 +75,7 @@ SECTIONS: list[tuple[str, str, str, str, tuple[str, ...]]] = [
     ("banker", "Banker", "💼", "The banker role (and admins): look after member accounts",
      ("audit", "review list | resolve", "banker account", "banker card-hold | card-release", "banker loan-unban")),
     ("admin", "Admin", "🛠️", "Server administrators only",
-     ("add-money", "remove-money", "clairvoyance report", "clairvoyance status | reload", "setup")),
+     ("add-money", "remove-money", "clairvoyance report", "clairvoyance status | reload", "set-income", "setup")),
     ("moderation", "Moderation", "🛡️", "Warnings, timeouts, kicks, bans and the moderation log (staff)",
      ("warn", "timeout", "untimeout", "kick", "ban", "massban", "unban", "purge", "slowmode",
       "case view | edit | delete", "modlog", "Report to moderators")),
@@ -435,6 +435,16 @@ def get_commands_data():
             "description": "Attempt to rob another user. Success steals money, failure results in a fine. Accounts security has on probation or in quarantine can't rob or be robbed."
         },
         {
+            "name": "collect",
+            "args": "",
+            "description": "Collect the income your roles earn. Each income role has its own cooldown (usually a day); see /income for the list."
+        },
+        {
+            "name": "income",
+            "args": "",
+            "description": "Every role income: how much each role earns and how often, with yours marked and when they're ready."
+        },
+        {
             "name": "send",
             "args": "<user> <amount|all>",
             "description": "Give money from your wallet to another user. Paused for accounts security has on probation or in quarantine."
@@ -573,6 +583,11 @@ def get_commands_data():
             "name": "remove-money",
             "args": "<user> <amount> [wallet|bank]",
             "description": "Remove money from a user's account (Admin only: bankers can't remove money)."
+        },
+        {
+            "name": "set-income",
+            "args": "<role> <amount> [hours]",
+            "description": "Give a role an income, change it, or remove it with amount 0. Hours is how often it can be collected (1-720; kept when left out, 24 for a new income). Every change is posted to the audit channel."
         },
         {
             "name": "setup",

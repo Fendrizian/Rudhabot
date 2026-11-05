@@ -57,6 +57,27 @@ Bankers can't create or remove money: `/add-money` and `/remove-money` stay admi
 privately and posted to the audit channel with who did it and why. The banker role can be changed with `/setup`
 (the change is announced in the security alert channel).
 
+## Role incomes (`/collect`, `/income`, `/set-income`)
+
+Certain roles earn money that their holders collect with `/collect`:
+- **`/income`** (everyone) lists every role income, biggest first: the role, the amount and how often. The viewer's
+  own income roles are marked, with when each is ready.
+- **`/collect`** pays every ready income for the roles the member holds right now, to the wallet. Each role has its
+  own cooldown, counted from that member's last collection of that role. Missed periods don't pile up: collecting
+  late just starts the next wait. If nothing is ready, it says how long each role has left.
+- **`/set-income <role> <amount> [hours]`** (Admin only, like `/add-money`, because incomes create money):
+  - gives a role an income, or changes it;
+  - `amount:0` removes it;
+  - `hours` is how often it can be collected (1-720). Left out, it stays as it was, or 24 for a new income;
+  - limits: up to 1,000,000 per collection, at most 25 income roles; @everyone and bot roles can't have one;
+  - every change is answered privately and posted to the audit channel with who made it (old → new).
+
+Notes:
+- Incomes of roles deleted from the server are dropped automatically.
+- Payouts are audited as `/collect` and appear in the weekly report's money sources.
+- Incomes live in `rudhabot.db` (`role_incomes`, `income_collections`). A collection is saved before the wallet is
+  credited, so a crash can lose one payout but never pay twice.
+
 ## Security holds
 
 Money can't move to or from an account security has contained, so a raid or alt account can't launder it:

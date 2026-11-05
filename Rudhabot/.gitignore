@@ -15,6 +15,8 @@ reviews.json
 intent_outcomes.json
 server_profile.json
 economy_daily.json
+role_incomes.json
+income_collections.json
 ledger.jsonl
 failures.jsonl
 rudhabot.db

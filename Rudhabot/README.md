@@ -78,7 +78,11 @@ presses **Act**.
 4. **Home server and set-up:**
    - set `RUDHABOT_GUILD_ID` to the server's id; commands then register there instantly, and other servers are
      refused;
-   - check `/setup`: channels and roles, all changeable live.
+   - check `/setup`: channels and roles, all changeable live;
+   - staff commands are hidden from members in `/help` and in Discord's command list. In Server Settings →
+     Integrations → Rudhabot, give the banker role access to `/banker`, `/audit` and `/review`, and give any
+     `/security staff` role without the matching Discord permission access to its commands (`docs/SECURITY.md`,
+     "Who sees which commands").
 5. **Security setup:** `/security setup alert_channel:... modlog_channel:... probation_role:...`, map staff roles with
    `/security staff`, run `/security tools action:health check`, rehearse with `/security tools action:drill`. Security starts in **shadow
    mode** (detect and report only) until an admin runs `/security setup mode:live`.
@@ -152,7 +156,8 @@ python -m rudhabot.ml.anomaly --tune
 | Items | `/look <item>` (lore, price, aliases); `/inventory` lists each item's aliases for `/use` and `/sell` |
 | Skyfall Wishes | `/tcg wish banner | pull | shards | daily | craft | convergence` |
 | Banker | `/audit`, `/review list | resolve`, `/banker account | card-hold | card-release | loan-unban` |
-| Admin | `/clairvoyance status | report | reload`, `/setup` |
+| Role incomes | `/collect`, `/income` (everyone); `/set-income` (Admin) |
+| Admin | `/clairvoyance status | report | reload`, `/set-income`, `/setup` |
 | Moderation | `/warn`, `/timeout`, `/untimeout`, `/kick`, `/ban`, `/massban`, `/unban`, `/purge`, `/slowmode`, `/case view | edit | delete`, `/modlog` (the member file), the *Report to moderators* message command |
 | Security | Everyday: `/security status | incident | lockdown | unlock | level | release | ask` · set-up: `/security setup | staff | settings | exempt | tools` |
 

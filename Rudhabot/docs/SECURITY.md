@@ -76,6 +76,29 @@ Nobody can act on themselves or on anyone of equal or higher tier. A quarantined
 released. The tier is checked **when the action runs**, including when an approval button is pressed, not only when
 a command or button is shown.
 
+### Who sees which commands
+- **`/help` and `/ask`** show each person only what they can use, by the lowest tier a command needs at all:
+  - Helper: `/warn`, `/timeout`, `/modlog`, `/security status`;
+  - Moderator: `/kick`, `/security lockdown`;
+  - Senior: `/ban`, `/security level`;
+  - plus the banker role and admins for the Banker and Admin sections.
+
+  Staff get `/help` privately, so their sections never show in a channel.
+- **Discord's command list** hides staff commands from members through default permissions:
+  - Manage Messages for Helper commands (and the `/security` and `/case` groups);
+  - Kick Members for `/kick`;
+  - Ban Members for `/ban`, `/massban`, `/unban`;
+  - Administrator for `/add-money`, `/remove-money`, `/set-income`, `/setup`, `/clairvoyance`;
+  - Manage Server for `/banker`, `/audit`, `/review`.
+- **Overrides:** a role that should see a command without that Discord permission needs an override in Server
+  Settings → Integrations → Rudhabot (a bot can't set these itself). That covers:
+  - the banker role, for `/banker`, `/audit`, `/review`;
+  - any `/security staff` role lacking the matching permission;
+  - the admin role, if it doesn't have Administrator.
+
+  `/setup` repeats this.
+- This is visibility only: every command still checks the person's clearance when it runs.
+
 ## Threat levels and standing orders
 
 | level | flavour | standing orders (carried out in live mode, reported in shadow mode) |
