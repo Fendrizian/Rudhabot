@@ -1,16 +1,25 @@
 """Small helpers for answering interactions and building the standard embeds."""
 from __future__ import annotations
 
+from typing import Optional
+
 import discord
 
 from rudhabot.ui.theme import Colors
 
 
-def respond(interaction: discord.Interaction, embed: discord.Embed, ephemeral: bool = False):
-    """Answer the interaction, using a follow-up if it was already acknowledged (e.g. after `defer`)."""
+def respond(interaction: discord.Interaction, embed: discord.Embed, ephemeral: bool = False, *,
+            content: Optional[str] = None, allowed_mentions: Optional[discord.AllowedMentions] = None):
+    """Answer the interaction, using a follow-up if it was already acknowledged (e.g. after `defer`). `content` is a
+    short line above the embed: embeds never ping, so a mention that should notify someone goes there."""
+    extra = {}
+    if content is not None:
+        extra["content"] = content
+    if allowed_mentions is not None:
+        extra["allowed_mentions"] = allowed_mentions
     if interaction.response.is_done():
-        return interaction.followup.send(embed=embed, ephemeral=ephemeral)
-    return interaction.response.send_message(embed=embed, ephemeral=ephemeral)
+        return interaction.followup.send(embed=embed, ephemeral=ephemeral, **extra)
+    return interaction.response.send_message(embed=embed, ephemeral=ephemeral, **extra)
 
 
 def author_embed(user, description: str = None, color: int = Colors.GAMBLING, **kwargs) -> discord.Embed:

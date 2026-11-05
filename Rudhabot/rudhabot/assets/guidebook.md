@@ -25,7 +25,7 @@ The steady earners are `/daily`, `/work` and your role incomes; `/crime` and `/r
 - **`/daily`**: 50 ra, every 24 hours.
 - **`/work`**: 10-30 ra, every 20 minutes.
 - **`/crime`**: a 70% chance of 30-50 ra; otherwise a fine of 5-20% of your wallet + bank. Every 30 minutes.
-- **`/rob <member>`**: a 50% chance to steal 50-75% of their wallet (they need at least 50 ra in it); otherwise a fine of 10-25% of your wallet + bank. Every 15 minutes.
+- **`/rob <member>`**: a 50% chance to steal 50-75% of their wallet (they need at least 50 ra in it); otherwise a fine of 10-25% of your wallet + bank. Every 15 minutes. They're pinged either way.
 - **`/collect`**: the income of each of your roles that has one, each role on its own cooldown (usually a day).
 
 More:

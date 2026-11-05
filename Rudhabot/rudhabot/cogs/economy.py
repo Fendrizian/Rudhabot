@@ -14,6 +14,7 @@ from rudhabot.domain.cooldown import CRIME, DAILY, ROB, WORK, Cooldown, format_r
 from rudhabot.ui.replies import respond
 from rudhabot.ui.theme import BANKICON, CLAIRVOYANCEICON, CURRENCY, Colors
 from rudhabot.ui.branding import brand
+from rudhabot.ui.flavour import caught_line, crime_line, work_line
 from rudhabot.views.leaderboard import LeaderboardView, create_leaderboard_embed
 
 INVALID_AMOUNT = "❌ Invalid amount format. Use a number or 'all'."
@@ -24,6 +25,15 @@ def _plain(user, message: str, color: int = Colors.FAIL) -> discord.Embed:
     embed = discord.Embed(description=message, color=color)
     embed.set_author(name=user.name, icon_url=user.display_avatar.url)
     return embed
+
+
+def _ping(target, line: str) -> dict:
+    """A short line above the embed that notifies the robbery's target, and only them (embeds never ping)."""
+    return {"content": line, "allowed_mentions": discord.AllowedMentions(users=[target], roles=False, everyone=False)}
+
+
+def _foiled(target, robber) -> str:
+    return f"🛡️ {target.mention}, {robber.mention} tried to rob you but got caught!"
 
 
 def _fine_split(account: dict, fine: int) -> dict:
@@ -100,7 +110,7 @@ class EconomyCog(ServiceCog):
             return
         earnings = self.rng.randint(10, 30)
         self.users.update(interaction.user.id, wallet=account["wallet"] + earnings, last_work=Cooldown.stamp(now))
-        await respond(interaction, _plain(interaction.user, f"💼 You worked hard and earned **{CURRENCY}{earnings}**!", Colors.INCOME))
+        await respond(interaction, _plain(interaction.user, "💼 " + work_line(self.rng, earnings), Colors.INCOME))
 
     @app_commands.command(name="daily", description="Claim your daily reward of 50ra")
     @not_in_game()
@@ -120,7 +130,7 @@ class EconomyCog(ServiceCog):
         if self.rng.randint(1, 100) <= 70:
             earnings = self.rng.randint(30, 50)
             self.users.update(interaction.user.id, wallet=account["wallet"] + earnings, last_crime=Cooldown.stamp(now))
-            await respond(interaction, _plain(interaction.user, f"🚬 You committed a crime and earned {CURRENCY}{earnings}", Colors.INCOME))
+            await respond(interaction, _plain(interaction.user, "🚬 " + crime_line(self.rng, earnings), Colors.INCOME))
             return
         total_balance = account["wallet"] + account["bank"]
         fine = max(int(total_balance * self.rng.randint(5, 20) / 100), 1)
@@ -129,7 +139,7 @@ class EconomyCog(ServiceCog):
                                               "You're too poor to even be fined, you broke bandit.", Colors.LOSS))
             return
         self.users.update(interaction.user.id, **_fine_split(account, fine), last_crime=Cooldown.stamp(now))
-        await respond(interaction, _plain(interaction.user, f"You got caught while trying to commit a crime!\nYou were fined {CURRENCY}{fine}", Colors.LOSS))
+        await respond(interaction, _plain(interaction.user, "🚨 " + caught_line(self.rng, fine), Colors.LOSS))
 
     @app_commands.command(name="rob", description="Try to rob another user!")
     @app_commands.describe(target="The user you want to rob")
@@ -160,17 +170,20 @@ class EconomyCog(ServiceCog):
             self.users.update(interaction.user.id, wallet=attacker["wallet"] + stolen, last_rob=Cooldown.stamp(now))
             self.users.update(target.id, wallet=victim["wallet"] - stolen)
             await respond(interaction, _plain(interaction.user, f"You successfully robbed {target.mention}!\n"
-                                              f"You stole **{CURRENCY}{stolen}** from {target.mention}", Colors.SUCCESS))
+                                              f"You stole **{CURRENCY}{stolen}** from {target.mention}", Colors.SUCCESS),
+                          **_ping(target, f"💸 {target.mention}, you were just robbed by {interaction.user.mention}!"))
             return
         total_balance = attacker["wallet"] + attacker.get("bank", 0)
         fine = max(1, int((self.rng.randint(10, 25) / 100) * total_balance))
         if total_balance < 1:
             await respond(interaction, _plain(interaction.user, f"You were caught trying to rob {target.mention}!\n"
-                                              f"You're too poor to even be fined, you broke bandit.", Colors.LOSS))
+                                              f"You're too poor to even be fined, you broke bandit.", Colors.LOSS),
+                          **_ping(target, _foiled(target, interaction.user)))
             return
         self.users.update(interaction.user.id, **_fine_split(attacker, fine), last_rob=Cooldown.stamp(now))
         await respond(interaction, _plain(interaction.user, f"You were caught trying to rob {target.mention}!\n"
-                                          f"You were fined **{CURRENCY}{fine}**.", Colors.LOSS))
+                                          f"You were fined **{CURRENCY}{fine}**.", Colors.LOSS),
+                      **_ping(target, _foiled(target, interaction.user)))
 
     # ------------------------------------------------------------------ banking
     async def _bank_move(self, interaction: discord.Interaction, amount: str, kind: str, verb: str, color: int):

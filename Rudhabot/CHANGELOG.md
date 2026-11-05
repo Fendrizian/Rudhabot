@@ -2,6 +2,13 @@
 
 ## Help visibility and role incomes (November 2026)
 
+### Livelier earning, and robbery notices
+- `/work` answers with one of 55 random lines: the server's own 40, plus 15 more in the same spirit.
+- `/crime` picks from 50 lines when it pays off and 50 when you're caught.
+- `/rob` now pings the member it targeted, in a short line above the embed (embeds never ping), when the robbery
+  works and when the robber gets caught. Only that member is pinged. Nobody is pinged when their wallet was too empty
+  to rob.
+
 ### The Rudhabot Guidebook: `/guide`
 - **What it is:** the guidebook (14 chapters in two parts) is now in the bot, so the reviewed doc and the bot say the
   same thing. Members read Part 1 (getting started, earning, the bank, markets, shop, games, Cloudfall, lottery and
