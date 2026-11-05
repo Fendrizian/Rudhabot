@@ -1,5 +1,4 @@
 """The Cloudfall Clairvoyance: features, network, artifacts, serving fallbacks, trust boundary and metrics."""
-import asyncio
 import os
 import random
 import tempfile
@@ -12,7 +11,7 @@ from rudhabot.ml import features as F
 from rudhabot.ml.evaluate import auc, brier, ece, log_loss
 from rudhabot.ml.nn import ClairvoyanceNet, load_net
 from rudhabot.ml.model_store import ArtifactError, ModelStore
-from rudhabot.ml.policy import HeuristicEvaluator, choose, determinize
+from rudhabot.ml.policy import HeuristicEvaluator, determinize
 from rudhabot.services.clairvoyance import ClairvoyanceService
 from rudhabot.settings import DEFAULT_MODELS_DIR
 from rudhabot.tcg import engine as E

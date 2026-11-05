@@ -254,7 +254,7 @@ class ProtocolSkyTests(unittest.TestCase):
 
     def test_befalling_and_fright_bonuses(self):
         g = fresh()
-        a, b = put(g, 0, "C12", 0), put(g, 0, "C14", 1)
+        a, _ = put(g, 0, "C12", 0), put(g, 0, "C14", 1)
         g.threat = 3                                                # Fright: +1 per other ally sharing an Affiliation
         self.assertEqual(E.power(g, a), 2 + 1)
         g.threat = 7                                                # Befalling: +2/+0

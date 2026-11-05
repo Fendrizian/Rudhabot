@@ -6,8 +6,6 @@ import unittest
 from collections import Counter
 from datetime import date, datetime
 
-import discord
-
 from rudhabot.clock import FixedClock
 from rudhabot.domain import gacha as G
 from rudhabot.ml.anomaly import AnomalyDetector, IsolationForest, synthetic, windows
@@ -154,7 +152,7 @@ class AnomalyTests(unittest.TestCase):
 
 class ReviewCommandTests(CogTestCase):
     async def test_review_commands_are_admin_only(self):
-        command = self.bot.tree.get_command("review").get_command("list")
+        self.assertIsNotNone(self.bot.tree.get_command("review").get_command("list"))
         it = await self.run_command("review", self.alice, group="list")
         self.assertTrue(it.log)
         admin = await self.run_command("review", self.admin, group="list")
