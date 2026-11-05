@@ -49,7 +49,7 @@ How it works:
 - **Upgrading:** `/bank upgrade` moves you to the next card once your net worth (wallet + bank) is high enough.
 - **Credit card:** shop, café, card packs and wishes can go on the card. Each month's balance becomes a statement due on the 11th. An unpaid statement adds 5% interest once and freezes the card until it's paid. Nothing is ever taken automatically. See it with `/bank card info` and pay with `/bank card pay`.
 - **Loans:** `/loan <amount> <days>` borrows 100-10,000 ra for 1-30 days at 2% a day. Check it with `/loaninfo` and repay with `/pay`. `/extend` adds days once, for a 10% fee.
-- **Borrowed money stays put until it's repaid:** while you have a loan, `/send` (and a robber) can only take what you hold beyond what you owe. Check what you can move with `/loaninfo`.
+- **Borrowed money stays put until it's repaid:** while you have a loan or a credit-card balance, `/send` (and a robber) can only take what you hold beyond what you owe and your bank doesn't cover. Check what you can move with `/loaninfo`.
 - **When a loan falls due,** it is paid from your wallet, then your bank. If that still isn't enough, your stocks and coins are sold to cover it. Only if everything together falls short do you go bankrupt: your wallet and bank are emptied, you get the bankrupt role, and you can't borrow for a while (longer for bigger debts). A banker can lift that early.
 - **A frozen credit card** also blocks new loans until it's unfrozen.
 

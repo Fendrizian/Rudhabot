@@ -80,27 +80,32 @@ class LoanService:
     WARNING_WINDOW = (12 * 3600, 36 * 3600)
 
     def __init__(self, users: UserRepository, terms: LoanTerms, clock: Clock,
-                 liquidate: Optional[Callable[[str], int]] = None):
+                 liquidate: Optional[Callable[[str], int]] = None, card_owed: Optional[Callable[[str], int]] = None):
         """`liquidate(user_id) -> ra raised`: sells a member's investments (crypto, shares) into their wallet. An
         overdue loan that wallet and bank can't cover calls it first, so borrowed money parked in investments still
-        repays the loan before anyone is declared bankrupt."""
+        repays the loan before anyone is declared bankrupt.
+        `card_owed(user_id) -> ra`: the member's credit-card balance, which counts towards `reserved` like a loan."""
         self._users = users
         self._terms = terms
         self._clock = clock
         self._liquidate = liquidate
+        self._card_owed = card_owed
 
     # -------------------------------------------------------------- queries
     def active_loan(self, user_id: int | str) -> Optional[Loan]:
         return Loan.from_account(self._users.get(user_id), self._terms.interest_rate)
 
     def reserved(self, user_id: int | str) -> int:
-        """Wallet money that has to stay put while a loan is open: the part of the debt the bank can't cover.
-        Borrowed money can be spent (shop, games), but not sent away or robbed by an alt and then defaulted on."""
+        """Wallet money that has to stay put while debts are open: the part of the loan and the credit-card balance
+        that the bank can't cover. Borrowed money can be spent (shop, games), but not sent away or robbed by an alt
+        and then defaulted on. (Card purchases resell for half in cash, so without this every new account could
+        turn its credit limit into cash for another account and never pay.)"""
         account = self._users.get(user_id)
         loan = Loan.from_account(account, self._terms.interest_rate)
-        if loan is None:
-            return 0
-        return max(0, int(loan.total_due(self._clock.now())) - int(account.get("bank", 0)))
+        owed = int(loan.total_due(self._clock.now())) if loan is not None else 0
+        if self._card_owed is not None:
+            owed += int(self._card_owed(user_id))
+        return max(0, owed - int(account.get("bank", 0)))
 
     def movable(self, user_id: int | str) -> int:
         """How much of the wallet may leave it for someone else (all of it without a loan)."""

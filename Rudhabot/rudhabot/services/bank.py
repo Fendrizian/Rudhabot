@@ -190,6 +190,11 @@ class BankService:
         """Everything owed on credit cards across the server (stored profiles, read without refreshing them)."""
         return sum(int((p.get("credit") or {}).get("balance", 0)) for p in self._data.value().values())
 
+    def card_balance(self, user_id) -> int:
+        """What one member owes on their card (the stored profile, read without refreshing it)."""
+        stored = self._data.value().get(str(user_id)) or {}
+        return max(0, int((stored.get("credit") or {}).get("balance", 0)))
+
     def credit_available(self, profile: dict) -> int:
         return max(0, self.tier_of(profile).credit_limit - profile["credit"]["balance"])
 

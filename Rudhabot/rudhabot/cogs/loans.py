@@ -109,8 +109,8 @@ class LoansCog(ServiceCog):
         embed.add_field(name="Extended", value="Yes" if loan.extended else "No", inline=True)
         loans = self.services.loans
         embed.add_field(name="Can Send", value=f"{CURRENCY}{loans.movable(interaction.user.id)}", inline=True)
-        embed.set_footer(text=f"{loans.reserved(interaction.user.id):,} ra of your wallet stays put until the loan is "
-                              "repaid (the part your bank doesn't cover). You can still spend it.")
+        embed.set_footer(text=f"{loans.reserved(interaction.user.id):,} ra of your wallet stays put until the loan (and "
+                              "any card balance) is repaid: the part your bank doesn't cover. You can still spend it.")
         await respond(interaction, _author(embed, interaction.user))
 
     @app_commands.command(name="pay", description="Pay off your loan debt.")

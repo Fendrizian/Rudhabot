@@ -26,6 +26,11 @@
   - `/loaninfo` shows what can be sent;
   - an overdue loan sells crypto and shares before bankruptcy;
   - a frozen card blocks new loans.
+- **Credit cards couldn't be cashed out to another account any more:** card purchases resell for half in cash, so
+  every new account could turn its credit limit into cash for a main account and never pay. An unpaid card balance
+  now counts like a loan: the wallet money it needs (beyond what the bank covers) can't be sent or robbed.
+- **Crypto rounding:** a buy rounded the coins it got *up* to 4 decimals, so many small buys at a high price added up
+  to free coins. Buys now round down.
 - **Birthday gift:** removing and re-adding a birthday no longer pays the gift again that year. Only the year of
   the last gift is kept after a removal (never the date), and only until that year ends.
 - **Crypto:** a coin sinking to 100 ra now has a value-preserving 1-for-10 reverse split instead of sitting on a floor

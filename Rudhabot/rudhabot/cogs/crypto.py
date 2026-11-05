@@ -72,6 +72,7 @@ class CryptoCog(ServiceCog):
                 "invalid_coin": "❌ Invalid coin symbol.",
                 "not_positive": "❌ Amount must be positive.",
                 "insufficient_wallet": "❌ You don't have enough money in your wallet.",
+                "too_small": "❌ That isn't enough to buy 0.0001 of this coin. Spend a little more.",
             }[refusal.code]), ephemeral=True)
             return
         await respond(interaction, _embed(interaction.user, f"✅ You bought {trade.quantity:.4f} {trade.coin} for {CURRENCY}{amount}.", Colors.SUCCESS))

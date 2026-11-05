@@ -136,7 +136,8 @@ It is read-only.
 **Credit card:**
 - Every purchase can go on the card: `pay_with:card` on `/buy`, `/tcg pack` and `/tcg wish shards`, and the
   **Paying with** toggle on the `/shop` and `/cafe` menus. The bank balance never pays for purchases.
-- Investments (`/stocks buy`, `/crypto buy`) are wallet-only, so the card can't be turned into cash.
+- Investments (`/stocks buy`, `/crypto buy`) are wallet-only. Card purchases can be resold for half in cash, so an
+  unpaid card balance is reserved in the wallet like a loan (see Loans): that cash can't be sent away.
 - On the first access in a month, the balance becomes that month's statement, due on the 11th.
 - If the statement is unpaid after its due date, 5% interest is added once and the card is frozen until the statement is
   paid. No money is ever taken automatically.
@@ -162,10 +163,11 @@ They are advisory and never change, limit or charge anything.
 - **Terms:** 100–10,000 ra for 1–30 days at 2% a day, compounding (what's owed is the amount × 1.02 per day
   so far). `/extend` adds days once, for a fee of 10% of the amount
   borrowed, up to 30 days in all. One loan at a time; a frozen credit card or a bankruptcy ban blocks new loans.
-- **Borrowed money stays put until it's repaid.** While a loan is open, the part of the debt the bank balance doesn't
-  cover is reserved in the wallet: it can be spent (shop, games), but `/send` can only move what's above it, and a
-  robbery can only take what's above it. `/loaninfo` shows the sendable amount. Without this, a member could borrow,
-  send the money to an alt and let the loan default.
+- **Borrowed money stays put until it's repaid.** While a loan or a credit-card balance is open, the part of those
+  debts the bank balance doesn't cover is reserved in the wallet: it can be spent (shop, games), but `/send` can only
+  move what's above it, and a robbery can only take what's above it. `/loaninfo` shows the sendable amount. Without
+  this, a member could borrow (or buy on the card and resell for half), send the money to another account and never
+  repay.
 - **When a loan falls due,** it is paid from the wallet, then the bank. If that isn't enough, every coin and share
   the member holds is sold first (at market, through the normal audited trades; share sales are split into orders
   no bigger than one order may be). Only if everything together falls short is the member made bankrupt: wallet and
@@ -175,6 +177,8 @@ They are advisory and never change, limit or charge anything.
 ## Crypto (`/crypto`)
 
 - Four coins (SCAY, RDC, LICH, WNC) move every minute, each with its own volatility.
+- Holdings are kept to 4 decimals, and a buy rounds the coins *down*, so a purchase never gets more than it paid for
+  (a buy too small for 0.0001 coins is refused).
 - **Reverse splits instead of a price floor:** when a coin would sink below 100 ra, it has a 1-for-10 reverse split:
   the price is multiplied by 10 and every holding is divided by 10, so each holding keeps its value and the coin
   keeps moving. (The old hard floor pinned a falling coin at 100, which made buying at the floor a free option.)

@@ -124,7 +124,8 @@ class Services:
                               coins, users, rng)
         # an overdue loan the wallet and bank can't cover sells the member's investments before bankruptcy
         loans = LoanService(users, settings.loans, clock,
-                            liquidate=lambda uid: liquidate_investments(uid, users, crypto, exchange))
+                            liquidate=lambda uid: liquidate_investments(uid, users, crypto, exchange),
+                            card_owed=bank.card_balance)
         assistant = _build_assistant(settings, tcg, clairvoyance)
         security = _build_security(settings, storage, clock, client, assistant, lambda: profile.role("admin"))
         standing = StandingService(security, reviews, clock)       # one view of a member across every system

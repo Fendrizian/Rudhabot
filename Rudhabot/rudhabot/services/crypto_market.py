@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import random
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -93,7 +94,11 @@ class CryptoMarket:
         account = self._users.get(user_id)               # one member's account: no whole-file transaction needed
         if amount > round(float(account["wallet"]), 2):
             raise TradeRefused("insufficient_wallet")
-        bought = round(amount / round(float(self._prices[coin]), 2), 4)
+        # coins are kept to 4 decimals; round *down* so a buy never gets more coins than it paid for (rounding up
+        # let many small buys at a high price add up to free coins)
+        bought = math.floor(amount / round(float(self._prices[coin]), 2) * 10_000 + 1e-9) / 10_000
+        if bought <= 0:
+            raise TradeRefused("too_small")
         crypto = dict(account.get("crypto", {}))
         crypto[coin] = round(float(crypto.get(coin, 0.0)) + bought, 4)
         self._users.update(user_id, wallet=int(round(float(account["wallet"]) - amount, 2)), crypto=crypto)

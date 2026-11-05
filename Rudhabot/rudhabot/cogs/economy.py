@@ -248,7 +248,8 @@ class EconomyCog(ServiceCog):
         if reserved and give > sender["wallet"] - reserved:
             movable = max(0, sender["wallet"] - reserved)
             await respond(interaction, _plain(interaction.user,
-                f"❌ You have a loan to repay, so {CURRENCY}{reserved:,} of your wallet has to stay until it's paid. "
+                f"❌ You have a loan or a card balance to repay, so {CURRENCY}{reserved:,} of your wallet has to stay "
+                f"until it's paid (your bank covers the rest). "
                 f"You can send up to {CURRENCY}{movable:,}."), ephemeral=True)
             return
         receiver = self.users.get(target.id)
